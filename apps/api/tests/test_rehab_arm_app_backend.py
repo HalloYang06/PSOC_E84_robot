@@ -1439,6 +1439,14 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
         json={"reason": "offline critical pain event"},
     )
     assert cancel_after_offline_event.status_code == 200
+    bootstrap_needs_safety_review = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_needs_safety_review.status_code == 200
+    safety_review_guide = bootstrap_needs_safety_review.json()["data"]["safety_review_guide"]
+    assert safety_review_guide["status"] == "review_required"
+    assert safety_review_guide["blocking_event"]["session_id"] == session_id
+    assert safety_review_guide["blocking_event"]["event_type"] == "pain_report"
+    assert "RECORD_SAFETY_REVIEW" in {item["code"] for item in safety_review_guide["actions"]}
+    assert bootstrap_needs_safety_review.json()["data"]["daily_action_guide"]["next_action"]["code"] == "REVIEW_BLOCKING_SAFETY_EVENT"
     _pass_preflight(owner_token, plan_id, device["id"], sync_id)
     blocked_restart_without_review = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
@@ -1468,6 +1476,9 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
         },
     )
     assert offline_safety_review.status_code == 200
+    bootstrap_after_safety_review = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_after_safety_review.status_code == 200
+    assert bootstrap_after_safety_review.json()["data"]["safety_review_guide"]["status"] == "clear"
     _pass_preflight(owner_token, plan_id, device["id"], sync_id)
     restart_after_review = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",

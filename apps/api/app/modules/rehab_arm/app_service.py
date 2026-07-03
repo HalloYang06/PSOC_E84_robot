@@ -475,6 +475,7 @@ def _app_daily_action_guide(
     primary_start_guide: dict | None,
     latest_report: dict | None,
     latest_open_ai_draft: dict | None,
+    safety_review_guide: dict | None = None,
 ) -> dict:
     if active_session:
         return {
@@ -487,6 +488,26 @@ def _app_daily_action_guide(
                 f"/api/rehab-arm/app/v1/training-sessions/{active_session['id']}",
                 "GET",
                 source={"session_id": active_session["id"], "session_status": active_session["status"]},
+            ),
+            "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
+        }
+    if safety_review_guide and safety_review_guide.get("status") == "review_required":
+        blocking_event = safety_review_guide.get("blocking_event") or {}
+        return {
+            "status": "action_required",
+            "next_action": _daily_action(
+                "REVIEW_BLOCKING_SAFETY_EVENT",
+                15,
+                "复核阻塞安全事件",
+                "最近训练存在未复核 critical 安全事件。请先记录 approved/conditional safety_review，再继续下一次训练。",
+                f"/api/rehab-arm/app/v1/training-sessions/{blocking_event.get('session_id', '{session_id}')}/safety-events",
+                "POST",
+                {"event_type": "safety_review", "severity": "info", "payload": {"review_status": "approved_or_conditional"}},
+                source={
+                    "session_id": blocking_event.get("session_id", ""),
+                    "event_id": blocking_event.get("event_id", ""),
+                    "guide": "safety_review_guide",
+                },
             ),
             "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
         }
@@ -1008,6 +1029,61 @@ def _app_device_operational_guide(db: Session, user_id: str, devices: list[dict]
     }
 
 
+def _safety_review_action(code: str, label: str, endpoint: str, method: str, payload_hint: dict | None = None) -> dict:
+    return {
+        "code": code,
+        "label": label,
+        "endpoint": endpoint,
+        "method": method,
+        "payload_hint": payload_hint or {},
+    }
+
+
+def _app_safety_review_guide(db: Session, user_id: str, sessions: list[dict]) -> dict | None:
+    for session_item in sessions:
+        session_id = session_item["id"]
+        event = _latest_unreviewed_critical_safety_event(db, user_id, session_id)
+        if event is None:
+            continue
+        blocking_event = {
+            "session_id": session_id,
+            "event_id": event.id,
+            "event_type": event.event_type,
+            "severity": event.severity,
+            "source": event.source,
+            "pain_score": event.pain_score,
+        }
+        return {
+            "status": "review_required",
+            "blocking_event": blocking_event,
+            "session": session_item,
+            "actions": [
+                _safety_review_action("VIEW_SESSION", "查看训练记录", f"/api/rehab-arm/app/v1/training-sessions/{session_id}", "GET"),
+                _safety_review_action(
+                    "VIEW_SAFETY_EVENTS",
+                    "查看安全事件",
+                    f"/api/rehab-arm/app/v1/training-sessions/{session_id}/safety-events",
+                    "GET",
+                ),
+                _safety_review_action(
+                    "RECORD_SAFETY_REVIEW",
+                    "记录安全复核",
+                    f"/api/rehab-arm/app/v1/training-sessions/{session_id}/safety-events",
+                    "POST",
+                    {"event_type": "safety_review", "severity": "info", "payload": {"review_status": "approved_or_conditional"}},
+                ),
+            ],
+            "control_boundary": "safety_review_guide_evidence_only_not_motion_permission",
+        }
+    return {
+        "status": "clear",
+        "blocking_event": None,
+        "session": None,
+        "actions": [],
+        "control_boundary": "safety_review_guide_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
@@ -1027,6 +1103,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     primary_start_guide = None
     if primary_plan and primary_device:
         primary_start_guide = get_training_start_guide(db, user_id, primary_plan["id"], primary_device["id"])
+    safety_review_guide = _app_safety_review_guide(db, user_id, sessions)
     return {
         "profile": profile,
         "devices": devices,
@@ -1034,13 +1111,21 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "onboarding_guide": onboarding_guide,
         "active_session": active_session,
         "primary_start_guide": primary_start_guide,
-        "daily_action_guide": _app_daily_action_guide(onboarding_guide, active_session, primary_start_guide, latest_report, latest_open_ai_draft),
+        "daily_action_guide": _app_daily_action_guide(
+            onboarding_guide,
+            active_session,
+            primary_start_guide,
+            latest_report,
+            latest_open_ai_draft,
+            safety_review_guide,
+        ),
         "care_summary": _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue),
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
         "offline_sync_guide": _app_offline_sync_guide(offline_queue),
         "session_recovery_guide": _app_session_recovery_guide(db, user_id, active_session),
         "report_followup_guide": _app_report_followup_guide(latest_report, all_drafts),
         "device_operational_guide": _app_device_operational_guide(db, user_id, devices, primary_plan),
+        "safety_review_guide": safety_review_guide,
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_report,
