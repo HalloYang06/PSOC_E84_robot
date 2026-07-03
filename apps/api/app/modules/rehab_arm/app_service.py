@@ -1021,9 +1021,24 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
     next_progress_secondary_actions = [
         action for action in next_progress_actions if action is not next_progress_primary_action
     ]
+    next_progress_primary_blocker = next_progress_blockers[0] if next_progress_blockers else {}
+    next_progress_display = (
+        {
+            "title": next_progress_item.get("title") or next_progress_primary_blocker.get("title") or "",
+            "description": next_progress_primary_blocker.get("description")
+            or next_progress_item.get("description")
+            or "",
+            "tone": next_progress_primary_blocker.get("severity") or "info",
+            "severity": next_progress_primary_blocker.get("severity") or "info",
+            "clear_condition": next_progress_primary_blocker.get("clear_condition") or "",
+        }
+        if next_progress_item
+        else {}
+    )
     next_progress_context = (
         {
             "item": next_progress_item,
+            "display": next_progress_display,
             "primary_action": next_progress_primary_action,
             "secondary_actions": next_progress_secondary_actions,
             "actions": next_progress_actions,
