@@ -448,6 +448,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert bootstrap_with_active.json()["data"]["primary_start_guide"]["next_action"]["code"] == "ACTIVE_TRAINING_SESSION_EXISTS"
     assert bootstrap_with_active.json()["data"]["daily_action_guide"]["next_action"]["code"] == "RECOVER_ACTIVE_SESSION"
     assert "active_session" in bootstrap_with_active.json()["data"]["care_summary"]["blockers"]
+    active_recovery_codes = {item["code"] for item in bootstrap_with_active.json()["data"]["session_recovery_guide"]["actions"]}
+    assert {"RECORD_PROGRESS", "FINISH_SESSION", "CANCEL_SESSION"}.issubset(active_recovery_codes)
 
     duplicate_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
@@ -691,6 +693,10 @@ def test_rehab_arm_app_training_session_pause_resume_cancel_flow(tmp_path, monke
     assert paused_bootstrap.status_code == 200
     assert paused_bootstrap.json()["data"]["active_session"]["id"] == session["id"]
     assert paused_bootstrap.json()["data"]["active_session"]["status"] == "paused"
+    recovery_guide = paused_bootstrap.json()["data"]["session_recovery_guide"]
+    assert recovery_guide["status"] == "paused_can_resume"
+    assert recovery_guide["control_boundary"] == "session_recovery_guide_evidence_only_not_motion_permission"
+    assert "RESUME_SESSION" in {item["code"] for item in recovery_guide["actions"]}
 
     paused_progress = client.patch(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/progress",
@@ -862,6 +868,12 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     )
     assert paused_after_event.status_code == 200
     assert paused_after_event.json()["data"]["status"] == "paused"
+    blocked_recovery_bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert blocked_recovery_bootstrap.status_code == 200
+    blocked_recovery = blocked_recovery_bootstrap.json()["data"]["session_recovery_guide"]
+    assert blocked_recovery["status"] == "safety_review_required"
+    assert blocked_recovery["blocking_event"]["event_type"] == "pain_report"
+    assert "RECORD_SAFETY_REVIEW" in {item["code"] for item in blocked_recovery["actions"]}
     paused_event_progress = client.patch(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/progress",
         headers=auth_headers(owner_token),

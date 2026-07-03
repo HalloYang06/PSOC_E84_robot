@@ -703,6 +703,85 @@ def _app_offline_sync_guide(offline_items: list[dict]) -> dict:
     }
 
 
+def _session_recovery_action(code: str, label: str, endpoint: str, method: str, payload_hint: dict | None = None) -> dict:
+    return {
+        "code": code,
+        "label": label,
+        "endpoint": endpoint,
+        "method": method,
+        "payload_hint": payload_hint or {},
+    }
+
+
+def _app_session_recovery_guide(db: Session, user_id: str, active_session: dict | None) -> dict | None:
+    if active_session is None:
+        return None
+    session_id = active_session["id"]
+    status = active_session["status"]
+    actions = [
+        _session_recovery_action("VIEW_SESSION", "查看训练详情", f"/api/rehab-arm/app/v1/training-sessions/{session_id}", "GET"),
+        _session_recovery_action(
+            "CANCEL_SESSION",
+            "取消当前训练",
+            f"/api/rehab-arm/app/v1/training-sessions/{session_id}/cancel",
+            "POST",
+            {"reason": "required"},
+        ),
+    ]
+    recovery_status = "active"
+    blocking_event = None
+    if status == "paused":
+        session = _require_user_session(db, user_id, session_id)
+        event = _latest_unreviewed_critical_safety_event(db, user_id, session.id)
+        if event is not None:
+            recovery_status = "safety_review_required"
+            blocking_event = {"event_id": event.id, "event_type": event.event_type, "severity": event.severity}
+            actions.insert(
+                1,
+                _session_recovery_action(
+                    "RECORD_SAFETY_REVIEW",
+                    "记录安全复核",
+                    f"/api/rehab-arm/app/v1/training-sessions/{session_id}/safety-events",
+                    "POST",
+                    {"event_type": "safety_review", "severity": "info", "payload": {"review_status": "approved_or_conditional"}},
+                ),
+            )
+        else:
+            recovery_status = "paused_can_resume"
+            actions.insert(
+                1,
+                _session_recovery_action("RESUME_SESSION", "恢复训练记录", f"/api/rehab-arm/app/v1/training-sessions/{session_id}/resume", "POST"),
+            )
+    else:
+        actions.insert(
+            1,
+            _session_recovery_action(
+                "RECORD_PROGRESS",
+                "记录训练进度",
+                f"/api/rehab-arm/app/v1/training-sessions/{session_id}/progress",
+                "PATCH",
+                {"completion_rate": "0_to_1"},
+            ),
+        )
+        actions.insert(
+            2,
+            _session_recovery_action(
+                "FINISH_SESSION",
+                "完成训练记录",
+                f"/api/rehab-arm/app/v1/training-sessions/{session_id}/finish",
+                "POST",
+                {"completion_rate": "0_to_1", "pain_after": "optional_0_to_10"},
+            ),
+        )
+    return {
+        "status": recovery_status,
+        "session": active_session,
+        "blocking_event": blocking_event,
+        "actions": actions,
+        "control_boundary": "session_recovery_guide_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
@@ -733,6 +812,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "care_summary": _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue),
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
         "offline_sync_guide": _app_offline_sync_guide(offline_queue),
+        "session_recovery_guide": _app_session_recovery_guide(db, user_id, active_session),
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_report,
