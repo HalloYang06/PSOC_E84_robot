@@ -747,69 +747,79 @@ def _app_care_summary(
     primary_start_action_code = str(((primary_start_guide or {}).get("next_action") or {}).get("code") or "")
     if onboarding_guide["status"] == "complete" and primary_start_guide and not can_start and primary_start_action_code:
         blockers.append("start_readiness_blocked")
-    blocker_copy = {
-        "onboarding_incomplete": (
-            "warning",
-            "完成首次设置",
-            "康复档案、可信 M33 设备或可用训练计划还没有完成。",
-            ["PROFILE_REQUIRED", "TRUSTED_DEVICE_REQUIRED", "TRAINING_PLAN_REQUIRED"],
-        ),
-        "active_session": (
-            "critical",
-            "处理未结束训练",
-            "存在 started/in_progress/paused 训练记录，请先恢复、完成或取消。",
-            ["RECOVER_ACTIVE_SESSION", "VIEW_SESSION", "RECORD_PROGRESS", "FINISH_SESSION", "RESUME_SESSION", "CANCEL_SESSION"],
-        ),
-        "safety_review_required": (
-            "critical",
-            "复核安全事件",
-            "存在未复核的 critical 安全事件，需要记录治疗师或工程复核后才能继续训练闭环。",
-            ["REVIEW_BLOCKING_SAFETY_EVENT", "VIEW_SESSION", "VIEW_SAFETY_EVENTS", "RECORD_SAFETY_REVIEW"],
-        ),
-        "finished_report_required": (
-            "warning",
-            "生成训练报告",
-            "最近训练已结束但尚未生成训练报告，需要先生成报告再进入复盘或下一计划。",
-            ["GENERATE_TRAINING_REPORT", "VIEW_SESSION"],
-        ),
-        "report_review_required": (
-            "warning",
-            "复盘训练报告",
-            "存在训练报告尚未记录患者或治疗师复盘。",
-            ["REVIEW_LATEST_REPORT", "RECORD_REPORT_REVIEW"],
-        ),
-        "ai_draft_open": (
-            "info",
-            "审核 AI 训练草稿",
-            "存在未接受的 AI 草稿；接受后仍需 M33 同步和 preflight。",
-            ["REVIEW_AI_DRAFT", "VIEW_AI_DRAFT", "ACCEPT_AI_DRAFT"],
-        ),
-        "offline_queue_failed": (
-            "critical",
-            "处理离线失败证据",
-            "存在重放失败的离线证据，需要查看并记录人工复核。",
-            ["VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM"],
-        ),
-        "offline_queue_pending": (
-            "warning",
-            "同步离线证据",
-            "存在 queued 离线证据，需要先重放到后端证据流。",
-            ["REPLAY_OFFLINE_EVIDENCE"],
-        ),
-        "start_readiness_blocked": (
-            "warning",
-            "完成训练开始条件",
-            "基础设置已完成，但当前计划/设备仍需完成 M33 接受、preflight、安全复核或其它开始条件。",
-            ["VIEW_START_GUIDE", "CHECK_START_READINESS", primary_start_action_code],
-        ),
+    blocker_copy: dict[str, dict] = {
+        "onboarding_incomplete": {
+            "severity": "warning",
+            "title": "完成首次设置",
+            "description": "康复档案、可信 M33 设备或可用训练计划还没有完成。",
+            "clear_condition": "保存康复档案、绑定可信 M33 设备，并创建或接受一个可用训练计划。",
+            "related_action_codes": ["PROFILE_REQUIRED", "TRUSTED_DEVICE_REQUIRED", "TRAINING_PLAN_REQUIRED"],
+        },
+        "active_session": {
+            "severity": "critical",
+            "title": "处理未结束训练",
+            "description": "存在 started/in_progress/paused 训练记录，请先恢复、完成或取消。",
+            "clear_condition": "把当前训练恢复后完成，或记录取消原因；未结束训练会继续占用设备。",
+            "related_action_codes": ["RECOVER_ACTIVE_SESSION", "VIEW_SESSION", "RECORD_PROGRESS", "FINISH_SESSION", "RESUME_SESSION", "CANCEL_SESSION"],
+        },
+        "safety_review_required": {
+            "severity": "critical",
+            "title": "复核安全事件",
+            "description": "存在未复核的 critical 安全事件，需要记录治疗师或工程复核后才能继续训练闭环。",
+            "clear_condition": "记录 approved 或 conditional 的 safety_review 证据；这仍不代表 App 获得运动授权。",
+            "related_action_codes": ["REVIEW_BLOCKING_SAFETY_EVENT", "VIEW_SESSION", "VIEW_SAFETY_EVENTS", "RECORD_SAFETY_REVIEW"],
+        },
+        "finished_report_required": {
+            "severity": "warning",
+            "title": "生成训练报告",
+            "description": "最近训练已结束但尚未生成训练报告，需要先生成报告再进入复盘或下一计划。",
+            "clear_condition": "为最近 finished 训练生成训练报告。",
+            "related_action_codes": ["GENERATE_TRAINING_REPORT", "VIEW_SESSION"],
+        },
+        "report_review_required": {
+            "severity": "warning",
+            "title": "复盘训练报告",
+            "description": "存在训练报告尚未记录患者或治疗师复盘。",
+            "clear_condition": "记录患者或治疗师 report review，决定继续、调整或生成下一计划。",
+            "related_action_codes": ["REVIEW_LATEST_REPORT", "RECORD_REPORT_REVIEW"],
+        },
+        "ai_draft_open": {
+            "severity": "info",
+            "title": "审核 AI 训练草稿",
+            "description": "存在未接受的 AI 草稿；接受后仍需 M33 同步和 preflight。",
+            "clear_condition": "查看 AI 草稿并接受为普通训练计划，或后续补充删除/替换流程；接受不等于运动授权。",
+            "related_action_codes": ["REVIEW_AI_DRAFT", "VIEW_AI_DRAFT", "ACCEPT_AI_DRAFT"],
+        },
+        "offline_queue_failed": {
+            "severity": "critical",
+            "title": "处理离线失败证据",
+            "description": "存在重放失败的离线证据，需要查看并记录人工复核。",
+            "clear_condition": "查看 failed 离线项并提交人工复核记录；不要把失败证据静默丢弃。",
+            "related_action_codes": ["VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM"],
+        },
+        "offline_queue_pending": {
+            "severity": "warning",
+            "title": "同步离线证据",
+            "description": "存在 queued 离线证据，需要先重放到后端证据流。",
+            "clear_condition": "重放 queued 离线证据，成功记录或转入 failed 人工复核。",
+            "related_action_codes": ["REPLAY_OFFLINE_EVIDENCE"],
+        },
+        "start_readiness_blocked": {
+            "severity": "warning",
+            "title": "完成训练开始条件",
+            "description": "基础设置已完成，但当前计划/设备仍需完成 M33 接受、preflight、安全复核或其它开始条件。",
+            "clear_condition": "按 start guide 完成当前 readiness 步骤，并让训练开始检查返回 can_start=true；M33 仍是最终安全裁决。",
+            "related_action_codes": ["VIEW_START_GUIDE", "CHECK_START_READINESS", primary_start_action_code],
+        },
     }
     blocker_details = [
         {
             "code": code,
-            "severity": blocker_copy.get(code, ("info", code, "", []))[0],
-            "title": blocker_copy.get(code, ("info", code, "", []))[1],
-            "description": blocker_copy.get(code, ("info", "", "", []))[2],
-            "related_action_codes": [item for item in blocker_copy.get(code, ("info", "", "", []))[3] if item],
+            "severity": blocker_copy.get(code, {}).get("severity", "info"),
+            "title": blocker_copy.get(code, {}).get("title", code),
+            "description": blocker_copy.get(code, {}).get("description", ""),
+            "clear_condition": blocker_copy.get(code, {}).get("clear_condition", ""),
+            "related_action_codes": [item for item in blocker_copy.get(code, {}).get("related_action_codes", []) if item],
         }
         for code in blockers
     ]

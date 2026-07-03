@@ -83,6 +83,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_home_status["primary_blocker"]["code"] == "onboarding_incomplete"
     assert empty_home_status["blocker_details"][0]["severity"] == "warning"
     assert empty_home_status["blocker_details"][0]["title"] == "完成首次设置"
+    assert "绑定可信 M33" in empty_home_status["blocker_details"][0]["clear_condition"]
     assert "PROFILE_REQUIRED" in empty_home_status["blocker_details"][0]["related_action_codes"]
     onboarding_group = empty_home_status["action_groups"]["blocker_related"][0]
     assert onboarding_group["blocker_code"] == "onboarding_incomplete"
@@ -171,6 +172,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert start_blocker["code"] == "start_readiness_blocked"
     assert care_summary_after_basics["primary_blocker"]["code"] == "start_readiness_blocked"
     assert start_blocker["severity"] == "warning"
+    assert "can_start=true" in start_blocker["clear_condition"]
     assert "M33_ACCEPTANCE_REQUIRED" in start_blocker["related_action_codes"]
     start_home_status = bootstrap_after_basics.json()["data"]["home_status_guide"]
     assert start_home_status["primary_blocker"]["code"] == "start_readiness_blocked"
@@ -937,6 +939,7 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert blocked_recovery_home["primary_blocker"]["code"] == "active_session"
     safety_blocker = next(item for item in blocked_recovery_home["blocker_details"] if item["code"] == "safety_review_required")
     assert safety_blocker["severity"] == "critical"
+    assert "safety_review" in safety_blocker["clear_condition"]
     assert "RECORD_SAFETY_REVIEW" in safety_blocker["related_action_codes"]
     assert {"RECORD_SAFETY_REVIEW", "CANCEL_SESSION"}.issubset({item["code"] for item in blocked_recovery_home["secondary_actions"]})
     paused_event_progress = client.patch(
@@ -1028,6 +1031,7 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert finished_home_status["primary_blocker"]["code"] == "finished_report_required"
     assert finished_home_status["counts"]["finished_sessions_pending_report"] == 1
     finished_report_blocker = next(item for item in finished_home_status["blocker_details"] if item["code"] == "finished_report_required")
+    assert "生成训练报告" in finished_report_blocker["clear_condition"]
     assert finished_report_blocker["related_action_codes"] == ["GENERATE_TRAINING_REPORT", "VIEW_SESSION"]
     assert finished_home_status["secondary_actions"][0]["code"] == "VIEW_SESSION"
     assert finished_home_status["secondary_actions"][0]["endpoint"] == f"/api/rehab-arm/app/v1/training-sessions/{session['id']}"
@@ -1465,6 +1469,7 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
     failed_blocker = next(item for item in failed_home_status["blocker_details"] if item["code"] == "offline_queue_failed")
     assert failed_blocker["severity"] == "critical"
     assert failed_blocker["title"] == "处理离线失败证据"
+    assert "人工复核" in failed_blocker["clear_condition"]
     assert failed_blocker["related_action_codes"] == ["VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM"]
     failed_group = next(item for item in failed_home_status["action_groups"]["blocker_related"] if item["blocker_code"] == "offline_queue_failed")
     assert [item["code"] for item in failed_group["actions"]] == ["VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM"]
