@@ -768,6 +768,115 @@ def list_plan_constraint_reviews(db: Session, user_id: str, plan_id: str) -> lis
     return [_constraint_review_dict(review) for review in reviews]
 
 
+def get_training_readiness(db: Session, user_id: str, plan_id: str, device_id: str) -> dict:
+    checks: list[dict] = []
+    plan = db.get(RehabAppTrainingPlan, plan_id)
+    device = db.get(RehabAppDeviceBinding, device_id)
+    if plan is None or plan.user_id != user_id:
+        raise AppError("TRAINING_PLAN_NOT_FOUND", "training plan not found", status_code=404)
+    if device is None or device.user_id != user_id:
+        raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
+
+    def add_check(name: str, status: str, code: str = "", detail: dict | None = None) -> None:
+        checks.append({"name": name, "status": status, "code": code, "detail": detail or {}})
+
+    if plan.status in {"archived", "rejected"}:
+        add_check("plan_usable", "blocked", "TRAINING_PLAN_NOT_USABLE", {"plan_status": plan.status})
+    else:
+        add_check("plan_usable", "passed", detail={"plan_status": plan.status})
+
+    if device.trust_status == "revoked":
+        add_check("device_trusted", "blocked", "DEVICE_REVOKED", {"trust_status": device.trust_status})
+    else:
+        add_check("device_trusted", "passed", detail={"trust_status": device.trust_status})
+
+    profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
+    violations = _plan_constraint_violations(profile, plan)
+    constraint_review = _latest_plan_constraint_review(db, user_id, plan.id, plan.version)
+    if violations and constraint_review is None:
+        add_check("profile_constraints", "blocked", "TRAINING_PLAN_CONTRAINDICATED", {"violations": violations, "plan_version": plan.version})
+    else:
+        add_check("profile_constraints", "passed", detail={"review_id": constraint_review.id if constraint_review else ""})
+
+    active_session = db.scalar(
+        select(RehabAppTrainingSession)
+        .where(
+            RehabAppTrainingSession.user_id == user_id,
+            RehabAppTrainingSession.device_id == device.id,
+            RehabAppTrainingSession.status.in_(["started", "in_progress", "paused"]),
+        )
+        .order_by(RehabAppTrainingSession.started_at.desc(), RehabAppTrainingSession.id.desc())
+        .limit(1)
+    )
+    if active_session is not None:
+        add_check(
+            "device_session_available",
+            "blocked",
+            "ACTIVE_TRAINING_SESSION_EXISTS",
+            {"active_session_id": active_session.id, "active_session_status": active_session.status},
+        )
+    else:
+        add_check("device_session_available", "passed")
+
+    sync = _latest_plan_device_sync(db, plan.id, device.id)
+    if sync is None or sync.sync_status != "m33_accepted" or sync.plan_version != plan.version:
+        add_check(
+            "m33_acceptance",
+            "blocked",
+            "M33_ACCEPTANCE_REQUIRED",
+            {
+                "sync_id": sync.id if sync else "",
+                "sync_status": sync.sync_status if sync else "missing",
+                "accepted_plan_version": sync.plan_version if sync else None,
+                "required_plan_version": plan.version,
+            },
+        )
+    else:
+        add_check("m33_acceptance", "passed", detail={"sync_id": sync.id, "plan_version": sync.plan_version})
+
+    if sync and sync.sync_status == "m33_accepted" and sync.plan_version == plan.version:
+        preflight = _latest_passed_preflight(db, user_id, plan.id, device.id)
+        if preflight is None or preflight.sync_id != sync.id or preflight.plan_version != plan.version:
+            add_check("preflight", "blocked", "PREFLIGHT_CHECK_REQUIRED", {"sync_id": sync.id, "required_plan_version": plan.version})
+        else:
+            add_check("preflight", "passed", detail={"preflight_id": preflight.id, "sync_id": preflight.sync_id})
+    else:
+        add_check("preflight", "waiting", "M33_ACCEPTANCE_REQUIRED")
+
+    safety_block: dict | None = None
+    recent_sessions = list(
+        db.scalars(
+            select(RehabAppTrainingSession)
+            .where(
+                RehabAppTrainingSession.user_id == user_id,
+                RehabAppTrainingSession.device_id == device.id,
+                RehabAppTrainingSession.status.in_(["finished", "cancelled"]),
+            )
+            .order_by(RehabAppTrainingSession.started_at.desc(), RehabAppTrainingSession.id.desc())
+            .limit(5)
+        )
+    )
+    for session in recent_sessions:
+        event = _latest_unreviewed_critical_safety_event(db, user_id, session.id)
+        if event is not None:
+            safety_block = {"session_id": session.id, "event_id": event.id, "event_type": event.event_type}
+            break
+    if safety_block:
+        add_check("safety_review", "blocked", "SAFETY_REVIEW_REQUIRED", safety_block)
+    else:
+        add_check("safety_review", "passed")
+
+    status = "ready" if all(check["status"] == "passed" for check in checks) else "blocked"
+    return {
+        "plan_id": plan.id,
+        "device_id": device.id,
+        "status": status,
+        "can_start": status == "ready",
+        "checks": checks,
+        "control_boundary": "training_readiness_evidence_only_not_motion_permission",
+    }
+
+
 def sync_training_plan_to_device(db: Session, user_id: str, plan_id: str, device_id: str) -> dict:
     plan = db.get(RehabAppTrainingPlan, plan_id)
     if plan is None or plan.user_id != user_id:

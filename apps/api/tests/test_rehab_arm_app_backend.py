@@ -331,6 +331,16 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     )
     assert missing_preflight_start.status_code == 409
     assert missing_preflight_start.json()["error"]["code"] == "PREFLIGHT_CHECK_REQUIRED"
+    readiness_missing_preflight = client.get(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/readiness",
+        headers=auth_headers(owner_token),
+        params={"device_id": device["id"]},
+    )
+    assert readiness_missing_preflight.status_code == 200
+    readiness_checks = {item["name"]: item for item in readiness_missing_preflight.json()["data"]["checks"]}
+    assert readiness_missing_preflight.json()["data"]["can_start"] is False
+    assert readiness_checks["m33_acceptance"]["status"] == "passed"
+    assert readiness_checks["preflight"]["code"] == "PREFLIGHT_CHECK_REQUIRED"
 
     high_pain_preflight = client.post(
         "/api/rehab-arm/app/v1/training-preflight",
@@ -351,6 +361,13 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
 
     preflight = _pass_preflight(owner_token, plan["id"], device["id"], resync["id"])
     assert preflight["plan_version"] == 2
+    readiness_ready = client.get(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/readiness",
+        headers=auth_headers(owner_token),
+        params={"device_id": device["id"]},
+    )
+    assert readiness_ready.status_code == 200
+    assert readiness_ready.json()["data"]["can_start"] is True
     preflight_history = client.get(
         "/api/rehab-arm/app/v1/training-preflight",
         headers=auth_headers(owner_token),
@@ -374,6 +391,14 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert allowed_start.status_code == 200
     active_session = allowed_start.json()["data"]
     assert active_session["status"] == "started"
+    readiness_active_session = client.get(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/readiness",
+        headers=auth_headers(owner_token),
+        params={"device_id": device["id"]},
+    )
+    assert readiness_active_session.status_code == 200
+    active_checks = {item["name"]: item for item in readiness_active_session.json()["data"]["checks"]}
+    assert active_checks["device_session_available"]["code"] == "ACTIVE_TRAINING_SESSION_EXISTS"
 
     duplicate_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
@@ -1288,6 +1313,15 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     )
     assert blocked_restart_without_review.status_code == 409
     assert blocked_restart_without_review.json()["error"]["code"] == "SAFETY_REVIEW_REQUIRED"
+    readiness_needs_safety_review = client.get(
+        f"/api/rehab-arm/app/v1/training-plans/{plan_id}/readiness",
+        headers=auth_headers(owner_token),
+        params={"device_id": device["id"]},
+    )
+    assert readiness_needs_safety_review.status_code == 200
+    safety_checks = {item["name"]: item for item in readiness_needs_safety_review.json()["data"]["checks"]}
+    assert readiness_needs_safety_review.json()["data"]["can_start"] is False
+    assert safety_checks["safety_review"]["code"] == "SAFETY_REVIEW_REQUIRED"
     offline_safety_review = client.post(
         f"/api/rehab-arm/app/v1/training-sessions/{session_id}/safety-events",
         headers=auth_headers(owner_token),

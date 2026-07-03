@@ -63,6 +63,7 @@ GET /devices/{device_id}/status
 GET /devices/{device_id}/diagnostics
 GET /devices/{device_id}/ble/messages
 GET /training-plans/{plan_id}
+GET /training-plans/{plan_id}/readiness?device_id=...
 GET /training-plans/{plan_id}/constraint-reviews
 GET /training-preflight
 GET /training-sessions
@@ -153,6 +154,14 @@ Required checklist keys are `device_worn_correctly`, `pain_within_limit`, `stop_
 Read recent preflight evidence with `GET /api/rehab-arm/app/v1/training-preflight`, optionally filtered by `plan_id` and `device_id`. `GET /api/rehab-arm/app/v1/me` returns `latest_preflight` and also returns a paused training session as `active_session`, so the phone App can recover after restart without creating a second session.
 
 If patient-submitted `pain_before` is at least 2 points above `pain_baseline`, or is 7 or higher, the backend returns `PREFLIGHT_PAIN_REVIEW_REQUIRED`. The App should stop the start flow and ask for therapist review. A therapist preflight can be submitted with `checked_by_role=therapist`; it is still evidence only and does not bypass M33 authority.
+
+Before enabling the start action, read:
+
+```text
+GET /api/rehab-arm/app/v1/training-plans/{plan_id}/readiness?device_id={device_id}
+```
+
+The response returns `can_start` plus named checks for plan usability, revoked device state, profile constraints, active session conflicts, M33 acceptance, preflight, and required safety review. Use the check `code` values for user-facing guidance. The readiness response is `training_readiness_evidence_only_not_motion_permission`; it is not a robot-side motion permit.
 
 ## Android APK Build Environment
 
