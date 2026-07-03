@@ -246,3 +246,6 @@
 - Enriched `/me.home_status_guide.progress.items` with backend-authored `title`, `description`, `related_blocker_codes`, and `related_action_codes` while preserving existing `code` and `done`. The phone/PWA/Stitch UI can now render progress rows without maintaining local translation or mapping tables.
 - Regression coverage asserts progress metadata for onboarding, start readiness, ready-to-start, and failed offline evidence states.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). Progress metadata remains evidence/workflow guidance only and does not grant motion authority.
+- Added backend-authored `stage_title`, `stage_description`, and `stage_tone` to `/me.home_status_guide.progress`. Stage codes such as `setup`, `resolve_blockers`, and `ready_to_start` now carry user-facing copy and tone directly from the backend.
+- Regression coverage asserts stage copy for first-run setup, blocker resolution, and ready-to-start states.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). Stage copy remains workflow guidance only and does not grant motion authority.

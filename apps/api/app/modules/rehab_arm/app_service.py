@@ -995,6 +995,34 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         stage = "waiting_for_training_plan_readiness"
     else:
         stage = "continue_workflow"
+    stage_copy = {
+        "setup": {
+            "title": "先完成首次设置",
+            "description": "按顺序补齐康复档案、可信 M33 设备和可用训练计划。",
+            "tone": "info",
+        },
+        "resolve_blockers": {
+            "title": "先处理阻塞事项",
+            "description": "当前还有安全、离线、报告、AI 草稿或开始条件阻塞，请先处理主阻塞。",
+            "tone": "warning",
+        },
+        "waiting_for_training_plan_readiness": {
+            "title": "等待训练开始条件",
+            "description": "基础证据已清理，请继续完成计划、设备、M33 接受或 preflight 检查。",
+            "tone": "info",
+        },
+        "continue_workflow": {
+            "title": "继续当前闭环",
+            "description": "按照首页主行动继续完成当前康复记录流程。",
+            "tone": "info",
+        },
+        "ready_to_start": {
+            "title": "可以记录训练开始",
+            "description": "后端证据条件已满足；真实运动仍由 M33 最终安全裁决。",
+            "tone": "success",
+        },
+    }
+    stage_detail = stage_copy.get(stage, stage_copy["continue_workflow"])
     return {
         "status": daily_action_guide.get("status") or care_summary.get("status"),
         "tone": tone,
@@ -1013,6 +1041,9 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         "counts": counts,
         "progress": {
             "stage": stage,
+            "stage_title": stage_detail["title"],
+            "stage_description": stage_detail["description"],
+            "stage_tone": stage_detail["tone"],
             "done": done_count,
             "total": len(progress_items),
             "remaining": len(progress_items) - done_count,

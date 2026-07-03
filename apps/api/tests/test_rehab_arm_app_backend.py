@@ -79,6 +79,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert "疼痛基线" in empty_home_status["body"]
     assert "onboarding_incomplete" in empty_home_status["blockers"]
     assert empty_home_status["progress"]["stage"] == "setup"
+    assert empty_home_status["progress"]["stage_title"] == "先完成首次设置"
+    assert empty_home_status["progress"]["stage_tone"] == "info"
     assert empty_home_status["progress"]["remaining"] > 0
     onboarding_progress = next(item for item in empty_home_status["progress"]["items"] if item["code"] == "onboarding")
     assert onboarding_progress["done"] is False
@@ -184,6 +186,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     start_home_status = bootstrap_after_basics.json()["data"]["home_status_guide"]
     assert start_home_status["primary_blocker"]["code"] == "start_readiness_blocked"
     assert start_home_status["progress"]["stage"] == "resolve_blockers"
+    assert start_home_status["progress"]["stage_title"] == "先处理阻塞事项"
+    assert start_home_status["progress"]["stage_tone"] == "warning"
     assert next(item for item in start_home_status["progress"]["items"] if item["code"] == "onboarding")["done"] is True
     start_ready_progress = next(item for item in start_home_status["progress"]["items"] if item["code"] == "start_ready")
     assert start_ready_progress["done"] is False
@@ -499,6 +503,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert primary_guide["readiness"]["device_id"] == device["id"]
     ready_home_status = bootstrap_after_preflight.json()["data"]["home_status_guide"]
     assert ready_home_status["progress"]["stage"] == "ready_to_start"
+    assert ready_home_status["progress"]["stage_title"] == "可以记录训练开始"
+    assert ready_home_status["progress"]["stage_tone"] == "success"
     assert ready_home_status["progress"]["remaining"] == 0
     ready_progress_item = next(item for item in ready_home_status["progress"]["items"] if item["code"] == "start_ready")
     assert ready_progress_item["done"] is True
