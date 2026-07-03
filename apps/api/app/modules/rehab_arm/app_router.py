@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
@@ -102,11 +104,65 @@ from .app_service import (
 router = APIRouter(prefix="/api/rehab-arm/app/v1", tags=["rehab-arm-app"])
 
 
+def _request_base_url(request: Request) -> str:
+    return str(request.base_url).rstrip("/")
+
+
+def _public_url_from_env(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value.rstrip("/")
+    return ""
+
+
+def _download_url(base_url: str) -> str:
+    configured = _public_url_from_env("REHAB_ARM_APP_APK_DOWNLOAD_URL")
+    if configured:
+        return configured
+    web_base = _public_url_from_env("REHAB_ARM_APP_WEB_BASE", "PUBLIC_WEB_BASE", "NEXT_PUBLIC_APP_BASE")
+    if web_base:
+        return f"{web_base}/downloads/rehab-arm/lingdong-rehab-arm-debug.apk"
+    return ""
+
+
 def _user_id(db: Session, request: Request) -> str:
     principal = resolve_human_principal(db, request, allow_bootstrap=False)
     if not principal.user_id:
         raise AppError("UNAUTHORIZED", "authentication required", status_code=401)
     return principal.user_id
+
+
+@router.get("/public-config")
+def api_public_config(request: Request):
+    api_base = _public_url_from_env("REHAB_ARM_APP_API_BASE", "PUBLIC_API_BASE", "PLATFORM_API_BASE") or _request_base_url(request)
+    web_base = _public_url_from_env("REHAB_ARM_APP_WEB_BASE", "PUBLIC_WEB_BASE", "NEXT_PUBLIC_APP_BASE")
+    return ok(
+        {
+            "app_name": "灵动康复 ArmControl",
+            "package_id": "com.lingdong.rehabarm",
+            "api_base": api_base,
+            "web_base": web_base,
+            "auth": {
+                "session_endpoint": "/api/auth/session",
+                "me_endpoint": "/api/auth/me",
+                "authorization": "Bearer access_token",
+            },
+            "rehab_app": {
+                "bootstrap_endpoint": "/api/rehab-arm/app/v1/me",
+                "profile_endpoint": "/api/rehab-arm/app/v1/me/profile",
+                "public_config_endpoint": "/api/rehab-arm/app/v1/public-config",
+            },
+            "downloads": {
+                "debug_apk_url": _download_url(api_base),
+                "debug_apk_version": "1.0",
+                "debug_apk_sha256": "C80F78CE4CCF315368ADC13C178E40CA620B2CD3A7CF48EC751CF42F72CB84ED",
+                "debug_apk_status": "preview_static_shell_needs_frontend_login_api_wiring",
+            },
+            "required_profile_fields": ["affected_side", "rehab_stage", "pain_baseline"],
+            "control_boundary": "rehab_app_public_config_only_not_auth_token_or_motion_permission",
+        }
+    )
 
 
 @router.get("/me/profile")
