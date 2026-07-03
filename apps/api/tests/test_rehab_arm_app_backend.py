@@ -973,6 +973,10 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     bootstrap_needs_report_review = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_needs_report_review.status_code == 200
     assert bootstrap_needs_report_review.json()["data"]["daily_action_guide"]["next_action"]["code"] == "REVIEW_LATEST_REPORT"
+    report_followup_review = bootstrap_needs_report_review.json()["data"]["report_followup_guide"]
+    assert report_followup_review["status"] == "review_required"
+    assert report_followup_review["control_boundary"] == "report_followup_guide_evidence_only_not_motion_permission"
+    assert "RECORD_REPORT_REVIEW" in {item["code"] for item in report_followup_review["actions"]}
 
     repeat_report_response = client.post(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
@@ -1036,6 +1040,9 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     bootstrap_needs_next_draft = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_needs_next_draft.status_code == 200
     assert bootstrap_needs_next_draft.json()["data"]["daily_action_guide"]["next_action"]["code"] == "DRAFT_NEXT_PLAN_FROM_REPORT"
+    report_followup_draft = bootstrap_needs_next_draft.json()["data"]["report_followup_guide"]
+    assert report_followup_draft["status"] == "next_plan_draft_required"
+    assert "DRAFT_NEXT_PLAN_FROM_REPORT" in {item["code"] for item in report_followup_draft["actions"]}
 
     next_draft_response = client.post(
         f"/api/rehab-arm/app/v1/training-reports/{report['id']}/draft-next-plan",
@@ -1051,6 +1058,12 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert next_draft["generated_plan"]["sets"] == 1
     assert next_draft["generated_plan"]["reps"] == 5
     assert next_draft["generated_plan"]["safety_constraints"]["source_report_id"] == report["id"]
+    bootstrap_needs_draft_review = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_needs_draft_review.status_code == 200
+    report_followup_accept = bootstrap_needs_draft_review.json()["data"]["report_followup_guide"]
+    assert report_followup_accept["status"] == "ai_draft_review_required"
+    assert report_followup_accept["report_draft"]["id"] == next_draft["id"]
+    assert {"VIEW_AI_DRAFT", "ACCEPT_AI_DRAFT"}.issubset({item["code"] for item in report_followup_accept["actions"]})
 
     next_plan_response = client.post(
         f"/api/rehab-arm/app/v1/ai-training-drafts/{next_draft['id']}/accept",
@@ -1061,6 +1074,12 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert next_plan["source"] == "ai_generated"
     assert next_plan["sets"] == 1
     assert next_plan["control_boundary"] == "training_plan_only_not_motor_command"
+    bootstrap_needs_next_plan_sync = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_needs_next_plan_sync.status_code == 200
+    report_followup_sync = bootstrap_needs_next_plan_sync.json()["data"]["report_followup_guide"]
+    assert report_followup_sync["status"] == "accepted_plan_sync_required"
+    assert report_followup_sync["report_draft"]["accepted_plan_id"] == next_plan["id"]
+    assert "SYNC_ACCEPTED_PLAN_TO_M33" in {item["code"] for item in report_followup_sync["actions"]}
 
     blocked_next_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",

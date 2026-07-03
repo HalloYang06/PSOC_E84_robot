@@ -782,6 +782,101 @@ def _app_session_recovery_guide(db: Session, user_id: str, active_session: dict 
     }
 
 
+def _report_followup_action(code: str, label: str, endpoint: str, method: str, payload_hint: dict | None = None) -> dict:
+    return {
+        "code": code,
+        "label": label,
+        "endpoint": endpoint,
+        "method": method,
+        "payload_hint": payload_hint or {},
+    }
+
+
+def _app_report_followup_guide(latest_report: dict | None, drafts: list[dict]) -> dict | None:
+    if latest_report is None:
+        return None
+    report_id = latest_report["id"]
+    latest_review = latest_report.get("latest_review")
+    report_drafts = [
+        draft
+        for draft in drafts
+        if (draft.get("context_snapshot") or {}).get("source") == "training_report_review"
+        and (draft.get("context_snapshot") or {}).get("report_id") == report_id
+    ]
+    open_report_draft = next((draft for draft in report_drafts if not draft.get("accepted_plan_id")), None)
+    accepted_report_draft = next((draft for draft in report_drafts if draft.get("accepted_plan_id")), None)
+    actions = [
+        _report_followup_action("VIEW_REPORT", "查看训练报告", f"/api/rehab-arm/app/v1/training-reports/{report_id}", "GET"),
+    ]
+    if latest_review is None:
+        status = "review_required"
+        actions.append(
+            _report_followup_action(
+                "RECORD_REPORT_REVIEW",
+                "记录报告复盘",
+                f"/api/rehab-arm/app/v1/training-reports/{report_id}/reviews",
+                "POST",
+                {"reviewer_role": "patient_or_therapist", "review_status": "reviewed", "next_step": "continue_or_adjust"},
+            )
+        )
+    elif open_report_draft:
+        status = "ai_draft_review_required"
+        actions.extend(
+            [
+                _report_followup_action(
+                    "VIEW_AI_DRAFT",
+                    "查看下一计划草稿",
+                    f"/api/rehab-arm/app/v1/ai-training-drafts/{open_report_draft['id']}",
+                    "GET",
+                    {"draft_id": open_report_draft["id"]},
+                ),
+                _report_followup_action(
+                    "ACCEPT_AI_DRAFT",
+                    "接受为训练计划",
+                    f"/api/rehab-arm/app/v1/ai-training-drafts/{open_report_draft['id']}/accept",
+                    "POST",
+                    {"draft_id": open_report_draft["id"]},
+                ),
+            ]
+        )
+    elif accepted_report_draft:
+        status = "accepted_plan_sync_required"
+        accepted_plan_id = accepted_report_draft["accepted_plan_id"]
+        actions.extend(
+            [
+                _report_followup_action("VIEW_ACCEPTED_PLAN", "查看已接受计划", f"/api/rehab-arm/app/v1/training-plans/{accepted_plan_id}", "GET"),
+                _report_followup_action(
+                    "SYNC_ACCEPTED_PLAN_TO_M33",
+                    "同步计划到 M33",
+                    f"/api/rehab-arm/app/v1/training-plans/{accepted_plan_id}/sync-to-device",
+                    "POST",
+                    {"device_id": "required"},
+                ),
+            ]
+        )
+    elif latest_review.get("request_new_plan"):
+        status = "next_plan_draft_required"
+        actions.append(
+            _report_followup_action(
+                "DRAFT_NEXT_PLAN_FROM_REPORT",
+                "生成下一计划草稿",
+                f"/api/rehab-arm/app/v1/training-reports/{report_id}/draft-next-plan",
+                "POST",
+                {"report_id": report_id, "review_id": latest_review["id"]},
+            )
+        )
+    else:
+        status = "review_complete"
+    return {
+        "status": status,
+        "report": latest_report,
+        "report_draft": open_report_draft or accepted_report_draft,
+        "latest_review": latest_review,
+        "actions": actions,
+        "control_boundary": "report_followup_guide_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
@@ -813,6 +908,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
         "offline_sync_guide": _app_offline_sync_guide(offline_queue),
         "session_recovery_guide": _app_session_recovery_guide(db, user_id, active_session),
+        "report_followup_guide": _app_report_followup_guide(latest_report, all_drafts),
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_report,
