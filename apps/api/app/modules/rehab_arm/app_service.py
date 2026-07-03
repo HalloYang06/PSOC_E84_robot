@@ -560,7 +560,7 @@ def _app_daily_action_guide(
                 "有未接受的 AI 训练草稿。接受后会成为普通训练计划，仍需 M33 同步和接受。",
                 f"/api/rehab-arm/app/v1/ai-training-drafts/{latest_open_ai_draft['id']}",
                 "GET",
-                source={"draft_id": latest_open_ai_draft["id"]},
+                source={"draft_id": latest_open_ai_draft["id"], "guide": "ai_draft_review_guide"},
             ),
             "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
         }
@@ -974,6 +974,50 @@ def _report_followup_action(code: str, label: str, endpoint: str, method: str, p
         "endpoint": endpoint,
         "method": method,
         "payload_hint": payload_hint or {},
+    }
+
+
+def _ai_draft_review_action(code: str, label: str, endpoint: str, method: str, payload_hint: dict | None = None) -> dict:
+    return {
+        "code": code,
+        "label": label,
+        "endpoint": endpoint,
+        "method": method,
+        "payload_hint": payload_hint or {},
+    }
+
+
+def _app_ai_draft_review_guide(latest_open_ai_draft: dict | None) -> dict | None:
+    if latest_open_ai_draft is None:
+        return None
+    draft_id = latest_open_ai_draft["id"]
+    return {
+        "status": "review_required",
+        "draft": latest_open_ai_draft,
+        "next_action": _ai_draft_review_action(
+            "VIEW_AI_DRAFT",
+            "查看 AI 训练草稿",
+            f"/api/rehab-arm/app/v1/ai-training-drafts/{draft_id}",
+            "GET",
+            {"draft_id": draft_id},
+        ),
+        "actions": [
+            _ai_draft_review_action(
+                "VIEW_AI_DRAFT",
+                "查看 AI 训练草稿",
+                f"/api/rehab-arm/app/v1/ai-training-drafts/{draft_id}",
+                "GET",
+                {"draft_id": draft_id},
+            ),
+            _ai_draft_review_action(
+                "ACCEPT_AI_DRAFT",
+                "接受为训练计划",
+                f"/api/rehab-arm/app/v1/ai-training-drafts/{draft_id}/accept",
+                "POST",
+                {"draft_id": draft_id},
+            ),
+        ],
+        "control_boundary": "ai_draft_review_guide_draft_only_not_motion_permission",
     }
 
 
@@ -1420,6 +1464,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     finished_session_report_guide = _app_finished_session_report_guide(db, user_id, sessions)
     offline_sync_guide = _app_offline_sync_guide(offline_queue)
     session_recovery_guide = _app_session_recovery_guide(db, user_id, active_session)
+    ai_draft_review_guide = _app_ai_draft_review_guide(latest_open_ai_draft)
     report_followup_guide = _app_report_followup_guide(latest_report, all_drafts)
     daily_action_guide = _app_daily_action_guide(
         onboarding_guide,
@@ -1440,6 +1485,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
             "primary_start_guide": primary_start_guide,
             "session_recovery_guide": session_recovery_guide,
             "finished_session_report_guide": finished_session_report_guide,
+            "ai_draft_review_guide": ai_draft_review_guide,
             "report_followup_guide": report_followup_guide,
             "offline_sync_guide": offline_sync_guide,
             "safety_review_guide": safety_review_guide,
@@ -1460,6 +1506,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "offline_sync_guide": offline_sync_guide,
         "session_recovery_guide": session_recovery_guide,
         "finished_session_report_guide": finished_session_report_guide,
+        "ai_draft_review_guide": ai_draft_review_guide,
         "report_followup_guide": report_followup_guide,
         "device_operational_guide": _app_device_operational_guide(db, user_id, devices, primary_plan),
         "safety_review_guide": safety_review_guide,

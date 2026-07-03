@@ -1224,6 +1224,18 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     bootstrap_with_draft = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_with_draft.status_code == 200
     assert bootstrap_with_draft.json()["data"]["latest_open_ai_draft"]["id"] == draft["id"]
+    ai_draft_guide = bootstrap_with_draft.json()["data"]["ai_draft_review_guide"]
+    assert ai_draft_guide["status"] == "review_required"
+    assert ai_draft_guide["draft"]["id"] == draft["id"]
+    assert ai_draft_guide["control_boundary"] == "ai_draft_review_guide_draft_only_not_motion_permission"
+    assert {"VIEW_AI_DRAFT", "ACCEPT_AI_DRAFT"}.issubset({item["code"] for item in ai_draft_guide["actions"]})
+    draft_daily_action = bootstrap_with_draft.json()["data"]["daily_action_guide"]["next_action"]
+    assert draft_daily_action["code"] == "REVIEW_AI_DRAFT"
+    assert draft_daily_action["source"] == {"draft_id": draft["id"], "guide": "ai_draft_review_guide"}
+    draft_home_status = bootstrap_with_draft.json()["data"]["home_status_guide"]
+    assert draft_home_status["primary_action"]["code"] == "REVIEW_AI_DRAFT"
+    assert draft_home_status["secondary_actions"][0]["code"] == "ACCEPT_AI_DRAFT"
+    assert draft_home_status["secondary_actions"][0]["endpoint"] == f"/api/rehab-arm/app/v1/ai-training-drafts/{draft['id']}/accept"
 
     accepted_response = client.post(
         f"/api/rehab-arm/app/v1/ai-training-drafts/{draft['id']}/accept",
@@ -1245,6 +1257,7 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     bootstrap_after_accept = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_after_accept.status_code == 200
     assert bootstrap_after_accept.json()["data"]["latest_open_ai_draft"] is None
+    assert bootstrap_after_accept.json()["data"]["ai_draft_review_guide"] is None
     accepted_plan_guide = bootstrap_after_accept.json()["data"]["accepted_plan_guide"]
     assert accepted_plan_guide["status"] == "device_required"
     assert accepted_plan_guide["plan"]["id"] == plan["id"]
