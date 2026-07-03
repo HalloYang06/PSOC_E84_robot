@@ -78,6 +78,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert {item["code"] for item in empty_home_status["secondary_actions"]} == {"TRUSTED_DEVICE_REQUIRED", "TRAINING_PLAN_REQUIRED"}
     assert "疼痛基线" in empty_home_status["body"]
     assert "onboarding_incomplete" in empty_home_status["blockers"]
+    assert empty_home_status["blocker_details"][0]["code"] == "onboarding_incomplete"
+    assert empty_home_status["blocker_details"][0]["title"] == "完成首次设置"
     assert empty_home_status["control_boundary"] == "app_home_status_guide_evidence_only_not_motion_permission"
     assert empty_bootstrap.json()["data"]["device_operational_guide"]["status"] == "device_required"
     assert "BIND_TRUSTED_DEVICE" in {item["code"] for item in empty_bootstrap.json()["data"]["device_operational_guide"]["actions"]}
@@ -158,6 +160,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert care_summary_after_basics["status"] == "setup_required"
     assert care_summary_after_basics["can_start"] is False
     assert care_summary_after_basics["counts"]["reports_pending_review"] == 0
+    assert care_summary_after_basics["blocker_details"] == []
 
     contraindicated_plan_response = client.post(
         "/api/rehab-arm/app/v1/training-plans",
@@ -1432,6 +1435,7 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
     assert failed_home_status["secondary_actions"][0]["endpoint"] == f"/api/rehab-arm/app/v1/offline-queue/{failed_source['id']}/review"
     assert failed_home_status["counts"]["offline_items_failed"] == 1
     assert "offline_queue_failed" in failed_home_status["blockers"]
+    assert any(item["title"] == "处理离线失败证据" for item in failed_home_status["blocker_details"])
 
 
 def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeypatch) -> None:

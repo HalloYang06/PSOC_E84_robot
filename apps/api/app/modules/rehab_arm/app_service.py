@@ -736,6 +736,22 @@ def _app_care_summary(
         blockers.append("offline_queue_failed")
     if queued_offline_count:
         blockers.append("offline_queue_pending")
+    blocker_copy = {
+        "onboarding_incomplete": ("完成首次设置", "康复档案、可信 M33 设备或可用训练计划还没有完成。"),
+        "active_session": ("处理未结束训练", "存在 started/in_progress/paused 训练记录，请先恢复、完成或取消。"),
+        "report_review_required": ("复盘训练报告", "存在训练报告尚未记录患者或治疗师复盘。"),
+        "ai_draft_open": ("审核 AI 训练草稿", "存在未接受的 AI 草稿；接受后仍需 M33 同步和 preflight。"),
+        "offline_queue_failed": ("处理离线失败证据", "存在重放失败的离线证据，需要查看并记录人工复核。"),
+        "offline_queue_pending": ("同步离线证据", "存在 queued 离线证据，需要先重放到后端证据流。"),
+    }
+    blocker_details = [
+        {
+            "code": code,
+            "title": blocker_copy.get(code, (code, ""))[0],
+            "description": blocker_copy.get(code, ("", ""))[1],
+        }
+        for code in blockers
+    ]
     status = "attention_required" if blockers else ("ready" if can_start else "setup_required")
     return {
         "status": status,
@@ -751,6 +767,7 @@ def _app_care_summary(
             "offline_items_failed": failed_offline_count,
         },
         "blockers": blockers,
+        "blocker_details": blocker_details,
         "control_boundary": "app_care_summary_evidence_only_not_motion_permission",
     }
 
@@ -797,6 +814,7 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         "primary_action": next_action,
         "secondary_actions": secondary_actions,
         "blockers": care_summary.get("blockers") or [],
+        "blocker_details": care_summary.get("blocker_details") or [],
         "counts": care_summary.get("counts") or {},
         "safety_note": "本卡片只提供手机端证据和流程引导，不授予硬件运动权限；真实运动仍由 M33 最终裁决。",
         "control_boundary": "app_home_status_guide_evidence_only_not_motion_permission",
