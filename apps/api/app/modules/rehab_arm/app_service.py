@@ -629,6 +629,50 @@ def _app_care_timeline(sessions: list[dict], reports: list[dict], drafts: list[d
     }
 
 
+def _app_care_summary(
+    onboarding_guide: dict,
+    primary_start_guide: dict | None,
+    sessions: list[dict],
+    reports: list[dict],
+    drafts: list[dict],
+    offline_items: list[dict],
+) -> dict:
+    active_count = sum(1 for session in sessions if session["status"] in {"started", "in_progress", "paused"})
+    finished_count = sum(1 for session in sessions if session["status"] == "finished")
+    cancelled_count = sum(1 for session in sessions if session["status"] == "cancelled")
+    review_required_count = sum(1 for report in reports if report.get("latest_review") is None)
+    open_draft_count = sum(1 for draft in drafts if not draft.get("accepted_plan_id"))
+    queued_offline_count = sum(1 for item in offline_items if item["replay_status"] == "queued")
+    can_start = bool(primary_start_guide and primary_start_guide.get("can_start"))
+    blockers = []
+    if onboarding_guide["status"] != "complete":
+        blockers.append("onboarding_incomplete")
+    if active_count:
+        blockers.append("active_session")
+    if review_required_count:
+        blockers.append("report_review_required")
+    if open_draft_count:
+        blockers.append("ai_draft_open")
+    if queued_offline_count:
+        blockers.append("offline_queue_pending")
+    status = "attention_required" if blockers else ("ready" if can_start else "setup_required")
+    return {
+        "status": status,
+        "can_start": can_start,
+        "counts": {
+            "active_sessions": active_count,
+            "finished_sessions": finished_count,
+            "cancelled_sessions": cancelled_count,
+            "reports": len(reports),
+            "reports_pending_review": review_required_count,
+            "ai_drafts_open": open_draft_count,
+            "offline_items_queued": queued_offline_count,
+        },
+        "blockers": blockers,
+        "control_boundary": "app_care_summary_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
@@ -656,6 +700,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "active_session": active_session,
         "primary_start_guide": primary_start_guide,
         "daily_action_guide": _app_daily_action_guide(onboarding_guide, active_session, primary_start_guide, latest_report, latest_open_ai_draft),
+        "care_summary": _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue),
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),

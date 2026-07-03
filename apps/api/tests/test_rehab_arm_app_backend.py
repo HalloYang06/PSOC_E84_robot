@@ -134,6 +134,10 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert onboarding["next_step"] is None
     assert bootstrap_after_basics.json()["data"]["primary_start_guide"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
     assert bootstrap_after_basics.json()["data"]["daily_action_guide"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
+    care_summary_after_basics = bootstrap_after_basics.json()["data"]["care_summary"]
+    assert care_summary_after_basics["status"] == "setup_required"
+    assert care_summary_after_basics["can_start"] is False
+    assert care_summary_after_basics["counts"]["reports_pending_review"] == 0
 
     contraindicated_plan_response = client.post(
         "/api/rehab-arm/app/v1/training-plans",
@@ -443,6 +447,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert bootstrap_with_active.json()["data"]["active_session"]["id"] == active_session["id"]
     assert bootstrap_with_active.json()["data"]["primary_start_guide"]["next_action"]["code"] == "ACTIVE_TRAINING_SESSION_EXISTS"
     assert bootstrap_with_active.json()["data"]["daily_action_guide"]["next_action"]["code"] == "RECOVER_ACTIVE_SESSION"
+    assert "active_session" in bootstrap_with_active.json()["data"]["care_summary"]["blockers"]
 
     duplicate_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
@@ -1081,6 +1086,11 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert bootstrap.json()["data"]["latest_report"]["latest_review"]["id"] == review["id"]
     care_timeline = bootstrap.json()["data"]["care_timeline"]
     assert care_timeline["control_boundary"] == "app_care_timeline_evidence_only_not_motion_permission"
+    care_summary = bootstrap.json()["data"]["care_summary"]
+    assert care_summary["counts"]["finished_sessions"] >= 1
+    assert care_summary["counts"]["reports"] == 1
+    assert care_summary["counts"]["reports_pending_review"] == 0
+    assert care_summary["counts"]["ai_drafts_open"] == 0
     timeline_kinds = {item["kind"] for item in care_timeline["items"]}
     assert {"training_session", "training_report", "ai_training_draft"}.issubset(timeline_kinds)
     report_timeline = next(item for item in care_timeline["items"] if item["kind"] == "training_report")
