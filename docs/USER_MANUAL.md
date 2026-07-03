@@ -318,3 +318,13 @@ If `name` is omitted on first creation, the backend stores a default profile nam
 APK status note: the current debug APK download is still the 2026-07-02 build. Backend cloud fixes are live for clients that call `http://106.55.62.122:8011`, but the packaged Capacitor pages still need frontend/Stitch login and API-base wiring before publishing a new user-ready APK.
 
 Profile setup is complete only when `affected_side`, `rehab_stage`, and `pain_baseline` are present. `/api/rehab-arm/app/v1/me.onboarding_guide.next_step.missing_fields` lists any remaining profile fields.
+
+## Rehab Arm Mobile Public Config
+
+Frontend shells and the Android wrapper can discover the backend contract without a token:
+
+```http
+GET /api/rehab-arm/app/v1/public-config
+```
+
+The response includes `api_base`, login/session endpoints, `/api/rehab-arm/app/v1/me`, profile setup requirements, current debug APK metadata, and `rehab_app_public_config_only_not_auth_token_or_motion_permission`. It does not return credentials or grant hardware authority.
