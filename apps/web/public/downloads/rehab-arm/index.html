@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#007aff" />
+    <title>灵动康复 ArmControl 下载</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --blue: #007aff;
+        --ink: #111827;
+        --muted: #5b6472;
+        --line: #d8dfec;
+        --bg: #f7f9fd;
+        --panel: #ffffff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(100%, 760px);
+        margin: 0 auto;
+        padding: 28px 18px 48px;
+      }
+
+      header {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(28px, 7vw, 44px);
+        line-height: 1.06;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+
+      section {
+        padding: 18px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+
+      .download {
+        display: grid;
+        gap: 14px;
+        align-items: center;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      a.button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 46px;
+        padding: 0 16px;
+        border-radius: 6px;
+        background: var(--blue);
+        color: #fff;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      a.secondary {
+        background: #eef5ff;
+        color: #005bbb;
+      }
+
+      dl {
+        display: grid;
+        grid-template-columns: 96px 1fr;
+        gap: 8px 12px;
+        margin: 0;
+        font-size: 13px;
+      }
+
+      dt {
+        color: var(--muted);
+      }
+
+      dd {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      ol {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .qr {
+        width: 132px;
+        height: 132px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px;
+      }
+
+      .note {
+        color: #92400e;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      @media (min-width: 680px) {
+        .download {
+          grid-template-columns: 1fr auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>灵动康复 ArmControl</h1>
+        <p>康复机械臂手机端测试包。当前为内部 debug 版本，用于手机安装验证、后端登录和 App 闭环联调。</p>
+      </header>
+
+      <section>
+        <h2>Android APK</h2>
+        <div class="download">
+          <div>
+            <div class="actions">
+              <a class="button" href="./lingdong-rehab-arm-debug.apk" download>下载 APK</a>
+              <a class="button secondary" href="../../rehab-arm-mobile/index.html">打开 PWA</a>
+            </div>
+          </div>
+          <img class="qr" src="./qr-download.png" alt="下载页二维码" />
+        </div>
+      </section>
+
+      <section>
+        <h2>安装提示</h2>
+        <ol>
+          <li>用安卓手机浏览器打开本页，点击“下载 APK”。</li>
+          <li>系统提示未知来源时，允许当前浏览器安装应用。</li>
+          <li>安装完成后，桌面应用名应显示为“灵动康复 ArmControl”。</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>校验信息</h2>
+        <dl>
+          <dt>包名</dt>
+          <dd>com.lingdong.rehabarm</dd>
+          <dt>版本</dt>
+          <dd>1.0.1 debug</dd>
+          <dt>大小</dt>
+          <dd>4,170,090 bytes</dd>
+          <dt>SHA256</dt>
+          <dd>F150EF2BA4C42BD66316947EB84DBC4BBCA753029B12DA82E35F46334E69DA97</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h2>1.0.1 更新</h2>
+        <ol>
+          <li>内置云端 API：<code>http://106.55.62.122:8011</code>。</li>
+          <li>启动后读取 <code>public-config</code> 和 <code>catalog</code>，不再静默只显示本地预览数据。</li>
+          <li>未登录时显示登录面板；登录后用 Bearer token 读取 <code>/api/rehab-arm/app/v1/me</code>。</li>
+          <li>内部测试账号：<code>3245056131@qq.com</code> / <code>1234</code>。</li>
+        </ol>
+      </section>
+
+      <section>
+        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。真实运动相关功能仍等待 BLE/M33/M55 协议补齐。</p>
+      </section>
+    </main>
+  </body>
+</html>
