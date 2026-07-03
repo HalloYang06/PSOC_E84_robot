@@ -742,7 +742,7 @@ def _app_offline_sync_guide(offline_items: list[dict]) -> dict:
             {
                 "code": "VIEW_OFFLINE_QUEUE",
                 "label": "查看离线队列",
-                "endpoint": "/api/rehab-arm/app/v1/offline-queue",
+                "endpoint": "/api/rehab-arm/app/v1/offline-queue?status=failed",
                 "method": "GET",
                 "payload_hint": {"status": "failed"},
             }

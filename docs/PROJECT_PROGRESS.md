@@ -194,3 +194,6 @@
 - Added `GET /api/rehab-arm/app/v1/offline-queue?status=queued|failed|replayed&limit=N` filtering so `offline_sync_guide` actions can open the exact failed evidence queue instead of forcing the phone to scan all items.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only).
 - Next step: continue turning backend guide payload hints into directly callable, tested endpoints for the mobile App.
+- Updated rehab arm app `offline_sync_guide` failed-item action so `VIEW_OFFLINE_QUEUE` points directly to `/api/rehab-arm/app/v1/offline-queue?status=failed`, matching the newly tested queue filter endpoint.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only).
+- Next step: continue removing phone-side endpoint inference from remaining guide actions.
