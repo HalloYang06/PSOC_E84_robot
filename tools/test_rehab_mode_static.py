@@ -36,6 +36,7 @@ def main():
     manager_c = read_text("applications/control/rehab_mode_manager.c")
     control_h = read_text("applications/control/control_layer.h")
     control_c = read_text("applications/control/control_layer.c")
+    sensor_c = read_text("applications/control/sensor.c")
 
     for needle in (
         "#define CONTROL_REHAB_SERVICE_PERIOD_MS 20U",
@@ -244,6 +245,32 @@ def main():
     require(control_c, "cmd_motor_report", "control_layer.c")
     require(control_c, "current_a > CONTROL_MOTOR_CURRENT_CONTROL_MAX_A", "control_layer.c")
     require(control_c, "(s_speed_hold_thread != RT_NULL) || (s_current_hold_thread != RT_NULL)", "control_layer.c")
+
+    emg_stream_cmd = control_c[
+        control_c.index("static int cmd_emg_motor_stream"):
+        control_c.index("MSH_CMD_EXPORT(cmd_emg_motor_stream")
+    ]
+    require(
+        emg_stream_cmd,
+        "control_layer_init(CONTROL_CAN_DEV_DEFAULT)",
+        "cmd_emg_motor_stream",
+    )
+    require(
+        emg_stream_cmd,
+        "emg_motor_stream init failed ret=%d",
+        "cmd_emg_motor_stream",
+    )
+    require(control_c, "sensor_node.adc_raw[3]", "control_layer.c")
+
+    require(sensor_c, "static rt_uint8_t s_f103_sensor_seq = 0U;", "sensor.c")
+    require(sensor_c, "node.adc_raw[3] = adc3;", "sensor.c")
+    require(sensor_c, "node.emg3_raw[0] = node.adc_raw[0];", "sensor.c")
+    require(sensor_c, "node.emg3_raw[1] = node.adc_raw[1];", "sensor.c")
+    require(sensor_c, "node.emg3_raw[2] = node.adc_raw[2];", "sensor.c")
+    require(sensor_c, "node.emg3_flags = 0U;", "sensor.c")
+    require(sensor_c, "node.emg3_seq = s_f103_sensor_seq++;", "sensor.c")
+    forbid(sensor_c, "node.emg3_flags = msg->data[6];", "sensor.c")
+    forbid(sensor_c, "node.emg3_seq = msg->data[7];", "sensor.c")
 
 
 if __name__ == "__main__":

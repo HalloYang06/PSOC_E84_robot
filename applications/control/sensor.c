@@ -26,6 +26,8 @@ static rt_bool_t s_sensor_is_inited = RT_FALSE;
 static control_sensor_can_send_fn s_sensor_can_send = RT_NULL;
 /* TX 序号回调：由 control_layer.c 注册，保持旧逻辑中的 s_tx_seq++ 顺序。 */
 static control_sensor_next_seq_fn s_sensor_next_seq = RT_NULL;
+/* Local sequence used when 0x7C2 carries four ADC samples and has no seq byte. */
+static rt_uint8_t s_f103_sensor_seq = 0U;
 
 /* 最近一次肌电兼容报告，供 control_get_emg_report() 读取。 */
 static control_emg_report_t s_emg_report;
@@ -200,6 +202,10 @@ void control_sensor_update_f103_sensor_report(const struct rt_can_msg *msg)
     control_emg_report_t emg;
     control_heart_report_t heart;
     /* 0x7C2 原始字段。 */
+    rt_uint16_t adc0;
+    rt_uint16_t adc1;
+    rt_uint16_t adc2;
+    rt_uint16_t adc3;
     rt_uint16_t emg_raw;
     rt_int16_t emg_filt;
     rt_uint16_t hr_raw;
@@ -213,16 +219,30 @@ void control_sensor_update_f103_sensor_report(const struct rt_can_msg *msg)
         return;
     }
 
-    emg_raw = sensor_u16_from_le(&msg->data[0]);
+    /* 0x7C2 carries four little-endian ADC channels; adc3 is not an EMG model input. */
+    adc0 = sensor_u16_from_le(&msg->data[0]);
+    adc1 = sensor_u16_from_le(&msg->data[2]);
+    adc2 = sensor_u16_from_le(&msg->data[4]);
+    adc3 = sensor_u16_from_le(&msg->data[6]);
+    emg_raw = adc0;
     emg_filt = sensor_i16_from_le(&msg->data[2]);
-    hr_raw = sensor_u16_from_le(&msg->data[4]);
-    hr_filt = msg->data[6];
-    flags = msg->data[7];
+    hr_raw = 0U;
+    hr_filt = 0U;
+    flags = 0U;
     now = rt_tick_get();
 
     /* 同一把锁内更新三个缓存，保证调用者读取时看到的是同一帧派生出来的数据。 */
     rt_mutex_take(&s_sensor_lock, RT_WAITING_FOREVER);
     node = s_sensor_node_sample;
+    node.adc_raw[0] = adc0;
+    node.adc_raw[1] = adc1;
+    node.adc_raw[2] = adc2;
+    node.adc_raw[3] = adc3;
+    node.emg3_raw[0] = node.adc_raw[0];
+    node.emg3_raw[1] = node.adc_raw[1];
+    node.emg3_raw[2] = node.adc_raw[2];
+    node.emg3_flags = 0U;
+    node.emg3_seq = s_f103_sensor_seq++;
     node.emg_raw = emg_raw;
     node.emg_filt = emg_filt;
     node.hr_raw = hr_raw;
@@ -437,6 +457,19 @@ static int cmd_sensor_show(int argc, char **argv)
 
     if (control_get_sensor_node_sample(&node) == RT_EOK)
     {
+        rt_kprintf("ADC4: ch0=%u ch1=%u ch2=%u ch3=%u sensor_tick=%u\n",
+                   node.adc_raw[0],
+                   node.adc_raw[1],
+                   node.adc_raw[2],
+                   node.adc_raw[3],
+                   node.sensor_timestamp);
+        rt_kprintf("EMG3: biceps=%u triceps=%u ant_deltoid=%u flags=0x%02X seq=%u sensor_tick=%u\n",
+                   node.emg3_raw[0],
+                   node.emg3_raw[1],
+                   node.emg3_raw[2],
+                   node.emg3_flags,
+                   node.emg3_seq,
+                   node.sensor_timestamp);
         rt_kprintf("F103: emg_raw=%u emg_filt=%d hr_raw=%u hr_filt=%u flags=0x%02X sensor_tick=%u\n",
                    node.emg_raw,
                    node.emg_filt,

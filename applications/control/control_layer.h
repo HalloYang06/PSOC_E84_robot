@@ -57,6 +57,12 @@ typedef struct
 {
     /* 0x7C2 raw view: four little-endian uint16 ADC samples in one classic CAN frame. */
     rt_uint16_t adc_raw[4];
+    /* 0x7C2 emg3 view: CH0=biceps, CH1=triceps, CH2=anterior deltoid. */
+    rt_uint16_t emg3_raw[3];
+    /* 0x7C2 emg3 flags byte. */
+    rt_uint8_t emg3_flags;
+    /* 0x7C2 emg3 sequence byte. */
+    rt_uint8_t emg3_seq;
     /* 0x7C2: EMG 原始 ADC/采样值。 */
     rt_uint16_t emg_raw;
     /* 0x7C2: EMG 滤波值，有符号。 */

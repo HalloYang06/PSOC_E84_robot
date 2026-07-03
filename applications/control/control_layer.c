@@ -137,6 +137,7 @@ static rt_thread_t s_can_rx_thread = RT_NULL;
 static rt_thread_t s_ros_cmd_thread = RT_NULL;
 /* 电机状态发布线程：周期性发布 0x330~0x336 状态帧给 NanoPi。 */
 static rt_thread_t s_motor_status_thread = RT_NULL;
+static rt_thread_t s_training_telemetry_thread = RT_NULL;
 /* 非 direct PDL 模式下 CAN RX 中断唤醒信号量。 */
 static struct rt_semaphore s_can_rx_sem;
 /* 控制域共享数据锁：保护 ROS 命令、电机反馈、CANSimple 状态等缓存。 */
@@ -152,6 +153,21 @@ static rt_bool_t s_is_inited = RT_FALSE;
 static rt_uint8_t s_tx_seq = 0U;
 /* 0x330~0x336 电机状态发布序号。 */
 static rt_uint8_t s_motor_status_seq = 0U;
+static rt_uint8_t s_training_status_seq = 0U;
+static volatile rt_bool_t s_training_can_enabled =
+#if CONTROL_M33_TRAINING_DEFAULT_CAN_ENABLE
+    RT_TRUE;
+#else
+    RT_FALSE;
+#endif
+static volatile rt_bool_t s_training_serial_enabled =
+#if CONTROL_M33_TRAINING_DEFAULT_SERIAL_ENABLE
+    RT_TRUE;
+#else
+    RT_FALSE;
+#endif
+static volatile rt_bool_t s_training_thread_stop_requested = RT_FALSE;
+static volatile rt_uint16_t s_training_period_ms = CONTROL_M33_TRAINING_MOTOR_PERIOD_MS;
 
 /* 控制域缓存：ROS 命令、电机探测、电机参数、电机反馈。传感器缓存已迁移到 sensor.c。 */
 /* 最近一次解析/执行的 ROS 桥命令。 */
@@ -1693,6 +1709,310 @@ static rt_uint8_t ctrl_publish_cached_motor_status_once(void)
     }
 
     return sent;
+}
+
+/* Dataset collection telemetry sample shared by serial and CAN publishers. */
+typedef struct
+{
+    rt_int16_t pos_mrad;
+    rt_int16_t vel_mrad_s;
+    rt_int16_t torque_mnm;
+    rt_uint8_t temp_c;
+    float output_current_cmd_a;
+    float limit_current_a;
+    rt_uint8_t flags;
+} ctrl_training_joint_sample_t;
+
+static rt_uint8_t ctrl_training_current_limit_to_u8(float value)
+{
+    rt_int32_t scaled;
+
+    if (value < 0.0f)
+    {
+        value = -value;
+    }
+
+    scaled = ctrl_float_to_scaled_i32(value, 50.0f);
+    if (scaled < 0)
+    {
+        return 0U;
+    }
+    if (scaled > 255)
+    {
+        return 255U;
+    }
+    return (rt_uint8_t)scaled;
+}
+
+static rt_bool_t ctrl_training_rehab_matches_slot(rt_uint8_t slot,
+                                                  rt_uint8_t motor_joint_id,
+                                                  const rehab_service_status_t *status)
+{
+    if (status == RT_NULL)
+    {
+        return RT_FALSE;
+    }
+    if ((motor_joint_id != CONTROL_MOTOR_ID_INVALID) &&
+        (status->m33_joint_id == motor_joint_id))
+    {
+        return RT_TRUE;
+    }
+    if ((slot == 1U) && (status->joint == REHAB_JOINT_ELBOW))
+    {
+        return RT_TRUE;
+    }
+    return RT_FALSE;
+}
+
+static void ctrl_training_fill_joint_sample(rt_uint8_t slot,
+                                            const control_motor_feedback_t *snapshot,
+                                            rt_tick_t now,
+                                            const rehab_service_status_t *status,
+                                            ctrl_training_joint_sample_t *out)
+{
+    rt_uint8_t motor_joint_id;
+    int feedback_index;
+    rt_bool_t fresh = RT_FALSE;
+    const control_motor_feedback_t *fb;
+
+    rt_memset(out, 0, sizeof(*out));
+    out->temp_c = 0xFFU;
+    out->flags = CONTROL_M33_TRAINING_FLAG_STALE;
+
+    motor_joint_id = ctrl_ros_joint_to_motor_joint(slot);
+    if ((motor_joint_id == CONTROL_MOTOR_ID_INVALID) ||
+        (motor_joint_id == 0U) ||
+        (motor_joint_id > CONTROL_MOTOR_JOINT_COUNT))
+    {
+        return;
+    }
+
+    feedback_index = (int)motor_joint_id - 1;
+    fb = &snapshot[feedback_index];
+    fresh = ctrl_motor_feedback_is_fresh(fb, now);
+
+    out->flags = fresh ? CONTROL_M33_TRAINING_FLAG_FRESH : CONTROL_M33_TRAINING_FLAG_STALE;
+    if (fb->fault_summary != 0U)
+    {
+        out->flags |= CONTROL_M33_TRAINING_FLAG_FAULT;
+    }
+    if (fresh)
+    {
+        out->pos_mrad = ctrl_float_to_scaled_i16(fb->pos_rad, 1000.0f);
+        out->vel_mrad_s = ctrl_float_to_scaled_i16(fb->vel_rad_s, 1000.0f);
+        out->torque_mnm = ctrl_float_to_scaled_i16(fb->torque_nm, 1000.0f);
+        out->temp_c = ctrl_temp_to_u8(fb->temp_c);
+    }
+
+    if (ctrl_training_rehab_matches_slot(slot, motor_joint_id, status))
+    {
+        out->output_current_cmd_a = status->output_current_a;
+        out->limit_current_a = status->output_limit_current_a;
+        if (status->output_saturated)
+        {
+            out->flags |= CONTROL_M33_TRAINING_FLAG_SATURATED;
+        }
+    }
+}
+
+static rt_err_t ctrl_publish_training_motor_slot(rt_uint8_t slot,
+                                                 const ctrl_training_joint_sample_t *sample)
+{
+    rt_uint8_t payload[8] = {0};
+    rt_err_t ret;
+
+    if ((slot >= CONTROL_ROS_JOINT_COUNT) || (sample == RT_NULL))
+    {
+        return -RT_EINVAL;
+    }
+
+    payload[0] = CONTROL_M33_TRAINING_MOTOR_KIN_MARKER;
+    payload[1] = s_training_status_seq++;
+    payload[2] = slot;
+    payload[3] = sample->flags;
+    ctrl_i16_to_le(sample->pos_mrad, &payload[4]);
+    ctrl_i16_to_le(sample->vel_mrad_s, &payload[6]);
+    ret = ctrl_can_send(CONTROL_CAN_ID_M33_TRAINING_MOTOR_BASE + ((rt_uint32_t)slot * 2U),
+                        RT_CAN_STDID,
+                        payload,
+                        sizeof(payload));
+    if (ret != RT_EOK)
+    {
+        return ret;
+    }
+
+    rt_memset(payload, 0, sizeof(payload));
+    payload[0] = CONTROL_M33_TRAINING_MOTOR_EFF_MARKER;
+    payload[1] = s_training_status_seq++;
+    payload[2] = slot;
+    payload[3] = sample->flags;
+    ctrl_i16_to_le(sample->torque_mnm, &payload[4]);
+    payload[6] = (rt_uint8_t)ctrl_float_to_scaled_i8(sample->output_current_cmd_a, 50.0f);
+    payload[7] = ctrl_training_current_limit_to_u8(sample->limit_current_a);
+    return ctrl_can_send(CONTROL_CAN_ID_M33_TRAINING_MOTOR_BASE + ((rt_uint32_t)slot * 2U) + 1U,
+                         RT_CAN_STDID,
+                         payload,
+                         sizeof(payload));
+}
+
+static rt_uint8_t ctrl_publish_training_motor_observation_once(void)
+{
+    control_motor_feedback_t snapshot[CONTROL_MOTOR_JOINT_COUNT];
+    rehab_service_status_t rehab_status;
+    ctrl_training_joint_sample_t sample;
+    rt_tick_t now = rt_tick_get();
+    rt_uint8_t sent = 0U;
+    rt_uint8_t slot;
+    rt_uint8_t max_slots = (CONTROL_ROS_JOINT_COUNT < 2U) ? CONTROL_ROS_JOINT_COUNT : 2U;
+
+    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
+    rt_memcpy(snapshot, s_motor_feedback, sizeof(snapshot));
+    rt_mutex_release(&s_data_lock);
+    rehab_service_get_status(&rehab_status);
+
+    for (slot = 0U; slot < max_slots; slot++)
+    {
+        ctrl_training_fill_joint_sample(slot, snapshot, now, &rehab_status, &sample);
+        if (ctrl_publish_training_motor_slot(slot, &sample) == RT_EOK)
+        {
+            sent += 2U;
+        }
+    }
+
+    return sent;
+}
+
+static void ctrl_format_scaled_2(float value, char *buf, rt_size_t len)
+{
+    rt_int32_t scaled = ctrl_float_to_scaled_i32(value, 100.0f);
+    rt_int32_t abs_scaled;
+    const char *sign = "";
+
+    if (scaled < 0)
+    {
+        sign = "-";
+        abs_scaled = -scaled;
+    }
+    else
+    {
+        abs_scaled = scaled;
+    }
+
+    rt_snprintf(buf, len, "%s%d.%02d", sign, (int)(abs_scaled / 100), (int)(abs_scaled % 100));
+}
+
+static void ctrl_print_training_serial_observation_once(void)
+{
+    control_motor_feedback_t snapshot[CONTROL_MOTOR_JOINT_COUNT];
+    rehab_service_status_t rehab_status;
+    control_sensor_node_sample_t sensor_node;
+    ctrl_training_joint_sample_t shoulder;
+    ctrl_training_joint_sample_t elbow;
+    char shoulder_current[16];
+    char shoulder_limit[16];
+    char elbow_current[16];
+    char elbow_limit[16];
+    rt_tick_t now = rt_tick_get();
+
+    rt_memset(&sensor_node, 0, sizeof(sensor_node));
+    (void)control_get_sensor_node_sample(&sensor_node);
+
+    rt_mutex_take(&s_data_lock, RT_WAITING_FOREVER);
+    rt_memcpy(snapshot, s_motor_feedback, sizeof(snapshot));
+    rt_mutex_release(&s_data_lock);
+    rehab_service_get_status(&rehab_status);
+
+    ctrl_training_fill_joint_sample(0U, snapshot, now, &rehab_status, &shoulder);
+    ctrl_training_fill_joint_sample(1U, snapshot, now, &rehab_status, &elbow);
+    ctrl_format_scaled_2(shoulder.output_current_cmd_a, shoulder_current, sizeof(shoulder_current));
+    ctrl_format_scaled_2(shoulder.limit_current_a, shoulder_limit, sizeof(shoulder_limit));
+    ctrl_format_scaled_2(elbow.output_current_cmd_a, elbow_current, sizeof(elbow_current));
+    ctrl_format_scaled_2(elbow.limit_current_a, elbow_limit, sizeof(elbow_limit));
+
+    rt_kprintf("EMG3MOTOR,%u,%u,%u,%u,%u,%u,%u,%d,%d,%d,%u,%s,%s,%u,%d,%d,%d,%u,%s,%s,%u\n",
+               (unsigned int)rt_tick_get_millisecond(),
+               (unsigned int)sensor_node.emg3_raw[0],
+               (unsigned int)sensor_node.emg3_raw[1],
+               (unsigned int)sensor_node.emg3_raw[2],
+               (unsigned int)sensor_node.adc_raw[3],
+               (unsigned int)sensor_node.emg3_flags,
+               (unsigned int)sensor_node.emg3_seq,
+               (int)shoulder.pos_mrad,
+               (int)shoulder.vel_mrad_s,
+               (int)shoulder.torque_mnm,
+               (unsigned int)shoulder.temp_c,
+               shoulder_current,
+               shoulder_limit,
+               (unsigned int)shoulder.flags,
+               (int)elbow.pos_mrad,
+               (int)elbow.vel_mrad_s,
+               (int)elbow.torque_mnm,
+               (unsigned int)elbow.temp_c,
+               elbow_current,
+               elbow_limit,
+               (unsigned int)elbow.flags);
+}
+
+static void ctrl_training_telemetry_entry(void *parameter)
+{
+    rt_uint16_t period_ms;
+
+    RT_UNUSED(parameter);
+
+    while (!s_training_thread_stop_requested &&
+           (s_training_can_enabled || s_training_serial_enabled))
+    {
+        if (s_training_can_enabled)
+        {
+            (void)ctrl_publish_training_motor_observation_once();
+        }
+        if (s_training_serial_enabled)
+        {
+            ctrl_print_training_serial_observation_once();
+        }
+
+        period_ms = s_training_period_ms;
+        if (period_ms == 0U)
+        {
+            period_ms = CONTROL_M33_TRAINING_MOTOR_PERIOD_MS;
+        }
+        rt_thread_mdelay(period_ms);
+    }
+
+    s_training_can_enabled = RT_FALSE;
+    s_training_serial_enabled = RT_FALSE;
+    s_training_thread_stop_requested = RT_FALSE;
+    s_training_telemetry_thread = RT_NULL;
+}
+
+static rt_err_t ctrl_training_telemetry_start(void)
+{
+    rt_err_t ret;
+
+    if (s_training_telemetry_thread != RT_NULL)
+    {
+        return RT_EOK;
+    }
+
+    s_training_thread_stop_requested = RT_FALSE;
+    s_training_telemetry_thread = rt_thread_create("trn_tel",
+                                                  ctrl_training_telemetry_entry,
+                                                  RT_NULL,
+                                                  CONTROL_TRAINING_TELEMETRY_THREAD_STACK_SIZE,
+                                                  CONTROL_TRAINING_TELEMETRY_THREAD_PRIORITY,
+                                                  CONTROL_ROS_THREAD_TICK);
+    if (s_training_telemetry_thread == RT_NULL)
+    {
+        return -RT_ENOMEM;
+    }
+
+    ret = rt_thread_startup(s_training_telemetry_thread);
+    if (ret != RT_EOK)
+    {
+        rt_thread_delete(s_training_telemetry_thread);
+        s_training_telemetry_thread = RT_NULL;
+    }
+    return ret;
 }
 
 /* 电机状态发布线程入口。 */
@@ -4918,6 +5238,84 @@ static int cmd_m33_motor_status_once(int argc, char **argv)
     return 0;
 }
 MSH_CMD_EXPORT(cmd_m33_motor_status_once, publish cached 0x330 motor telemetry once);
+
+static int cmd_emg_motor_stream(int argc, char **argv)
+{
+    rt_bool_t serial_enable;
+    rt_bool_t can_enable;
+    rt_uint16_t period_ms = CONTROL_M33_TRAINING_MOTOR_PERIOD_MS;
+    rt_err_t ret = RT_EOK;
+
+    if (argc < 2)
+    {
+        rt_kprintf("usage: emg_motor_stream <serial_en(0|1)> [period_ms] [can_en(0|1)]\n");
+        rt_kprintf("status: serial=%u can=%u active=%u period_ms=%u format=EMG3MOTOR\n",
+                   s_training_serial_enabled ? 1U : 0U,
+                   s_training_can_enabled ? 1U : 0U,
+                   (s_training_telemetry_thread != RT_NULL) ? 1U : 0U,
+                   (unsigned int)s_training_period_ms);
+        return 0;
+    }
+
+    serial_enable = (atoi(argv[1]) != 0) ? RT_TRUE : RT_FALSE;
+    if (argc >= 3)
+    {
+        period_ms = (rt_uint16_t)atoi(argv[2]);
+        if (period_ms < 10U)
+        {
+            period_ms = 10U;
+        }
+        if (period_ms > 1000U)
+        {
+            period_ms = 1000U;
+        }
+    }
+
+    s_training_period_ms = period_ms;
+    s_training_serial_enabled = serial_enable;
+    can_enable = RT_FALSE;
+    if (argc >= 4)
+    {
+        can_enable = (atoi(argv[3]) != 0) ? RT_TRUE : RT_FALSE;
+    }
+
+    s_training_can_enabled = can_enable;
+    if (serial_enable || can_enable)
+    {
+        if (!s_is_inited)
+        {
+            ret = control_layer_init(CONTROL_CAN_DEV_DEFAULT);
+            if (ret != RT_EOK)
+            {
+                s_training_serial_enabled = RT_FALSE;
+                s_training_can_enabled = RT_FALSE;
+                rt_kprintf("emg_motor_stream init failed ret=%d\n", ret);
+                return ret;
+            }
+        }
+        ret = ctrl_training_telemetry_start();
+        if (ret != RT_EOK)
+        {
+            s_training_serial_enabled = RT_FALSE;
+            s_training_can_enabled = RT_FALSE;
+            rt_kprintf("emg_motor_stream start failed ret=%d\n", ret);
+            return ret;
+        }
+    }
+    else
+    {
+        s_training_thread_stop_requested = RT_TRUE;
+    }
+
+    rt_kprintf("emg_motor_stream serial=%u can=%u active=%u period_ms=%u\n",
+               s_training_serial_enabled ? 1U : 0U,
+               s_training_can_enabled ? 1U : 0U,
+               (s_training_telemetry_thread != RT_NULL) ? 1U : 0U,
+               (unsigned int)s_training_period_ms);
+    return 0;
+}
+MSH_CMD_EXPORT(cmd_emg_motor_stream, stream EMG3 plus motor training telemetry over serial/CAN);
+MSH_CMD_EXPORT_ALIAS(cmd_emg_motor_stream, emg_motor_stream, stream EMG3 plus motor training telemetry over serial/CAN);
 
 static int cmd_motor_param(int argc, char **argv)
 {
