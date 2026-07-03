@@ -227,3 +227,5 @@
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). This is display guidance only and does not alter safety gates or hardware authority.
 - Extended `blocker_details` with `severity` and `related_action_codes` so phone UI can style blockers and link them to the current primary/secondary actions without maintaining its own blocker-to-action map.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
+- Added `/me.home_status_guide.action_groups` with `primary`, `secondary`, and `blocker_related` action groups. The backend now groups actions for the current blocker, so the phone can render "why blocked" and "what to tap" from one payload.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).

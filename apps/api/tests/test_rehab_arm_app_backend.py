@@ -82,6 +82,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_home_status["blocker_details"][0]["severity"] == "warning"
     assert empty_home_status["blocker_details"][0]["title"] == "完成首次设置"
     assert "PROFILE_REQUIRED" in empty_home_status["blocker_details"][0]["related_action_codes"]
+    onboarding_group = empty_home_status["action_groups"]["blocker_related"][0]
+    assert onboarding_group["blocker_code"] == "onboarding_incomplete"
+    assert {item["code"] for item in onboarding_group["actions"]} == {"PROFILE_REQUIRED", "TRUSTED_DEVICE_REQUIRED", "TRAINING_PLAN_REQUIRED"}
     assert empty_home_status["control_boundary"] == "app_home_status_guide_evidence_only_not_motion_permission"
     assert empty_bootstrap.json()["data"]["device_operational_guide"]["status"] == "device_required"
     assert "BIND_TRUSTED_DEVICE" in {item["code"] for item in empty_bootstrap.json()["data"]["device_operational_guide"]["actions"]}
@@ -1441,6 +1444,8 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
     assert failed_blocker["severity"] == "critical"
     assert failed_blocker["title"] == "处理离线失败证据"
     assert failed_blocker["related_action_codes"] == ["VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM"]
+    failed_group = next(item for item in failed_home_status["action_groups"]["blocker_related"] if item["blocker_code"] == "offline_queue_failed")
+    assert [item["code"] for item in failed_group["actions"]] == ["VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM"]
 
 
 def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeypatch) -> None:

@@ -838,6 +838,20 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         if method and endpoint:
             seen_action_targets.add(target)
         secondary_actions.append(action)
+    all_actions = ([next_action] if action_code else []) + secondary_actions
+    blocker_action_groups = []
+    for blocker in care_summary.get("blocker_details") or []:
+        related_codes = set(blocker.get("related_action_codes") or [])
+        matching_actions = [action for action in all_actions if action.get("code") in related_codes]
+        if matching_actions:
+            blocker_action_groups.append(
+                {
+                    "blocker_code": blocker.get("code"),
+                    "blocker_title": blocker.get("title"),
+                    "severity": blocker.get("severity"),
+                    "actions": matching_actions,
+                }
+            )
     return {
         "status": daily_action_guide.get("status") or care_summary.get("status"),
         "tone": tone,
@@ -845,6 +859,11 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         "body": body or "按照下一步操作完成当前康复记录闭环。",
         "primary_action": next_action,
         "secondary_actions": secondary_actions,
+        "action_groups": {
+            "primary": [next_action] if action_code else [],
+            "secondary": secondary_actions,
+            "blocker_related": blocker_action_groups,
+        },
         "blockers": care_summary.get("blockers") or [],
         "blocker_details": care_summary.get("blocker_details") or [],
         "counts": care_summary.get("counts") or {},
