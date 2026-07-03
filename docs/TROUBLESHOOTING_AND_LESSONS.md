@@ -2,6 +2,7 @@
 
 ## 2026-07-03
 
+- QA lesson: a phone App can be technically connected to `/me` while still feeling like a demo if old static success labels remain visible. Treat optimistic copy such as `M33 ACTIVE`, `已允许执行`, fixed completion percentages, or confident AI recommendations as QA failures unless they are backed by persisted backend evidence.
 - APK delivery lesson: backend readiness fields are invisible to a phone user until the packaged WebView actually has an API base, Bearer-token login, and `/me` bootstrap wiring. For the current HTTP cloud API, the debug wrapper also needs `android:usesCleartextTraffic="true"`; otherwise Android WebView can block the request even when CORS passes.
 - Catalog lesson: phone training-plan forms should not hard-code demo movement strings. Publish backend-authored movement/profile catalogs and reject unsupported `movement_type` values before M33 sync so the App cannot create plausible-looking but unreviewable demo plans.
 - Cloud test lesson: the Tencent host does not expose `python` or global `pytest` for the API test suite. Use `apps/api/.venv/bin/python -m pytest ...` when validating cloud-synced rehab-arm App backend files.

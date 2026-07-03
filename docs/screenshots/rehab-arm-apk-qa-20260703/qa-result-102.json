@@ -1,0 +1,14 @@
+{
+  "downloadPageHas102": true,
+  "beforeHasLoginPanel": true,
+  "afterHasEvidencePanel": true,
+  "afterHasTruthfulM33": true,
+  "forbiddenStillVisible": [],
+  "consoleErrors": [],
+  "failedRequests": [],
+  "frameText": "已连接后端：后端闭环已返回真实状态；用户版安装包仍取决于 Stitch/frontend API 接线和硬件协议补充。\n真实后端状态\n账号：已登录；设备：0；计划：0\n门禁：blocked\n阻塞：安装包还不是用户可用版\n页面内训练/M33/AI 文案均为后端证据展示，不代表运动许可。\nclinical_notes\nRoboRehab Controller\nsmart_toy\n晚上好，今天适合做轻量屈肘训练\nmedical_information\n康复阶段：亚急性期\nfront_hand\n患侧：左侧\ntimer\n今日目标：30 分钟\nM33 待协议/待审核\n今日目标动作\n屈肘训练\n时长\n20 mins\n强度\n低\n进度\n45%\nplay_arrow\n查看训练门禁\n\n(需 M33 授权)\n\nverified_user\nM33 待协议/待审核\nemergency\n急停状态待硬件上报\n设备状态\nbluetooth\nM33 BLE\n已连接\nsensors\nM55 EMG\n激活\nprecision_manufacturing\nArm\n安全\ncloud_sync\nCloud\n已同步\n后端训练证据快照\n完成度\n完成度 无真实报告\n肌肉疲劳\n低\npsychiatry\nAI 建议\n\"等待真实训练报告和治疗师复核\"\nrobot_2\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的\n已登录，正在读取 /me 闭环状态",
+  "screenshots": [
+    "D:\\ai合作产品\\docs\\screenshots\\rehab-arm-apk-qa-20260703\\download-page-102-mobile.png",
+    "D:\\ai合作产品\\docs\\screenshots\\rehab-arm-apk-qa-20260703\\pwa-after-login-102-mobile.png"
+  ]
+}

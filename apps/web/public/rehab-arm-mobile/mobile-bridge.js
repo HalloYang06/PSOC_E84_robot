@@ -209,6 +209,58 @@
     }
   }
 
+  function replaceAll(candidates, value) {
+    if (value === undefined || value === null || value === "") return;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach((node) => {
+      let text = node.nodeValue || "";
+      candidates.forEach((candidate) => {
+        text = text.split(candidate).join(String(value));
+      });
+      node.nodeValue = text;
+    });
+  }
+
+  function removeBackendEvidencePanel() {
+    document.querySelector("[data-arm-evidence]")?.remove();
+  }
+
+  function insertBackendEvidencePanel(state) {
+    removeBackendEvidencePanel();
+    const bootstrap = state.bootstrap || {};
+    const readiness = bootstrap.mobile_readiness_guide || {};
+    const blockers = readiness.blockers || [];
+    const primaryBlocker = blockers[0] || {};
+    const devices = bootstrap.devices || [];
+    const plans = bootstrap.training_plans || [];
+    const panel = document.createElement("section");
+    panel.setAttribute("data-arm-evidence", "true");
+    panel.style.cssText = [
+      "margin:10px 16px 12px",
+      "padding:12px",
+      "border:1px solid #f59e0b",
+      "border-radius:8px",
+      "background:#fffbeb",
+      "color:#78350f",
+      "font:600 12px/1.5 Inter,system-ui,sans-serif"
+    ].join(";");
+    panel.innerHTML = [
+      '<div style="font-size:13px;font-weight:900;color:#92400e;margin-bottom:6px">真实后端状态</div>',
+      `<div>账号：${state.authenticated ? "已登录" : "未登录"}；设备：${devices.length}；计划：${plans.length}</div>`,
+      `<div>门禁：${readiness.status || "等待读取"}</div>`,
+      `<div>阻塞：${primaryBlocker.title || "等待完成康复档案、设备和硬件协议"}</div>`,
+      '<div style="margin-top:6px;color:#9a3412">页面内训练/M33/AI 文案均为后端证据展示，不代表运动许可。</div>'
+    ].join("");
+    const anchor = document.querySelector("[data-arm-status]");
+    if (anchor && anchor.nextSibling) {
+      anchor.parentNode.insertBefore(panel, anchor.nextSibling);
+    } else {
+      document.body.prepend(panel);
+    }
+  }
+
   function annotatePage(state) {
     const current = pageName();
     const bootstrap = state.bootstrap || {};
@@ -217,6 +269,28 @@
     const plans = bootstrap.training_plans || state.plans || [];
     const catalog = state.catalog || {};
     const readiness = bootstrap.mobile_readiness_guide || {};
+    const isBlocked = readiness.status === "blocked";
+    if (state.authenticated) {
+      insertBackendEvidencePanel(state);
+    } else {
+      removeBackendEvidencePanel();
+    }
+    if (isBlocked) {
+      replaceAll(["M33 ACTIVE", "状态：M33 已允许执行", "M33 已允许执行"], "M33 待协议/待审核");
+      replaceAll(["急停已就绪"], "急停状态待硬件上报");
+      replaceAll(["已连接"], devices.length ? "已绑定" : "待绑定");
+      replaceAll(["激活"], state.latestEmg ? "有记录" : "等待记录");
+      replaceAll(["安全"], "等待协议");
+      replaceAll(["已同步"], "已连接后端");
+      replaceAll(["康复阶段：亚急性期"], profile && profile.rehab_stage ? `康复阶段：${profile.rehab_stage}` : "康复阶段：待完善档案");
+      replaceAll(["患侧：左侧"], profile && profile.affected_side ? `患侧：${profile.affected_side}` : "患侧：待完善档案");
+      replaceAll(["今日目标：30 分钟"], plans[0] ? `今日目标：${plans[0].duration_sec || 0} 秒` : "今日目标：待创建训练计划");
+      replaceAll(["完成度\n95%", "95%"], "完成度\n无真实报告");
+      replaceAll(["肌肉疲劳\n低", "低"], "等待肌电");
+      replaceAll(["动作稳定性极佳，建议维持当前强度"], "等待真实训练报告和治疗师复核");
+      replaceAll(["最近训练结果快照"], "后端训练证据快照");
+      replaceAll(["开始训练"], "查看训练门禁");
+    }
     if (current === "profile.html" && profile) {
       replaceFirst(["Sarah Chen", "康复用户"], profile.name || "康复用户");
       replaceFirst(["RoboRehab Controller"], "灵动康复 ArmControl");
