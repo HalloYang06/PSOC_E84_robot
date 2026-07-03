@@ -62,6 +62,12 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     project = create_project(client, owner_token, name_prefix="Rehab Arm App")
     project_id = project["id"]
 
+    empty_bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert empty_bootstrap.status_code == 200
+    assert empty_bootstrap.json()["data"]["onboarding_guide"]["status"] == "incomplete"
+    assert empty_bootstrap.json()["data"]["onboarding_guide"]["next_step"]["code"] == "PROFILE_REQUIRED"
+    assert empty_bootstrap.json()["data"]["primary_start_guide"] is None
+
     profile_response = client.patch(
         "/api/rehab-arm/app/v1/me/profile",
         headers=auth_headers(owner_token),
@@ -121,6 +127,12 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     plan = plan_response.json()["data"]
     assert plan["version"] == 1
     assert plan["control_boundary"] == "training_plan_only_not_motor_command"
+    bootstrap_after_basics = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_after_basics.status_code == 200
+    onboarding = bootstrap_after_basics.json()["data"]["onboarding_guide"]
+    assert onboarding["status"] == "complete"
+    assert onboarding["next_step"] is None
+    assert bootstrap_after_basics.json()["data"]["primary_start_guide"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
 
     contraindicated_plan_response = client.post(
         "/api/rehab-arm/app/v1/training-plans",

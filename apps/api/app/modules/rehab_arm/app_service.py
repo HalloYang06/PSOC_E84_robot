@@ -393,21 +393,77 @@ def get_profile(db: Session, user_id: str) -> dict | None:
     return _profile_dict(profile) if profile else None
 
 
+def _onboarding_step(code: str, status: str, title: str, description: str, endpoint: str, method: str, payload_hint: dict | None = None) -> dict:
+    return {
+        "code": code,
+        "status": status,
+        "title": title,
+        "description": description,
+        "endpoint": endpoint,
+        "method": method,
+        "payload_hint": payload_hint or {},
+    }
+
+
+def _app_onboarding_guide(profile: dict | None, devices: list[dict], plans: list[dict]) -> dict:
+    has_profile = profile is not None
+    has_trusted_device = any(device["trust_status"] != "revoked" for device in devices)
+    has_usable_plan = any(plan["status"] not in {"archived", "rejected"} for plan in plans)
+    steps = [
+        _onboarding_step(
+            "PROFILE_REQUIRED",
+            "done" if has_profile else "todo",
+            "完善康复档案",
+            "记录患侧、康复阶段、疼痛基线和禁忌项，后续计划约束和疼痛门禁会引用这些信息。",
+            "/api/rehab-arm/app/v1/me/profile",
+            "PATCH",
+            {"affected_side": "left_or_right", "rehab_stage": "required", "pain_baseline": "0_to_10", "medical_constraints": []},
+        ),
+        _onboarding_step(
+            "TRUSTED_DEVICE_REQUIRED",
+            "done" if has_trusted_device else "todo",
+            "绑定可信 M33 设备",
+            "绑定 M33 BLE 身份用于计划同步、M33 接受证据和诊断读取；解绑冻结的设备不能训练。",
+            "/api/rehab-arm/app/v1/devices/bind",
+            "POST",
+            {"m33_device_id": "required", "ble_name": "optional", "trust_status": "trusted"},
+        ),
+        _onboarding_step(
+            "TRAINING_PLAN_REQUIRED",
+            "done" if has_usable_plan else "todo",
+            "创建或接受训练计划",
+            "创建治疗师计划，或从 AI 草稿接受为普通训练计划。计划仍需同步并由 M33 接受后才能进入 preflight。",
+            "/api/rehab-arm/app/v1/training-plans",
+            "POST",
+            {"title": "required", "movement_type": "required", "sets": "required", "reps": "required", "status": "active"},
+        ),
+    ]
+    next_step = next((step for step in steps if step["status"] == "todo"), None)
+    return {
+        "status": "complete" if next_step is None else "incomplete",
+        "next_step": next_step,
+        "steps": steps,
+        "control_boundary": "app_onboarding_guide_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
     sessions = list_training_sessions(db, user_id, limit=1)
     drafts = list_ai_training_drafts(db, user_id, status="open", limit=1)
     preflights = list_preflight_checks(db, user_id, limit=1)
+    profile = get_profile(db, user_id)
     primary_plan = next((plan for plan in plans if plan["status"] not in {"archived", "rejected"}), None)
     primary_device = next((device for device in devices if device["trust_status"] != "revoked"), None)
     primary_start_guide = None
     if primary_plan and primary_device:
         primary_start_guide = get_training_start_guide(db, user_id, primary_plan["id"], primary_device["id"])
     return {
-        "profile": get_profile(db, user_id),
+        "profile": profile,
         "devices": devices,
         "training_plans": plans,
+        "onboarding_guide": _app_onboarding_guide(profile, devices, plans),
         "active_session": sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress", "paused"} else None,
         "primary_start_guide": primary_start_guide,
         "latest_preflight": preflights[0] if preflights else None,

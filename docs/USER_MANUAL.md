@@ -84,7 +84,9 @@ GET /offline-queue
 GET /safety-audit
 ```
 
-`GET /me` is the phone bootstrap endpoint. In addition to profile, devices, plans, active session, latest preflight, latest report, latest open AI draft, platform sync, and queued offline items, it returns `primary_start_guide` when there is at least one usable plan and one trusted device. Use this field for the home screen's main training CTA; it is the same evidence-only guide returned by `start-guide`.
+`GET /me` is the phone bootstrap endpoint. In addition to profile, devices, plans, active session, latest preflight, latest report, latest open AI draft, platform sync, and queued offline items, it returns `onboarding_guide` and `primary_start_guide`.
+
+Use `onboarding_guide` for first-run setup. It gives ordered steps for profile, trusted M33 device binding, and training plan creation/acceptance, with endpoint, method, and payload hints. Use `primary_start_guide` for the home screen's main training CTA when setup basics exist; it is the same evidence-only guide returned by `start-guide`.
 
 Mobile diagnostic and offline replay:
 
