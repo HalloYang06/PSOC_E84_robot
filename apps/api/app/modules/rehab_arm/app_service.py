@@ -720,6 +720,7 @@ def _app_care_summary(
     review_required_count = sum(1 for report in reports if report.get("latest_review") is None)
     open_draft_count = sum(1 for draft in drafts if not draft.get("accepted_plan_id"))
     queued_offline_count = sum(1 for item in offline_items if item["replay_status"] == "queued")
+    failed_offline_count = sum(1 for item in offline_items if item["replay_status"] == "failed")
     can_start = bool(primary_start_guide and primary_start_guide.get("can_start"))
     blockers = []
     if onboarding_guide["status"] != "complete":
@@ -730,6 +731,8 @@ def _app_care_summary(
         blockers.append("report_review_required")
     if open_draft_count:
         blockers.append("ai_draft_open")
+    if failed_offline_count:
+        blockers.append("offline_queue_failed")
     if queued_offline_count:
         blockers.append("offline_queue_pending")
     status = "attention_required" if blockers else ("ready" if can_start else "setup_required")
@@ -744,9 +747,40 @@ def _app_care_summary(
             "reports_pending_review": review_required_count,
             "ai_drafts_open": open_draft_count,
             "offline_items_queued": queued_offline_count,
+            "offline_items_failed": failed_offline_count,
         },
         "blockers": blockers,
         "control_boundary": "app_care_summary_evidence_only_not_motion_permission",
+    }
+
+
+def _app_home_status_guide(daily_action_guide: dict, care_summary: dict) -> dict:
+    next_action = daily_action_guide.get("next_action") or {}
+    action_code = str(next_action.get("code") or "")
+    critical_actions = {"RECOVER_ACTIVE_SESSION", "REVIEW_BLOCKING_SAFETY_EVENT", "VIEW_OFFLINE_QUEUE"}
+    warning_actions = {"GENERATE_TRAINING_REPORT", "REPLAY_OFFLINE_EVIDENCE", "REVIEW_LATEST_REPORT", "DRAFT_NEXT_PLAN_FROM_REPORT"}
+    if daily_action_guide.get("status") == "ready":
+        tone = "success"
+        headline = "可以进入下一步"
+    elif action_code in critical_actions:
+        tone = "critical"
+        headline = next_action.get("title") or next_action.get("label") or "需要先处理阻塞事项"
+    elif action_code in warning_actions:
+        tone = "warning"
+        headline = next_action.get("title") or next_action.get("label") or "需要先完成当前事项"
+    else:
+        tone = "info"
+        headline = next_action.get("title") or next_action.get("label") or "继续完成设置"
+    return {
+        "status": daily_action_guide.get("status") or care_summary.get("status"),
+        "tone": tone,
+        "headline": headline,
+        "body": next_action.get("description") or "按照下一步操作完成当前康复记录闭环。",
+        "primary_action": next_action,
+        "blockers": care_summary.get("blockers") or [],
+        "counts": care_summary.get("counts") or {},
+        "safety_note": "本卡片只提供手机端证据和流程引导，不授予硬件运动权限；真实运动仍由 M33 最终裁决。",
+        "control_boundary": "app_home_status_guide_evidence_only_not_motion_permission",
     }
 
 
@@ -1357,6 +1391,18 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     accepted_plan_guide = _app_accepted_plan_guide(db, user_id, all_drafts, devices)
     finished_session_report_guide = _app_finished_session_report_guide(db, user_id, sessions)
     offline_sync_guide = _app_offline_sync_guide(offline_queue)
+    daily_action_guide = _app_daily_action_guide(
+        onboarding_guide,
+        active_session,
+        finished_session_report_guide,
+        primary_start_guide,
+        latest_report,
+        latest_open_ai_draft,
+        offline_sync_guide,
+        safety_review_guide,
+        accepted_plan_guide,
+    )
+    care_summary = _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue)
     return {
         "profile": profile,
         "devices": devices,
@@ -1364,18 +1410,9 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "onboarding_guide": onboarding_guide,
         "active_session": active_session,
         "primary_start_guide": primary_start_guide,
-        "daily_action_guide": _app_daily_action_guide(
-            onboarding_guide,
-            active_session,
-            finished_session_report_guide,
-            primary_start_guide,
-            latest_report,
-            latest_open_ai_draft,
-            offline_sync_guide,
-            safety_review_guide,
-            accepted_plan_guide,
-        ),
-        "care_summary": _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue),
+        "daily_action_guide": daily_action_guide,
+        "home_status_guide": _app_home_status_guide(daily_action_guide, care_summary),
+        "care_summary": care_summary,
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
         "offline_sync_guide": offline_sync_guide,
         "session_recovery_guide": _app_session_recovery_guide(db, user_id, active_session),

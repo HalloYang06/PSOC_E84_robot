@@ -67,6 +67,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_bootstrap.json()["data"]["onboarding_guide"]["status"] == "incomplete"
     assert empty_bootstrap.json()["data"]["onboarding_guide"]["next_step"]["code"] == "PROFILE_REQUIRED"
     assert empty_bootstrap.json()["data"]["primary_start_guide"] is None
+    empty_home_status = empty_bootstrap.json()["data"]["home_status_guide"]
+    assert empty_home_status["tone"] == "info"
+    assert empty_home_status["primary_action"]["code"] == "PROFILE_REQUIRED"
+    assert "onboarding_incomplete" in empty_home_status["blockers"]
+    assert empty_home_status["control_boundary"] == "app_home_status_guide_evidence_only_not_motion_permission"
     assert empty_bootstrap.json()["data"]["device_operational_guide"]["status"] == "device_required"
     assert "BIND_TRUSTED_DEVICE" in {item["code"] for item in empty_bootstrap.json()["data"]["device_operational_guide"]["actions"]}
 
@@ -1382,6 +1387,11 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
     assert failed_daily_action["code"] == "VIEW_OFFLINE_QUEUE"
     assert failed_daily_action["endpoint"] == "/api/rehab-arm/app/v1/offline-queue?status=failed"
     assert failed_daily_action["source"] == {"guide": "offline_sync_guide", "offline_status": "review_failed_items"}
+    failed_home_status = bootstrap_with_failed.json()["data"]["home_status_guide"]
+    assert failed_home_status["tone"] == "critical"
+    assert failed_home_status["primary_action"]["code"] == "VIEW_OFFLINE_QUEUE"
+    assert failed_home_status["counts"]["offline_items_failed"] == 1
+    assert "offline_queue_failed" in failed_home_status["blockers"]
 
 
 def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeypatch) -> None:

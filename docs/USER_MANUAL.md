@@ -84,11 +84,13 @@ GET /offline-queue
 GET /safety-audit
 ```
 
-`GET /me` is the phone bootstrap endpoint. In addition to profile, devices, plans, active session, latest preflight, latest report, latest open AI draft, platform sync, and queued offline items, it returns `onboarding_guide`, `primary_start_guide`, `daily_action_guide`, `care_summary`, `care_timeline`, `offline_sync_guide`, `session_recovery_guide`, `finished_session_report_guide`, `report_followup_guide`, `device_operational_guide`, `safety_review_guide`, and `accepted_plan_guide`.
+`GET /me` is the phone bootstrap endpoint. In addition to profile, devices, plans, active session, latest preflight, latest report, latest open AI draft, platform sync, and queued offline items, it returns `onboarding_guide`, `primary_start_guide`, `daily_action_guide`, `home_status_guide`, `care_summary`, `care_timeline`, `offline_sync_guide`, `session_recovery_guide`, `finished_session_report_guide`, `report_followup_guide`, `device_operational_guide`, `safety_review_guide`, and `accepted_plan_guide`.
 
 Use `onboarding_guide` for first-run setup. It gives ordered steps for profile, trusted M33 device binding, and training plan creation/acceptance, with endpoint, method, and payload hints. Use `primary_start_guide` for the home screen's main training CTA when setup basics exist; it is the same evidence-only guide returned by `start-guide`.
 
 Use `daily_action_guide` for the home screen's top action. It prioritizes unfinished training recovery, blocking safety review, finished-session report generation, queued/failed offline evidence handling, AI draft review, latest report review, report-to-next-plan drafting, normal training start guidance, and onboarding fallback. It is evidence-only and should not be treated as motion permission.
+
+Use `home_status_guide` for the first phone card a user sees. It wraps the top action with user-facing `tone`, `headline`, `body`, `primary_action`, blockers, counts, and a safety note, so the frontend does not need to infer priority or severity from raw records.
 
 Use `care_summary` for home overview counters and status chips. It reports start readiness, active/finished/cancelled sessions, report review count, open AI drafts, queued offline evidence, and blockers. It is a backend-composed summary of persisted records.
 
