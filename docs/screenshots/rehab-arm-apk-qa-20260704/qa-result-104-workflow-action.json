@@ -1,0 +1,13 @@
+{
+  "workflowPanel": true,
+  "evidencePanel": true,
+  "workflowActionButton": false,
+  "workflowActionCode": "",
+  "hasWorkflowActionEndpoint": true,
+  "apkVersion": "1.0.4",
+  "apkSha256": "DFCBD3EADEE230947A0E6FC5AFCADAD46095CCC5963A9FE9ACDF7EBC355031B2",
+  "hasBoundaryCopy": true,
+  "forbiddenStrings": [],
+  "consoleErrors": [],
+  "failedRequests": []
+}

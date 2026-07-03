@@ -1,0 +1,10 @@
+{
+  "email": "rehab-qa-1783099550849@example.com",
+  "workflowBeforePhase": "ready_to_start",
+  "workflowBeforeNextAction": "READY_TO_START",
+  "workflowActionButton": true,
+  "workflowActionCode": "READY_TO_START",
+  "buttonText": "执行后端下一步",
+  "consoleErrors": [],
+  "failedRequests": []
+}
