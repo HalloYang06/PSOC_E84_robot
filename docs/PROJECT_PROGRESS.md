@@ -249,3 +249,6 @@
 - Added backend-authored `stage_title`, `stage_description`, and `stage_tone` to `/me.home_status_guide.progress`. Stage codes such as `setup`, `resolve_blockers`, and `ready_to_start` now carry user-facing copy and tone directly from the backend.
 - Regression coverage asserts stage copy for first-run setup, blocker resolution, and ready-to-start states.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). Stage copy remains workflow guidance only and does not grant motion authority.
+- Added `/me.home_status_guide.progress.next_item` so the phone can highlight the next progress row without scanning checklist state. It follows `primary_blocker` when possible, falls back to the first incomplete progress item, and returns `null` when all progress items are complete.
+- Regression coverage asserts `next_item` for first-run onboarding, start-readiness blocking, failed offline evidence, and ready-to-start completion.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). `next_item` remains UI workflow guidance only and does not grant hardware or motion authority.

@@ -983,6 +983,14 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         },
     ]
     done_count = sum(1 for item in progress_items if item["done"])
+    next_progress_item = None
+    if primary_blocker_code:
+        next_progress_item = next(
+            (item for item in progress_items if primary_blocker_code in item.get("related_blocker_codes", [])),
+            None,
+        )
+    if next_progress_item is None:
+        next_progress_item = next((item for item in progress_items if not item["done"]), None)
     if ready_to_start:
         stage = "ready_to_start"
     elif primary_blocker_code and primary_blocker_code != "onboarding_incomplete":
@@ -1047,6 +1055,7 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
             "done": done_count,
             "total": len(progress_items),
             "remaining": len(progress_items) - done_count,
+            "next_item": next_progress_item,
             "items": progress_items,
         },
         "safety_note": "本卡片只提供手机端证据和流程引导，不授予硬件运动权限；真实运动仍由 M33 最终裁决。",
