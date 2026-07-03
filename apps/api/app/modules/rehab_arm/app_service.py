@@ -611,11 +611,61 @@ def _require_training_plan_usable(plan: RehabAppTrainingPlan) -> None:
         )
 
 
+def _normalized_plan_terms(plan: RehabAppTrainingPlan) -> set[str]:
+    terms = {str(plan.movement_type or "").lower().replace("-", "_").replace(" ", "_")}
+    terms.update(str(joint).lower().replace("-", "_").replace(" ", "_") for joint in (plan.target_joints or []))
+    return {term for term in terms if term}
+
+
+def _plan_constraint_violations(profile: RehabAppUserProfile | None, plan: RehabAppTrainingPlan) -> list[dict]:
+    if profile is None:
+        return []
+    constraints = [str(item).strip().lower() for item in (profile.medical_constraints or []) if str(item).strip()]
+    if not constraints:
+        return []
+    if (plan.safety_constraints or {}).get("therapist_constraint_reviewed") is True:
+        return []
+    terms = _normalized_plan_terms(plan)
+    max_deg = None
+    if isinstance(plan.target_angle_range, dict):
+        max_deg = plan.target_angle_range.get("max_deg")
+    violations: list[dict] = []
+    for constraint in constraints:
+        compact = constraint.replace("-", " ").replace("_", " ")
+        if any(token in compact for token in ["no overhead", "avoid overhead", "no over shoulder", "禁止过头", "避免过肩"]):
+            if "overhead" in terms or "shoulder" in terms or any(term.startswith("shoulder_") for term in terms) or (isinstance(max_deg, (int, float)) and max_deg > 90):
+                violations.append({"constraint": constraint, "reason": "overhead_or_shoulder_motion"})
+            continue
+        if compact.startswith("no ") or compact.startswith("avoid "):
+            blocked = compact.split(" ", 1)[1].strip().replace(" ", "_")
+            if blocked and any(blocked in term or term in blocked for term in terms):
+                violations.append({"constraint": constraint, "reason": "blocked_plan_term", "matched": blocked})
+    return violations
+
+
+def _require_plan_matches_profile_constraints(db: Session, user_id: str, plan: RehabAppTrainingPlan) -> None:
+    profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
+    violations = _plan_constraint_violations(profile, plan)
+    if violations:
+        raise AppError(
+            "TRAINING_PLAN_CONTRAINDICATED",
+            "training plan conflicts with the user's recorded medical constraints and needs therapist review",
+            status_code=409,
+            details={
+                "plan_id": plan.id,
+                "violations": violations,
+                "allowed_review_flag": "safety_constraints.therapist_constraint_reviewed",
+                "control_boundary": "training_plan_blocked_not_medical_diagnosis_or_motion_permission",
+            },
+        )
+
+
 def sync_training_plan_to_device(db: Session, user_id: str, plan_id: str, device_id: str) -> dict:
     plan = db.get(RehabAppTrainingPlan, plan_id)
     if plan is None or plan.user_id != user_id:
         raise AppError("TRAINING_PLAN_NOT_FOUND", "training plan not found", status_code=404)
     _require_training_plan_usable(plan)
+    _require_plan_matches_profile_constraints(db, user_id, plan)
     device = db.get(RehabAppDeviceBinding, device_id)
     if device is None or device.user_id != user_id:
         raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)
@@ -1093,6 +1143,7 @@ def start_training_session(db: Session, user_id: str, plan_id: str, device_id: s
     if plan is None or plan.user_id != user_id:
         raise AppError("TRAINING_PLAN_NOT_FOUND", "training plan not found", status_code=404)
     _require_training_plan_usable(plan)
+    _require_plan_matches_profile_constraints(db, user_id, plan)
     device = db.get(RehabAppDeviceBinding, device_id)
     if device is None or device.user_id != user_id:
         raise AppError("DEVICE_NOT_FOUND", "device binding not found", status_code=404)

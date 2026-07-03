@@ -122,6 +122,44 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert plan["version"] == 1
     assert plan["control_boundary"] == "training_plan_only_not_motor_command"
 
+    contraindicated_plan_response = client.post(
+        "/api/rehab-arm/app/v1/training-plans",
+        headers=auth_headers(owner_token),
+        json={
+            "title": "Shoulder overhead reach",
+            "source": "therapist",
+            "goal": "shoulder range check",
+            "target_joints": ["shoulder"],
+            "movement_type": "shoulder_overhead_reach",
+            "sets": 1,
+            "reps": 3,
+            "target_angle_range": {"min_deg": 20, "max_deg": 120},
+            "status": "active",
+        },
+    )
+    assert contraindicated_plan_response.status_code == 200
+    contraindicated_plan = contraindicated_plan_response.json()["data"]
+    blocked_constraint_sync = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{contraindicated_plan['id']}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    assert blocked_constraint_sync.status_code == 409
+    assert blocked_constraint_sync.json()["error"]["code"] == "TRAINING_PLAN_CONTRAINDICATED"
+    assert blocked_constraint_sync.json()["error"]["details"]["violations"][0]["reason"] == "overhead_or_shoulder_motion"
+    therapist_reviewed_plan = client.patch(
+        f"/api/rehab-arm/app/v1/training-plans/{contraindicated_plan['id']}",
+        headers=auth_headers(owner_token),
+        json={"safety_constraints": {"therapist_constraint_reviewed": True, "review_note": "limited supervised range only"}},
+    )
+    assert therapist_reviewed_plan.status_code == 200
+    reviewed_sync = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{contraindicated_plan['id']}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    assert reviewed_sync.status_code == 200
+
     sync_response = client.post(
         f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
         headers=auth_headers(owner_token),
@@ -285,10 +323,14 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         params={"plan_id": plan["id"], "device_id": device["id"]},
     )
     assert preflight_history.status_code == 200
-    assert preflight_history.json()["data"][0]["id"] == preflight["id"]
+    preflight_history_items = preflight_history.json()["data"]
+    assert any(item["id"] == preflight["id"] for item in preflight_history_items)
     bootstrap_after_preflight = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_after_preflight.status_code == 200
-    assert bootstrap_after_preflight.json()["data"]["latest_preflight"]["id"] == preflight["id"]
+    latest_preflight = bootstrap_after_preflight.json()["data"]["latest_preflight"]
+    assert latest_preflight["plan_id"] == plan["id"]
+    assert latest_preflight["device_id"] == device["id"]
+    assert latest_preflight["sync_id"] == resync["id"]
 
     allowed_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",

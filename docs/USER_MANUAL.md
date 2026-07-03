@@ -127,6 +127,8 @@ Paused sessions still occupy the device and must be resumed before progress can 
 
 Archived or rejected training plans stay visible in history, but they cannot be synced to M33 and cannot start a training session. Create or reactivate an appropriate plan, sync the current version, and wait for `m33_accepted` before starting.
 
+Plans that clearly conflict with profile `medical_constraints` are blocked before sync/start with `TRAINING_PLAN_CONTRAINDICATED`. For example, `no overhead motion` blocks shoulder/overhead plans or ranges above 90 degrees. A therapist-reviewed plan may set `safety_constraints.therapist_constraint_reviewed=true`, but it still must be synced to M33, accepted by M33, and pass preflight before a session can start.
+
 Before starting a training session, submit a preflight check:
 
 ```text
