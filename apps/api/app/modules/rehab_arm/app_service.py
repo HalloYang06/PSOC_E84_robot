@@ -999,7 +999,12 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
             "related_action_codes": start_ready_action_codes,
         },
     ]
+    total_count = len(progress_items)
     done_count = sum(1 for item in progress_items if item["done"])
+    remaining_count = total_count - done_count
+    completion_percent = round((done_count / total_count) * 100) if total_count else 0
+    completion_label = f"已完成 {done_count}/{total_count} 项"
+    remaining_label = "全部完成" if remaining_count == 0 else f"还剩 {remaining_count} 项"
     next_progress_item = None
     if primary_blocker_code:
         next_progress_item = next(
@@ -1112,8 +1117,11 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
             "stage_description": stage_detail["description"],
             "stage_tone": stage_detail["tone"],
             "done": done_count,
-            "total": len(progress_items),
-            "remaining": len(progress_items) - done_count,
+            "total": total_count,
+            "remaining": remaining_count,
+            "completion_percent": completion_percent,
+            "completion_label": completion_label,
+            "remaining_label": remaining_label,
             "next_item": next_progress_item,
             "next_item_actions": next_progress_actions,
             "next_item_blockers": next_progress_blockers,

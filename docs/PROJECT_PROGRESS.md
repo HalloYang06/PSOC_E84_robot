@@ -262,3 +262,5 @@
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). Failed offline evidence keeps failed-review and queued-replay secondary actions when both states coexist.
 - Added `display` copy to `/me.home_status_guide.progress.next_item_context` with title, description, tone, severity, and clear condition derived from the matched progress item/blocker.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). This keeps the phone next-step card copy backend-authored and evidence-only.
+- Added `completion_percent`, `completion_label`, and `remaining_label` to `/me.home_status_guide.progress` so phone shells can render workflow progress without recalculating checklist totals.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). The percentage covers the full home workflow checklist, not just onboarding substeps.

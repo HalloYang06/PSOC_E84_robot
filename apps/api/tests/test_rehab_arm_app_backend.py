@@ -82,6 +82,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_home_status["progress"]["stage_title"] == "先完成首次设置"
     assert empty_home_status["progress"]["stage_tone"] == "info"
     assert empty_home_status["progress"]["remaining"] > 0
+    assert empty_home_status["progress"]["completion_percent"] == 75
+    assert empty_home_status["progress"]["completion_label"] == "已完成 6/8 项"
+    assert empty_home_status["progress"]["remaining_label"] == "还剩 2 项"
     assert empty_home_status["progress"]["next_item"]["code"] == "onboarding"
     assert {item["code"] for item in empty_home_status["progress"]["next_item_actions"]} == {
         "PROFILE_REQUIRED",
@@ -548,6 +551,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert ready_home_status["progress"]["stage_title"] == "可以记录训练开始"
     assert ready_home_status["progress"]["stage_tone"] == "success"
     assert ready_home_status["progress"]["remaining"] == 0
+    assert ready_home_status["progress"]["completion_percent"] == 100
+    assert ready_home_status["progress"]["completion_label"] == "已完成 8/8 项"
+    assert ready_home_status["progress"]["remaining_label"] == "全部完成"
     assert ready_home_status["progress"]["next_item"] is None
     assert ready_home_status["progress"]["next_item_actions"] == []
     assert ready_home_status["progress"]["next_item_blockers"] == []
@@ -1536,6 +1542,8 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
     assert failed_home_status["counts"]["offline_items_failed"] == 1
     assert "offline_queue_failed" in failed_home_status["blockers"]
     assert failed_home_status["progress"]["stage"] == "resolve_blockers"
+    assert failed_home_status["progress"]["completion_percent"] < 100
+    assert failed_home_status["progress"]["remaining_label"].startswith("还剩 ")
     assert failed_home_status["progress"]["next_item"]["code"] == "offline_clear"
     assert {"VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM", "REPLAY_OFFLINE_EVIDENCE"}.issubset(
         {item["code"] for item in failed_home_status["progress"]["next_item_actions"]}
