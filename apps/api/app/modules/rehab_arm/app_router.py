@@ -150,9 +150,13 @@ def api_public_config(request: Request):
             "api_base": api_base,
             "web_base": web_base,
             "auth": {
+                "register_endpoint": "/api/auth/register",
                 "session_endpoint": "/api/auth/session",
                 "me_endpoint": "/api/auth/me",
                 "authorization": "Bearer access_token",
+                "token_response_path": "data.access_token",
+                "user_response_path": "data.user",
+                "required_headers": {"Authorization": "Bearer {access_token}"},
             },
             "rehab_app": {
                 "bootstrap_endpoint": "/api/rehab-arm/app/v1/me",
@@ -164,6 +168,23 @@ def api_public_config(request: Request):
                 "debug_apk_version": "1.0",
                 "debug_apk_sha256": "C80F78CE4CCF315368ADC13C178E40CA620B2CD3A7CF48EC751CF42F72CB84ED",
                 "debug_apk_status": "preview_static_shell_needs_frontend_login_api_wiring",
+            },
+            "mobile_boot_flow": [
+                {"step": "load_public_config", "endpoint": "/api/rehab-arm/app/v1/public-config", "auth_required": False},
+                {"step": "login", "endpoint": "/api/auth/session", "auth_required": False, "token_response_path": "data.access_token"},
+                {"step": "fetch_workspace_user", "endpoint": "/api/auth/me", "auth_required": True},
+                {"step": "fetch_rehab_bootstrap", "endpoint": "/api/rehab-arm/app/v1/me", "auth_required": True},
+            ],
+            "release_gate": {
+                "status": "blocked",
+                "reason": "android_wrapper_uses_static_preview_until_frontend_login_api_wiring_is_connected",
+                "required_frontend_work": [
+                    "load public-config on app start",
+                    "post credentials to auth.session_endpoint",
+                    "store data.access_token securely",
+                    "send Authorization: Bearer {access_token} on rehab app API calls",
+                    "render /api/rehab-arm/app/v1/me instead of local preview defaults",
+                ],
             },
             "required_profile_fields": ["affected_side", "rehab_stage", "pain_baseline"],
             "control_boundary": "rehab_app_public_config_only_not_auth_token_or_motion_permission",

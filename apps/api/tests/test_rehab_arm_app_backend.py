@@ -144,8 +144,19 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     config_data = public_config.json()["data"]
     assert config_data["app_name"] == "灵动康复 ArmControl"
     assert config_data["package_id"] == "com.lingdong.rehabarm"
+    assert config_data["auth"]["register_endpoint"] == "/api/auth/register"
     assert config_data["auth"]["session_endpoint"] == "/api/auth/session"
+    assert config_data["auth"]["token_response_path"] == "data.access_token"
+    assert config_data["auth"]["required_headers"] == {"Authorization": "Bearer {access_token}"}
     assert config_data["rehab_app"]["bootstrap_endpoint"] == "/api/rehab-arm/app/v1/me"
+    assert [item["step"] for item in config_data["mobile_boot_flow"]] == [
+        "load_public_config",
+        "login",
+        "fetch_workspace_user",
+        "fetch_rehab_bootstrap",
+    ]
+    assert config_data["release_gate"]["status"] == "blocked"
+    assert "Authorization: Bearer" in config_data["release_gate"]["required_frontend_work"][3]
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
     assert config_data["downloads"]["debug_apk_status"] == "preview_static_shell_needs_frontend_login_api_wiring"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
