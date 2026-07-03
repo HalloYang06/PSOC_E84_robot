@@ -101,6 +101,8 @@
 
 ## 2026-07-03
 
+- Synced the rehab-arm mobile readiness gate backend files to the cloud host, ran cloud validation with `apps/api/.venv/bin/python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`7 passed`), and restarted API/Web with `build_sha=cee3ec49`.
+- Cloud verification passed: direct `/api/health` and Web proxy `/api/proxy/health` both report `cee3ec49`; `/api/rehab-arm/app/v1/public-config` returns `release_gate.checks`; authenticated `/api/rehab-arm/app/v1/me` returns `mobile_readiness_guide.status=blocked`; `scripts/check_web_api_alignment.py` returned `ok=true`.
 - Continued the rehab-arm mobile App backend toward user-usable closure without changing Stitch/frontend files. `GET /api/rehab-arm/app/v1/public-config` now includes explicit release-gate checks for public config availability, token auth contract, APK frontend API wiring, and missing BLE/M33 hardware protocol packet maps.
 - Added authenticated `mobile_readiness_guide` to `GET /api/rehab-arm/app/v1/me`. The guide exposes account onboarding, device binding, training plan, training start gate, APK frontend wiring, hardware protocol, offline queue, and safety-review blockers as phone-renderable evidence only.
 - Current release state remains blocked for user download as a real product: the backend is returning honest readiness fields, but the current APK still needs Stitch/frontend login/API wiring and hardware protocol details before it should be described as user-ready.
