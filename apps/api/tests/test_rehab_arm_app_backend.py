@@ -175,9 +175,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["APK_FRONTEND_API_WIRING"]["status"] == "pass"
     assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "awaiting_protocol"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
-    assert config_data["downloads"]["debug_apk_version"] == "1.0.2"
-    assert config_data["downloads"]["debug_apk_sha256"] == "93DD6C74DF139AB63778D0109CAA3CF994E04F9ED9974B87815269A70E75B1FE"
-    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_truthful_gate_debug_build_hardware_protocol_pending"
+    assert config_data["downloads"]["debug_apk_version"] == "1.0.3"
+    assert config_data["downloads"]["debug_apk_sha256"] == "F79334A33AAE69946CA0240022A5649B25CBE15F92F386B5E3DE6659ECA486BC"
+    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_panel_debug_build_hardware_protocol_pending"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
     catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
     assert catalog_response.status_code == 200

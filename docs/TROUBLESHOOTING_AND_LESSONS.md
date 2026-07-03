@@ -1,5 +1,9 @@
 # Troubleshooting and Lessons
 
+## 2026-07-04
+
+- CORS QA lesson: local static QA from `127.0.0.1` can fail against the cloud API preflight even when the same APK/PWA works from the deployed `106.55.62.122:3001` origin. For workflow-panel QA, use the cloud PWA route after deploying static assets, or explicitly configure a matching allowed origin; do not treat local `Failed to fetch` as a workflow contract failure.
+
 ## 2026-07-03
 
 - Workflow contract lesson: phone screens should consume `/api/rehab-arm/app/v1/me/workflow` for `phase`, `next_action`, `action_queue`, and `blockers` instead of inferring state from scattered records or static copy. Keep the endpoint evidence-only and preserve `forbidden_actions` so frontend work cannot accidentally imply App-granted motion permission.

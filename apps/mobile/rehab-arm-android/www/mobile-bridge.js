@@ -17,6 +17,7 @@
     plans: [],
     catalog: null,
     bootstrap: null,
+    workflow: null,
     publicConfig: null,
     latestEmg: null,
     lastSync: null,
@@ -227,6 +228,61 @@
     document.querySelector("[data-arm-evidence]")?.remove();
   }
 
+  function removeWorkflowPanel() {
+    document.querySelector("[data-arm-workflow]")?.remove();
+  }
+
+  function actionLabel(action) {
+    if (!action) return "等待后端下一步";
+    return action.label || action.title || action.code || "等待后端下一步";
+  }
+
+  function insertWorkflowPanel(state) {
+    removeWorkflowPanel();
+    const workflow = state.workflow || {};
+    const phase = workflow.phase || {};
+    const nextAction = workflow.next_action || {};
+    const actions = (workflow.action_queue || []).slice(0, 4);
+    const blockers = (workflow.blockers || []).slice(0, 3);
+    const forbidden = (workflow.forbidden_actions || []).slice(0, 4);
+    const panel = document.createElement("section");
+    panel.setAttribute("data-arm-workflow", "true");
+    panel.style.cssText = [
+      "margin:10px 16px 12px",
+      "padding:14px",
+      "border:1px solid #bfdbfe",
+      "border-radius:8px",
+      "background:#eff6ff",
+      "color:#0f172a",
+      "font:600 12px/1.5 Inter,system-ui,sans-serif"
+    ].join(";");
+    panel.innerHTML = [
+      '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:8px">',
+      '<div style="font-size:13px;font-weight:900;color:#1d4ed8">康复工作流</div>',
+      `<div style="font:700 11px/1.2 JetBrains Mono,monospace;color:#334155">${phase.status || "waiting"}</div>`,
+      "</div>",
+      `<div style="font-size:16px;font-weight:900;color:#0f172a">${phase.title || "等待后端工作流"}</div>`,
+      `<div style="margin-top:4px;color:#334155">${phase.description || "登录后读取 /me/workflow，页面不再使用本地 demo 成功状态。"}</div>`,
+      `<div style="margin-top:10px;padding:10px;border-radius:8px;background:#ffffff;border:1px solid #dbeafe"><span style="color:#1d4ed8">下一步：</span>${actionLabel(nextAction)}</div>`,
+      actions.length
+        ? `<div style="margin-top:10px;color:#334155">动作队列：${actions.map(actionLabel).join(" / ")}</div>`
+        : '<div style="margin-top:10px;color:#334155">动作队列：等待读取后端动作</div>',
+      blockers.length
+        ? `<div style="margin-top:8px;color:#92400e">阻塞：${blockers.map((item) => item.title || item.code).join(" / ")}</div>`
+        : '<div style="margin-top:8px;color:#047857">阻塞：当前无后端阻塞记录</div>',
+      forbidden.length
+        ? `<div style="margin-top:8px;font:700 11px/1.35 JetBrains Mono,monospace;color:#991b1b">禁止：${forbidden.join(" / ")}</div>`
+        : "",
+      '<div style="margin-top:8px;color:#475569">App 只显示流程证据；真实运动许可仍由 M33 最终裁决。</div>'
+    ].join("");
+    const anchor = document.querySelector("[data-arm-evidence]") || document.querySelector("[data-arm-status]");
+    if (anchor && anchor.nextSibling) {
+      anchor.parentNode.insertBefore(panel, anchor.nextSibling);
+    } else {
+      document.body.prepend(panel);
+    }
+  }
+
   function insertBackendEvidencePanel(state) {
     removeBackendEvidencePanel();
     const bootstrap = state.bootstrap || {};
@@ -272,9 +328,14 @@
     const isBlocked = readiness.status === "blocked";
     if (state.authenticated) {
       insertBackendEvidencePanel(state);
+      insertWorkflowPanel(state);
     } else {
       removeBackendEvidencePanel();
+      removeWorkflowPanel();
     }
+    const workflow = state.workflow || {};
+    const phase = workflow.phase || {};
+    const nextAction = workflow.next_action || {};
     if (isBlocked) {
       replaceAll(["M33 ACTIVE", "状态：M33 已允许执行", "M33 已允许执行"], "M33 待协议/待审核");
       replaceAll(["急停已就绪"], "急停状态待硬件上报");
@@ -289,8 +350,11 @@
       replaceAll(["肌肉疲劳\n低", "低"], "等待肌电");
       replaceAll(["动作稳定性极佳，建议维持当前强度"], "等待真实训练报告和治疗师复核");
       replaceAll(["最近训练结果快照"], "后端训练证据快照");
-      replaceAll(["开始训练"], "查看训练门禁");
+      replaceAll(["开始训练"], nextAction.code === "READY_TO_START" ? "开始训练记录" : "查看下一步");
     }
+    replaceAll(["执行中 - 由 M33 监控"], phase.title ? `工作流状态：${phase.title}` : "工作流状态：等待读取");
+    replaceAll(["AI 建议"], "AI/报告建议待复核");
+    replaceAll(["训练总结"], "训练报告闭环");
     if (current === "profile.html" && profile) {
       replaceFirst(["Sarah Chen", "康复用户"], profile.name || "康复用户");
       replaceFirst(["RoboRehab Controller"], "灵动康复 ArmControl");
@@ -304,6 +368,9 @@
       const movement = catalog.training_movements && catalog.training_movements[0];
       replaceFirst(["屈肘训练"], movement ? movement.label : "目录加载中");
       replaceFirst(["AI 规划"], readiness.status === "blocked" ? "后端门禁待完成" : "AI 规划");
+      replaceAll(["智能方案生成"], "AI 草稿待审核");
+      replaceAll(["生成方案"], "生成 AI 草稿");
+      replaceAll(["开始计划"], "查看计划工作流");
     }
     if (current === "emg.html") {
       replaceFirst(["肱二头肌", "biceps"], state.latestEmg ? state.latestEmg.muscle_name : "等待肌电记录");
@@ -338,19 +405,22 @@
         return nextState;
       }
       const bootstrap = await api("/api/rehab-arm/app/v1/me");
+      const workflowEndpoint = (publicConfig.rehab_app && publicConfig.rehab_app.workflow_endpoint) || "/api/rehab-arm/app/v1/me/workflow";
+      const workflow = await api(workflowEndpoint);
       const latestEmg = await api("/api/rehab-arm/app/v1/emg/latest").catch(() => null);
       const nextState = {
         ...state,
         publicConfig,
         catalog,
         bootstrap,
+        workflow,
         profile: bootstrap.profile,
         devices: bootstrap.devices || [],
         plans: bootstrap.training_plans || [],
         latestEmg,
         online: true,
         authenticated: true,
-        statusText: `已连接后端：${bootstrap.mobile_readiness_guide ? bootstrap.mobile_readiness_guide.summary : "读取成功"}`
+        statusText: `已连接后端：${workflow.phase ? workflow.phase.title : bootstrap.mobile_readiness_guide ? bootstrap.mobile_readiness_guide.summary : "读取成功"}`
       };
       writeState(nextState);
       upsertStatusStrip(nextState);

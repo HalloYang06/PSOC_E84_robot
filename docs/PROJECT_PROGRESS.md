@@ -1,5 +1,11 @@
 # Project Progress
 
+## 2026-07-04
+
+- Used Stitch MCP on project `projects/9733571660387876930` to generate workflow-driven mobile screen directions for home, device, training library, AI planning, training execution, and report surfaces. The design direction replaces static success claims with backend `/me/workflow` phase, next action, action queue, blockers, and evidence-only safety copy.
+- Updated the mobile PWA bridge and Android wrapper assets so authenticated screens fetch `GET /api/rehab-arm/app/v1/me/workflow`, insert a `康复工作流` panel, and suppress static M33/AI/report success copy using backend workflow state. The bridge continues to preserve Stitch visuals and does not grant BLE/CAN/motor/M33 authority.
+- Built Android debug APK `1.0.3` (`versionCode=4`) with workflow panel wiring. APK SHA256 is `F79334A33AAE69946CA0240022A5649B25CBE15F92F386B5E3DE6659ECA486BC`, size is `4,172,302` bytes, and the package remains `com.lingdong.rehabarm` / `灵动康复 ArmControl`.
+- Validation passed locally: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`8 passed`), `node --check` for PWA and Android packaged `mobile-bridge.js`, Android `npm run build:debug`, `apksigner verify --verbose`, and `aapt dump badging` (`versionName=1.0.3`, `versionCode=4`). Local browser QA against `127.0.0.1` was blocked by cloud CORS and will be repeated on the same-origin cloud route after deploy.
 ## 2026-06-17
 
 - Added a perception-only stereo RGB + pretrained YOLO framework for rehab-arm VLA intake.
