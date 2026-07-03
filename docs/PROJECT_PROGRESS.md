@@ -206,3 +206,6 @@
 - Tightened failed offline item review evidence: `POST /offline-queue/{item_id}/review` now requires a non-empty note and limits `review_status` to `reviewed`, `ignored`, `duplicate`, or `replaced`.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
 - Next step: continue hardening evidence-close actions so no user-facing App state can be cleared without durable review context.
+- Added tests and documentation for failed offline item review boundaries: queued evidence and already-reviewed evidence return `OFFLINE_QUEUE_ITEM_NOT_FAILED` instead of being cleared by the review endpoint.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
+- Next step: continue closing App workflow edge cases with explicit backend states and tested error responses.

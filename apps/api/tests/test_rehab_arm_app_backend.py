@@ -1575,6 +1575,14 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     )
     assert queued_queue.status_code == 200
     assert {item["id"] for item in queued_queue.json()["data"]} == {queue_item["id"], safety_queue_item["id"]}
+    review_queued_item = client.post(
+        f"/api/rehab-arm/app/v1/offline-queue/{queue_item['id']}/review",
+        headers=auth_headers(owner_token),
+        json={"reviewer_role": "therapist", "review_status": "reviewed", "note": "should not close queued evidence"},
+    )
+    assert review_queued_item.status_code == 409
+    assert review_queued_item.json()["error"]["code"] == "OFFLINE_QUEUE_ITEM_NOT_FAILED"
+    assert review_queued_item.json()["error"]["details"]["replay_status"] == "queued"
     empty_review_note = client.post(
         f"/api/rehab-arm/app/v1/offline-queue/{bad_queue_item['id']}/review",
         headers=auth_headers(owner_token),
@@ -1599,6 +1607,14 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     )
     assert reviewed_queue.status_code == 200
     assert [item["id"] for item in reviewed_queue.json()["data"]] == [bad_queue_item["id"]]
+    review_already_reviewed = client.post(
+        f"/api/rehab-arm/app/v1/offline-queue/{bad_queue_item['id']}/review",
+        headers=auth_headers(owner_token),
+        json={"reviewer_role": "therapist", "review_status": "duplicate", "note": "already reviewed"},
+    )
+    assert review_already_reviewed.status_code == 409
+    assert review_already_reviewed.json()["error"]["code"] == "OFFLINE_QUEUE_ITEM_NOT_FAILED"
+    assert review_already_reviewed.json()["error"]["details"]["replay_status"] == "reviewed"
 
     replay = client.post(
         "/api/rehab-arm/app/v1/offline-queue/replay",
