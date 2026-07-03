@@ -757,6 +757,7 @@ def _app_care_summary(
 def _app_home_status_guide(daily_action_guide: dict, care_summary: dict) -> dict:
     next_action = daily_action_guide.get("next_action") or {}
     action_code = str(next_action.get("code") or "")
+    body = next_action.get("description") or next_action.get("detail") or next_action.get("message") or ""
     critical_actions = {"RECOVER_ACTIVE_SESSION", "REVIEW_BLOCKING_SAFETY_EVENT", "VIEW_OFFLINE_QUEUE"}
     warning_actions = {"GENERATE_TRAINING_REPORT", "REPLAY_OFFLINE_EVIDENCE", "REVIEW_LATEST_REPORT", "DRAFT_NEXT_PLAN_FROM_REPORT"}
     if daily_action_guide.get("status") == "ready":
@@ -775,7 +776,7 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict) -> dict
         "status": daily_action_guide.get("status") or care_summary.get("status"),
         "tone": tone,
         "headline": headline,
-        "body": next_action.get("description") or "按照下一步操作完成当前康复记录闭环。",
+        "body": body or "按照下一步操作完成当前康复记录闭环。",
         "primary_action": next_action,
         "blockers": care_summary.get("blockers") or [],
         "counts": care_summary.get("counts") or {},

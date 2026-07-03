@@ -212,3 +212,6 @@
 - Added user-facing rehab arm app `home_status_guide` to `/me`; it wraps the backend-selected top action with `tone`, `headline`, `body`, `primary_action`, blockers, counts, and safety note so the phone home screen can render the user next step without inferring priority/severity.
 - Updated `care_summary` to count failed offline evidence and add `offline_queue_failed` blocker, matching the daily action priority for failed offline replay review.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
+- Improved rehab arm app `home_status_guide.body` selection so the phone home card uses action `description`, `detail`, or `message` before falling back to generic copy; onboarding profile setup now surfaces the specific pain-baseline/constraint rationale.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
+- Next step: continue checking user-facing guide copy and actions from a patient/operator first-run perspective.

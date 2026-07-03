@@ -70,6 +70,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     empty_home_status = empty_bootstrap.json()["data"]["home_status_guide"]
     assert empty_home_status["tone"] == "info"
     assert empty_home_status["primary_action"]["code"] == "PROFILE_REQUIRED"
+    assert "疼痛基线" in empty_home_status["body"]
     assert "onboarding_incomplete" in empty_home_status["blockers"]
     assert empty_home_status["control_boundary"] == "app_home_status_guide_evidence_only_not_motion_permission"
     assert empty_bootstrap.json()["data"]["device_operational_guide"]["status"] == "device_required"
