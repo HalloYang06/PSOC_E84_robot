@@ -92,6 +92,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         "onboarding_incomplete"
     ]
     assert empty_home_status["progress"]["next_item_context"]["item"]["code"] == "onboarding"
+    assert empty_home_status["progress"]["next_item_context"]["primary_action"]["code"] == "PROFILE_REQUIRED"
+    assert {item["code"] for item in empty_home_status["progress"]["next_item_context"]["secondary_actions"]} == {
+        "TRUSTED_DEVICE_REQUIRED",
+        "TRAINING_PLAN_REQUIRED",
+    }
     assert empty_home_status["progress"]["next_item_context"]["action_count"] == 3
     assert empty_home_status["progress"]["next_item_context"]["blocker_count"] == 1
     assert (
@@ -212,8 +217,12 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         "start_readiness_blocked"
     ]
     assert start_home_status["progress"]["next_item_context"]["item"]["code"] == "start_ready"
+    assert start_home_status["progress"]["next_item_context"]["primary_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
     assert {"VIEW_START_GUIDE", "CHECK_START_READINESS", "M33_ACCEPTANCE_REQUIRED"}.issubset(
         {item["code"] for item in start_home_status["progress"]["next_item_context"]["actions"]}
+    )
+    assert {"VIEW_START_GUIDE", "CHECK_START_READINESS"}.issubset(
+        {item["code"] for item in start_home_status["progress"]["next_item_context"]["secondary_actions"]}
     )
     assert next(item for item in start_home_status["progress"]["items"] if item["code"] == "onboarding")["done"] is True
     start_ready_progress = next(item for item in start_home_status["progress"]["items"] if item["code"] == "start_ready")
@@ -1530,6 +1539,11 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
         "offline_queue_pending",
     ]
     assert failed_home_status["progress"]["next_item_context"]["item"]["code"] == "offline_clear"
+    assert failed_home_status["progress"]["next_item_context"]["primary_action"]["code"] == "VIEW_OFFLINE_QUEUE"
+    assert [item["code"] for item in failed_home_status["progress"]["next_item_context"]["secondary_actions"]] == [
+        "REVIEW_FAILED_OFFLINE_ITEM",
+        "REPLAY_OFFLINE_EVIDENCE",
+    ]
     assert [item["code"] for item in failed_home_status["progress"]["next_item_context"]["blockers"]] == [
         "offline_queue_failed",
         "offline_queue_pending",

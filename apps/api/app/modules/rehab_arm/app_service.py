@@ -1014,9 +1014,18 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
     next_progress_blockers = [
         blocker for blocker in blocker_details if blocker.get("code") in next_progress_blocker_codes
     ]
+    next_progress_primary_action = next(
+        (action for action in next_progress_actions if action.get("code") == action_code),
+        next_progress_actions[0] if next_progress_actions else {},
+    )
+    next_progress_secondary_actions = [
+        action for action in next_progress_actions if action is not next_progress_primary_action
+    ]
     next_progress_context = (
         {
             "item": next_progress_item,
+            "primary_action": next_progress_primary_action,
+            "secondary_actions": next_progress_secondary_actions,
             "actions": next_progress_actions,
             "blockers": next_progress_blockers,
             "action_count": len(next_progress_actions),
