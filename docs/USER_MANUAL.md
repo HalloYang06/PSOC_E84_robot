@@ -248,17 +248,30 @@ APK details:
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0
-sha256: C80F78CE4CCF315368ADC13C178E40CA620B2CD3A7CF48EC751CF42F72CB84ED
+version: 1.0.1
+sha256: F150EF2BA4C42BD66316947EB84DBC4BBCA753029B12DA82E35F46334E69DA97
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
+
+APK 1.0.1 behavior:
+
+```text
+- Starts with cloud API base http://106.55.62.122:8011
+- Loads /api/rehab-arm/app/v1/public-config and /catalog
+- Shows a login panel when no token is stored
+- Stores data.access_token after /api/auth/session
+- Calls /api/rehab-arm/app/v1/me with Authorization: Bearer {access_token}
+```
+
+Use the existing cloud test account `3245056131@qq.com` / `1234` for internal verification only. This debug build is still not a medical device release: it displays backend workflow/readiness evidence and does not grant BLE, CAN, motor, or M33 override authority.
+
 Current user-release gate:
 
 ```text
-status: blocked
-reason: the current APK still needs Stitch/frontend wiring for public-config, login token storage, and /api/rehab-arm/app/v1/me bootstrap rendering.
-hardware_protocol: awaiting BLE/M33/M55 packet maps before motion-adjacent UX can be certified.
+status: blocked_for_hardware_protocol
+reason: APK 1.0.1 connects to cloud public-config/catalog/login/me, but BLE/M33/M55 packet maps are still required before motion-adjacent UX can be certified.
+hardware_protocol: awaiting BLE/M33/M55 packet maps
 ```
 
 Backend readiness endpoints:

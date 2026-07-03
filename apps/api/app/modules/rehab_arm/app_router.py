@@ -167,9 +167,9 @@ def api_public_config(request: Request):
             },
             "downloads": {
                 "debug_apk_url": _download_url(api_base),
-                "debug_apk_version": "1.0",
-                "debug_apk_sha256": "C80F78CE4CCF315368ADC13C178E40CA620B2CD3A7CF48EC751CF42F72CB84ED",
-                "debug_apk_status": "preview_static_shell_needs_frontend_login_api_wiring",
+                "debug_apk_version": "1.0.1",
+                "debug_apk_sha256": "F150EF2BA4C42BD66316947EB84DBC4BBCA753029B12DA82E35F46334E69DA97",
+                "debug_apk_status": "backend_connected_debug_build_hardware_protocol_pending",
             },
             "mobile_boot_flow": [
                 {"step": "load_public_config", "endpoint": "/api/rehab-arm/app/v1/public-config", "auth_required": False},
@@ -179,7 +179,7 @@ def api_public_config(request: Request):
             ],
             "release_gate": {
                 "status": "blocked",
-                "reason": "android_wrapper_uses_static_preview_until_frontend_login_api_wiring_is_connected",
+                "reason": "debug_apk_connects_backend_but_hardware_protocol_packet_map_is_still_missing",
                 "checks": [
                     {
                         "code": "PUBLIC_CONFIG_AVAILABLE",
@@ -193,8 +193,8 @@ def api_public_config(request: Request):
                     },
                     {
                         "code": "APK_FRONTEND_API_WIRING",
-                        "status": "blocked",
-                        "description": "Current APK still uses static preview fallback until Stitch/frontend wires login and /me bootstrap.",
+                        "status": "pass",
+                        "description": "Debug APK 1.0.1 loads public-config/catalog and uses Bearer token login before /me bootstrap.",
                     },
                     {
                         "code": "HARDWARE_PROTOCOL_PACKET_MAP",
@@ -203,11 +203,9 @@ def api_public_config(request: Request):
                     },
                 ],
                 "required_frontend_work": [
-                    "load public-config on app start",
-                    "post credentials to auth.session_endpoint",
-                    "store data.access_token securely",
-                    "send Authorization: Bearer {access_token} on rehab app API calls",
-                    "render /api/rehab-arm/app/v1/me instead of local preview defaults",
+                    "replace the temporary bridge login panel with Stitch-designed screens",
+                    "render catalog/profile/device/plan/readiness fields inside Stitch pages",
+                    "preserve Authorization: Bearer {access_token} on rehab app API calls",
                 ],
             },
             "required_profile_fields": ["affected_side", "rehab_stage", "pain_baseline"],

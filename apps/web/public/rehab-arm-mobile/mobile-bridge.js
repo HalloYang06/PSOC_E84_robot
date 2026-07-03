@@ -7,63 +7,34 @@
     "我的": "profile.html"
   };
 
+  const DEFAULT_API_BASE = "http://106.55.62.122:8011";
   const API_BASE_KEY = "rehabArmMobileApiBase";
+  const TOKEN_KEY = "rehabArmAccessToken";
   const STORE_KEY = "rehabArmMobileState";
   const DEFAULT_STATE = {
-    profile: {
-      name: "康复用户",
-      role: "patient",
-      affected_side: "left",
-      rehab_stage: "early_active",
-      medical_constraints: ["M33 审核后执行"],
-      pain_baseline: 2
-    },
-    devices: [
-      {
-        id: "local-m33",
-        m33_device_id: "m33-rehab-arm-local",
-        ble_name: "ArmControl-Local",
-        firmware_version: "m33-preview",
-        trust_status: "unverified",
-        latest_sync: null,
-        control_boundary: "device_binding_only_not_motion_permission"
-      }
-    ],
-    plans: [
-      {
-        id: "local-plan-elbow",
-        title: "屈肘训练",
-        movement_type: "elbow_flexion",
-        sets: 3,
-        reps: 8,
-        duration_sec: 600,
-        assist_level: 0.25,
-        status: "active",
-        control_boundary: "training_plan_only_not_motor_command"
-      }
-    ],
-    latestEmg: {
-      session_id: "local-session",
-      channel: "ch1",
-      muscle_name: "biceps",
-      rms_avg: 0.42,
-      peak: 0.7,
-      activation_avg: 0.55,
-      fatigue_index: 0.18,
-      contact_quality: "preview",
-      control_boundary: "emg_summary_only_not_motion_permission"
-    },
+    profile: null,
+    devices: [],
+    plans: [],
+    catalog: null,
+    bootstrap: null,
+    publicConfig: null,
+    latestEmg: null,
     lastSync: null,
-    lastSession: null,
-    offline: true
+    online: false,
+    authenticated: false,
+    statusText: "正在连接后端..."
   };
 
-  function readState() {
+  function readJson(key, fallback) {
     try {
-      return Object.assign({}, DEFAULT_STATE, JSON.parse(localStorage.getItem(STORE_KEY) || "{}"));
+      return Object.assign({}, fallback, JSON.parse(localStorage.getItem(key) || "{}"));
     } catch (_error) {
-      return Object.assign({}, DEFAULT_STATE);
+      return Object.assign({}, fallback);
     }
+  }
+
+  function readState() {
+    return readJson(STORE_KEY, DEFAULT_STATE);
   }
 
   function writeState(nextState) {
@@ -71,22 +42,25 @@
   }
 
   function apiBase() {
-    return localStorage.getItem(API_BASE_KEY) || "";
+    const stored = localStorage.getItem(API_BASE_KEY);
+    if (stored) return stored;
+    localStorage.setItem(API_BASE_KEY, DEFAULT_API_BASE);
+    return DEFAULT_API_BASE;
+  }
+
+  function token() {
+    return localStorage.getItem(TOKEN_KEY) || "";
   }
 
   async function api(path, options) {
-    const base = apiBase();
-    if (!base) {
-      throw new Error("API base is not configured");
-    }
-    const response = await fetch(base.replace(/\/$/, "") + path, {
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      ...options
-    });
+    const headers = { "Content-Type": "application/json", ...(options && options.headers ? options.headers : {}) };
+    const accessToken = token();
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    const response = await fetch(apiBase().replace(/\/$/, "") + path, { ...options, headers });
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(body && body.error ? body.error.message : "API request failed");
+      const message = body && body.error ? body.error.message || body.error.code : "API request failed";
+      throw new Error(message);
     }
     return body.data;
   }
@@ -105,24 +79,18 @@
         "max-width:398px",
         "margin:0 auto",
         "padding:12px 14px",
-        "border-radius:12px",
+        "border-radius:8px",
         "font:600 13px/1.45 Inter,system-ui,sans-serif",
-        "box-shadow:0 10px 28px rgba(15,23,42,.18)",
-        "transition:opacity .2s ease, transform .2s ease"
+        "box-shadow:0 10px 28px rgba(15,23,42,.18)"
       ].join(";");
       document.body.appendChild(node);
     }
     node.textContent = message;
-    node.style.background = tone === "warn" ? "#fff7ed" : "#eff6ff";
-    node.style.color = tone === "warn" ? "#9a3412" : "#1d4ed8";
-    node.style.border = tone === "warn" ? "1px solid #fed7aa" : "1px solid #bfdbfe";
-    node.style.opacity = "1";
-    node.style.transform = "translateY(0)";
+    node.style.background = tone === "warn" ? "#fff7ed" : "#ecfdf5";
+    node.style.color = tone === "warn" ? "#9a3412" : "#047857";
+    node.style.border = tone === "warn" ? "1px solid #fed7aa" : "1px solid #a7f3d0";
     window.clearTimeout(toast.timer);
-    toast.timer = window.setTimeout(() => {
-      node.style.opacity = "0";
-      node.style.transform = "translateY(8px)";
-    }, 2600);
+    toast.timer = window.setTimeout(() => node.remove(), 3200);
   }
 
   function pageName() {
@@ -148,91 +116,184 @@
         event.preventDefault();
         navigate(PAGE_BY_LABEL[target]);
       });
-      item.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          navigate(PAGE_BY_LABEL[target]);
-        }
-      });
     });
   }
 
-  function addStatusStrip(state) {
-    if (document.querySelector("[data-arm-status]")) return;
-    const strip = document.createElement("div");
-    strip.setAttribute("data-arm-status", "true");
-    strip.style.cssText = [
-      "position:sticky",
-      "top:0",
-      "z-index:30",
-      "margin:0 auto",
-      "max-width:780px",
-      "padding:8px 16px",
-      "background:rgba(239,246,255,.94)",
-      "border-bottom:1px solid #bfdbfe",
-      "color:#1e3a8a",
-      "font:600 12px/1.4 Inter,system-ui,sans-serif",
-      "backdrop-filter:blur(14px)"
-    ].join(";");
-    strip.textContent = state.offline
-      ? "PWA 预览模式：使用本地缓存数据；训练计划同步只代表提交给 M33 审核。"
-      : "已连接 App 后端：当前页面只处理档案、设备绑定、计划和证据记录，不发送电机命令。";
-    document.body.prepend(strip);
+  function statusTone(state) {
+    if (!state.online) return { bg: "#fff7ed", border: "#fed7aa", color: "#9a3412" };
+    if (!state.authenticated) return { bg: "#eff6ff", border: "#bfdbfe", color: "#1d4ed8" };
+    return { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" };
   }
 
-  function annotatePage(state) {
-    const current = pageName();
-    if (current === "device.html") {
-      const device = state.devices && state.devices[0];
-      if (device) {
-        replaceFirst(["M33-Cortex", "ArmControl"], device.ble_name || device.m33_device_id);
-        replaceFirst(["已连接"], device.trust_status === "trusted" ? "已绑定" : "待验证");
+  function upsertStatusStrip(state) {
+    let strip = document.querySelector("[data-arm-status]");
+    if (!strip) {
+      strip = document.createElement("div");
+      strip.setAttribute("data-arm-status", "true");
+      strip.style.cssText = [
+        "position:sticky",
+        "top:0",
+        "z-index:30",
+        "margin:0 auto",
+        "max-width:780px",
+        "padding:8px 16px",
+        "font:600 12px/1.4 Inter,system-ui,sans-serif",
+        "backdrop-filter:blur(14px)"
+      ].join(";");
+      document.body.prepend(strip);
+    }
+    const tone = statusTone(state);
+    strip.style.background = tone.bg;
+    strip.style.borderBottom = `1px solid ${tone.border}`;
+    strip.style.color = tone.color;
+    strip.textContent = state.statusText || "灵动康复 ArmControl";
+  }
+
+  function createLoginPanel(state) {
+    if (token() || document.querySelector("[data-arm-login]")) return;
+    const panel = document.createElement("form");
+    panel.setAttribute("data-arm-login", "true");
+    panel.style.cssText = [
+      "position:fixed",
+      "left:14px",
+      "right:14px",
+      "bottom:16px",
+      "z-index:9998",
+      "max-width:398px",
+      "margin:0 auto",
+      "padding:12px",
+      "background:#ffffff",
+      "border:1px solid #cbd5e1",
+      "border-radius:8px",
+      "box-shadow:0 16px 40px rgba(15,23,42,.18)",
+      "font:500 12px/1.35 Inter,system-ui,sans-serif"
+    ].join(";");
+    panel.innerHTML = [
+      '<div style="font-weight:800;color:#0f172a;margin-bottom:8px">登录后查看真实后端数据</div>',
+      '<input name="email" placeholder="账号/邮箱" autocomplete="username" style="box-sizing:border-box;width:100%;height:38px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px" />',
+      '<input name="password" placeholder="密码" type="password" autocomplete="current-password" style="box-sizing:border-box;width:100%;height:38px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px" />',
+      '<button type="submit" style="width:100%;height:38px;border:0;border-radius:6px;background:#0f766e;color:white;font-weight:800">连接后端</button>',
+      `<div style="margin-top:8px;color:#64748b">API: ${apiBase()}；当前${state.online ? "已连 public-config" : "等待连接"}。</div>`
+    ].join("");
+    panel.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = new FormData(panel);
+      try {
+        const session = await api("/api/auth/session", {
+          method: "POST",
+          body: JSON.stringify({ email: String(form.get("email") || ""), password: String(form.get("password") || "") })
+        });
+        if (!session || !session.access_token) throw new Error("登录响应缺少 access_token");
+        localStorage.setItem(TOKEN_KEY, session.access_token);
+        panel.remove();
+        toast("已登录，正在读取 /me 闭环状态");
+        await refreshFromBackend();
+      } catch (error) {
+        toast(error.message || "登录失败", "warn");
       }
-    }
-    if (current === "profile.html" && state.profile) {
-      replaceFirst(["RoboRehab Controller"], "灵动康复 ArmControl");
-      replaceFirst(["Sarah Chen", "康复用户"], state.profile.name || "康复用户");
-    }
-    if (current === "emg.html" && state.latestEmg) {
-      replaceFirst(["肱二头肌", "biceps"], state.latestEmg.muscle_name || "biceps");
-    }
+    });
+    document.body.appendChild(panel);
   }
 
   function replaceFirst(candidates, value) {
+    if (value === undefined || value === null || value === "") return;
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) {
       const node = walker.currentNode;
       const text = node.nodeValue || "";
       const hit = candidates.find((candidate) => text.includes(candidate));
       if (hit) {
-        node.nodeValue = text.replace(hit, value);
+        node.nodeValue = text.replace(hit, String(value));
         return;
       }
+    }
+  }
+
+  function annotatePage(state) {
+    const current = pageName();
+    const bootstrap = state.bootstrap || {};
+    const profile = bootstrap.profile || state.profile;
+    const devices = bootstrap.devices || state.devices || [];
+    const plans = bootstrap.training_plans || state.plans || [];
+    const catalog = state.catalog || {};
+    const readiness = bootstrap.mobile_readiness_guide || {};
+    if (current === "profile.html" && profile) {
+      replaceFirst(["Sarah Chen", "康复用户"], profile.name || "康复用户");
+      replaceFirst(["RoboRehab Controller"], "灵动康复 ArmControl");
+    }
+    if (current === "device.html") {
+      const device = devices[0];
+      replaceFirst(["M33-Cortex", "ArmControl"], device ? device.ble_name || device.m33_device_id : "等待绑定 M33");
+      replaceFirst(["已连接"], device && device.trust_status === "trusted" ? "已绑定" : "待绑定");
+    }
+    if (current === "training-library.html" || current === "ai-plan.html") {
+      const movement = catalog.training_movements && catalog.training_movements[0];
+      replaceFirst(["屈肘训练"], movement ? movement.label : "目录加载中");
+      replaceFirst(["AI 规划"], readiness.status === "blocked" ? "后端门禁待完成" : "AI 规划");
+    }
+    if (current === "emg.html") {
+      replaceFirst(["肱二头肌", "biceps"], state.latestEmg ? state.latestEmg.muscle_name : "等待肌电记录");
+    }
+    if (current === "home.html") {
+      replaceFirst(["今日训练"], readiness.status === "blocked" ? "真实后端已连接：仍有门禁" : "今日训练");
+    }
+    if (plans[0]) {
+      replaceFirst(["3组", "3 组"], `${plans[0].sets || 0}组`);
+      replaceFirst(["8次", "8 次"], `${plans[0].reps || 0}次`);
     }
   }
 
   async function refreshFromBackend() {
     const state = readState();
     try {
-      const [profile, devices, plans, latestEmg] = await Promise.all([
-        api("/api/rehab-arm/app/v1/me/profile"),
-        api("/api/rehab-arm/app/v1/devices"),
-        api("/api/rehab-arm/app/v1/training-plans"),
-        api("/api/rehab-arm/app/v1/emg/latest")
-      ]);
+      const publicConfig = await api("/api/rehab-arm/app/v1/public-config");
+      const catalog = await api(publicConfig.rehab_app.catalog_endpoint || "/api/rehab-arm/app/v1/catalog");
+      if (!token()) {
+        const nextState = {
+          ...state,
+          publicConfig,
+          catalog,
+          online: true,
+          authenticated: false,
+          statusText: `已连接后端配置：${publicConfig.app_name}；请登录读取 /me。`
+        };
+        writeState(nextState);
+        upsertStatusStrip(nextState);
+        createLoginPanel(nextState);
+        annotatePage(nextState);
+        return nextState;
+      }
+      const bootstrap = await api("/api/rehab-arm/app/v1/me");
+      const latestEmg = await api("/api/rehab-arm/app/v1/emg/latest").catch(() => null);
       const nextState = {
         ...state,
-        profile: profile || state.profile,
-        devices: devices && devices.length ? devices : state.devices,
-        plans: plans && plans.length ? plans : state.plans,
-        latestEmg: latestEmg || state.latestEmg,
-        offline: false
+        publicConfig,
+        catalog,
+        bootstrap,
+        profile: bootstrap.profile,
+        devices: bootstrap.devices || [],
+        plans: bootstrap.training_plans || [],
+        latestEmg,
+        online: true,
+        authenticated: true,
+        statusText: `已连接后端：${bootstrap.mobile_readiness_guide ? bootstrap.mobile_readiness_guide.summary : "读取成功"}`
       };
       writeState(nextState);
+      upsertStatusStrip(nextState);
+      annotatePage(nextState);
       return nextState;
-    } catch (_error) {
-      writeState({ ...state, offline: true });
-      return { ...state, offline: true };
+    } catch (error) {
+      const nextState = {
+        ...state,
+        online: false,
+        authenticated: Boolean(token()),
+        statusText: `后端连接失败：${error.message || "请检查网络"}`
+      };
+      writeState(nextState);
+      upsertStatusStrip(nextState);
+      createLoginPanel(nextState);
+      annotatePage(nextState);
+      return nextState;
     }
   }
 
@@ -241,33 +302,35 @@
     if (label.includes("同步")) {
       const plan = state.plans && state.plans[0];
       const device = state.devices && state.devices[0];
-      if (!plan || !device || plan.id.startsWith("local-") || device.id.startsWith("local-")) {
-        toast("已记录本地同步意图；真实动作仍需后端登录和 M33 审核。", "warn");
+      if (!token() || !plan || !device) {
+        toast("请先登录并完成设备/计划；App 不使用本地 demo 同步。", "warn");
         return;
       }
       const sync = await api(`/api/rehab-arm/app/v1/training-plans/${plan.id}/sync-to-device`, {
         method: "POST",
         body: JSON.stringify({ device_id: device.id })
       });
-      writeState({ ...state, lastSync: sync, offline: false });
+      writeState({ ...state, lastSync: sync });
       toast("训练计划已提交给 M33 审核，不是运动许可。");
       return;
     }
     if (label.includes("开始训练") || label.includes("play_arrow")) {
       navigate("training-session.html");
-      toast("进入训练监控页；启动真实运动仍由 M33 安全系统决定。", "warn");
+      toast("进入训练记录页；真实运动仍由 M33 最终决定。", "warn");
       return;
     }
-    if (label.includes("配对") || label.includes("绑定")) {
-      toast("手机端设备绑定入口已就绪；后续接 BLE/登录后写入后端。");
+    if (label.includes("退出") || label.includes("注销")) {
+      localStorage.removeItem(TOKEN_KEY);
+      toast("已退出登录");
+      await refreshFromBackend();
       return;
     }
     if (label.includes("急停") || label.includes("停止") || label.includes("block")) {
-      toast("App 只能记录/请求停止状态，不能释放急停或绕过 M33。", "warn");
+      toast("App 只能记录停止请求，不能释放急停或绕过 M33。", "warn");
       return;
     }
     if (label.includes("校准")) {
-      toast("校准结果会作为肌电证据记录，不直接驱动电机。");
+      toast("校准结果会作为证据记录，不直接驱动电机。");
     }
   }
 
@@ -283,8 +346,7 @@
   document.addEventListener("DOMContentLoaded", async () => {
     bindNav();
     bindActions();
-    const state = await refreshFromBackend();
-    addStatusStrip(state);
-    annotatePage(state);
+    upsertStatusStrip(readState());
+    await refreshFromBackend();
   });
 })();

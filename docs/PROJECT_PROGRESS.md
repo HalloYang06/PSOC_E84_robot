@@ -101,6 +101,9 @@
 
 ## 2026-07-03
 
+- Built and prepared Android debug APK `1.0.1` (`versionCode=2`) for `com.lingdong.rehabarm`. The package now bundles the updated mobile bridge that defaults to `http://106.55.62.122:8011`, loads `public-config` and `catalog`, shows a login panel, stores `data.access_token`, calls `/api/rehab-arm/app/v1/me` with `Authorization: Bearer`, and displays backend readiness instead of silent static preview data.
+- Updated `public-config.downloads` to APK version `1.0.1`, SHA256 `F150EF2BA4C42BD66316947EB84DBC4BBCA753029B12DA82E35F46334E69DA97`, and status `backend_connected_debug_build_hardware_protocol_pending`. Release gate now marks APK frontend API wiring as passed while keeping hardware protocol packet maps as the remaining product blocker.
+- Validation passed locally: `node --check` for the packaged `mobile-bridge.js`, Android `assembleDebug`, `apksigner verify --verbose --print-certs`, `aapt dump badging` (`versionName=1.0.1`, `versionCode=2`), copied APK SHA256 verification, and `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`).
 - Added the public rehab-arm App catalog endpoint `GET /api/rehab-arm/app/v1/catalog`, and exposed it from `public-config.rehab_app.catalog_endpoint` so Stitch/mobile screens can render profile options and training movement choices from backend data instead of demo constants.
 - Training plan create/update now validates `movement_type` against the catalog, fills catalog defaults for target joints, angle range, EMG policy, and safety constraints, and rejects unsupported demo/custom movement strings with `TRAINING_MOVEMENT_UNSUPPORTED`.
 - Validation passed locally: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, existing deprecation warnings only).

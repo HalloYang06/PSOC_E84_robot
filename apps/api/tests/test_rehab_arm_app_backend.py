@@ -166,14 +166,16 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         "fetch_rehab_bootstrap",
     ]
     assert config_data["release_gate"]["status"] == "blocked"
-    assert "Authorization: Bearer" in config_data["release_gate"]["required_frontend_work"][3]
+    assert any("Authorization: Bearer" in item for item in config_data["release_gate"]["required_frontend_work"])
     release_checks = {item["code"]: item for item in config_data["release_gate"]["checks"]}
     assert release_checks["PUBLIC_CONFIG_AVAILABLE"]["status"] == "pass"
     assert release_checks["TOKEN_AUTH_CONTRACT"]["status"] == "pass"
-    assert release_checks["APK_FRONTEND_API_WIRING"]["status"] == "blocked"
+    assert release_checks["APK_FRONTEND_API_WIRING"]["status"] == "pass"
     assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "awaiting_protocol"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
-    assert config_data["downloads"]["debug_apk_status"] == "preview_static_shell_needs_frontend_login_api_wiring"
+    assert config_data["downloads"]["debug_apk_version"] == "1.0.1"
+    assert config_data["downloads"]["debug_apk_sha256"] == "F150EF2BA4C42BD66316947EB84DBC4BBCA753029B12DA82E35F46334E69DA97"
+    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_debug_build_hardware_protocol_pending"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
     catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
     assert catalog_response.status_code == 200
