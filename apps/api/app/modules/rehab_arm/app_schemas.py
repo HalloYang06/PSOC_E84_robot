@@ -363,3 +363,10 @@ class RehabAppOfflineQueueReviewRequest(BaseModel):
     reviewer_role: str = Field(default="patient", max_length=40)
     review_status: str = Field(default="reviewed", pattern="^(reviewed|ignored|duplicate|replaced)$", max_length=40)
     note: str = Field(min_length=1, max_length=1000)
+
+
+class RehabAppWorkflowActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action_code: str = Field(min_length=1, max_length=80)
+    payload: dict = Field(default_factory=dict)

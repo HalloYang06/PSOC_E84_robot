@@ -39,6 +39,7 @@ from .app_schemas import (
     RehabAppTrainingPlanCreate,
     RehabAppTrainingPlanSyncRequest,
     RehabAppTrainingPlanUpdate,
+    RehabAppWorkflowActionRequest,
 )
 from .app_service import (
     accept_ai_training_draft,
@@ -52,6 +53,7 @@ from .app_service import (
     create_training_plan,
     draft_next_plan_from_report,
     emg_history,
+    execute_workflow_action,
     generate_ai_training_draft,
     get_app_catalog,
     generate_training_report,
@@ -163,15 +165,16 @@ def api_public_config(request: Request):
             "rehab_app": {
                 "bootstrap_endpoint": "/api/rehab-arm/app/v1/me",
                 "workflow_endpoint": "/api/rehab-arm/app/v1/me/workflow",
+                "workflow_action_endpoint": "/api/rehab-arm/app/v1/me/workflow/actions",
                 "profile_endpoint": "/api/rehab-arm/app/v1/me/profile",
                 "catalog_endpoint": "/api/rehab-arm/app/v1/catalog",
                 "public_config_endpoint": "/api/rehab-arm/app/v1/public-config",
             },
             "downloads": {
                 "debug_apk_url": _download_url(api_base),
-                "debug_apk_version": "1.0.3",
-                "debug_apk_sha256": "F79334A33AAE69946CA0240022A5649B25CBE15F92F386B5E3DE6659ECA486BC",
-                "debug_apk_status": "backend_connected_workflow_panel_debug_build_hardware_protocol_pending",
+                "debug_apk_version": "1.0.4",
+                "debug_apk_sha256": "DFCBD3EADEE230947A0E6FC5AFCADAD46095CCC5963A9FE9ACDF7EBC355031B2",
+                "debug_apk_status": "backend_connected_workflow_action_debug_build_hardware_protocol_pending",
             },
             "mobile_boot_flow": [
                 {"step": "load_public_config", "endpoint": "/api/rehab-arm/app/v1/public-config", "auth_required": False},
@@ -179,6 +182,7 @@ def api_public_config(request: Request):
                 {"step": "fetch_workspace_user", "endpoint": "/api/auth/me", "auth_required": True},
                 {"step": "fetch_rehab_bootstrap", "endpoint": "/api/rehab-arm/app/v1/me", "auth_required": True},
                 {"step": "fetch_rehab_workflow", "endpoint": "/api/rehab-arm/app/v1/me/workflow", "auth_required": True},
+                {"step": "execute_safe_rehab_workflow_action", "endpoint": "/api/rehab-arm/app/v1/me/workflow/actions", "auth_required": True},
             ],
             "release_gate": {
                 "status": "blocked",
@@ -197,7 +201,7 @@ def api_public_config(request: Request):
                     {
                         "code": "APK_FRONTEND_API_WIRING",
                         "status": "pass",
-                        "description": "Debug APK 1.0.3 loads public-config/catalog/workflow, uses Bearer token login, and overlays backend workflow/readiness instead of static success claims.",
+                        "description": "Debug APK 1.0.4 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, and can execute safe workflow actions through /me/workflow/actions.",
                     },
                     {
                         "code": "HARDWARE_PROTOCOL_PACKET_MAP",
@@ -236,6 +240,11 @@ def api_get_me(request: Request, db: Session = Depends(get_db)):
 @router.get("/me/workflow")
 def api_get_me_workflow(request: Request, db: Session = Depends(get_db)):
     return ok(get_app_workflow(db, _user_id(db, request)))
+
+
+@router.post("/me/workflow/actions")
+def api_execute_me_workflow_action(payload: RehabAppWorkflowActionRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(execute_workflow_action(db, _user_id(db, request), payload.action_code, payload.payload))
 
 
 @router.patch("/me/profile")

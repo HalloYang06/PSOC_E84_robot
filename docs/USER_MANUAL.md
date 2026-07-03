@@ -254,13 +254,15 @@ APK details:
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0.3
-sha256: F79334A33AAE69946CA0240022A5649B25CBE15F92F386B5E3DE6659ECA486BC
+version: 1.0.4 debug
+versionCode: 5
+size: 4,173,198 bytes
+sha256: DFCBD3EADEE230947A0E6FC5AFCADAD46095CCC5963A9FE9ACDF7EBC355031B2
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
 
-APK 1.0.3 behavior:
+APK 1.0.4 behavior:
 
 ```text
 - Starts with cloud API base http://106.55.62.122:8011
@@ -270,15 +272,26 @@ APK 1.0.3 behavior:
 - Calls /api/rehab-arm/app/v1/me with Authorization: Bearer {access_token}
 - Shows a real backend evidence panel and suppresses static success claims when gates are blocked
 - Calls /api/rehab-arm/app/v1/me/workflow and shows backend phase, next action, action queue, blockers, and forbidden actions
+- Calls /api/rehab-arm/app/v1/me/workflow/actions for backend-allowed safe workflow actions
 ```
 
 Use the existing cloud test account `3245056131@qq.com` / `1234` for internal verification only. This debug build is still not a medical device release: it displays backend workflow/readiness evidence and does not grant BLE, CAN, motor, or M33 override authority.
+
+Workflow action execution:
+
+```text
+POST /api/rehab-arm/app/v1/me/workflow/actions
+{"action_code":"GENERATE_TRAINING_REPORT","payload":{}}
+```
+
+The backend only executes actions present in the current workflow queue and rejects forbidden motion/hardware actions such as direct motor commands, CAN frame send, M33 override, emergency-stop release, M33 decision spoofing, or App-granted motion permission.
+
 
 Current user-release gate:
 
 ```text
 status: blocked_for_hardware_protocol
-reason: APK 1.0.3 connects to cloud public-config/catalog/login/me/workflow and displays backend workflow evidence, but BLE/M33/M55 packet maps are still required before motion-adjacent UX can be certified.
+reason: APK 1.0.4 connects to cloud public-config/catalog/login/me/workflow, executes backend-allowed safe workflow actions, and displays backend workflow evidence, but BLE/M33/M55 packet maps are still required before motion-adjacent UX can be certified.
 hardware_protocol: awaiting BLE/M33/M55 packet maps
 ```
 

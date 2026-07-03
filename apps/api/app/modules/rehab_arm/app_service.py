@@ -42,6 +42,8 @@ from .app_schemas import (
     RehabAppTrainingReportReviewCreate,
     RehabAppTrainingPlanCreate,
     RehabAppTrainingPlanUpdate,
+    RehabAppTrainingSessionFinishRequest,
+    RehabAppTrainingSessionProgressRequest,
 )
 
 
@@ -2423,6 +2425,171 @@ def get_app_workflow(db: Session, user_id: str) -> dict:
         ],
         "control_boundary": "app_workflow_evidence_only_not_motion_permission",
     }
+
+
+WORKFLOW_FORBIDDEN_ACTIONS = {
+    "M33_ACCEPTANCE_REQUIRED",
+    "RECORD_M33_DECISION",
+    "DIRECT_MOTOR_COMMAND",
+    "MOTOR_COMMAND",
+    "CAN_FRAME_SEND",
+    "M33_SAFETY_OVERRIDE",
+    "M33_OVERRIDE",
+    "RELEASE_ESTOP",
+    "MOTION_PERMISSION_GRANTED_BY_APP",
+}
+
+
+WORKFLOW_EXECUTABLE_ACTIONS = {
+    "READY_TO_START",
+    "FINISH_SESSION",
+    "RECORD_PROGRESS",
+    "RESUME_SESSION",
+    "CANCEL_SESSION",
+    "RECORD_SAFETY_REVIEW",
+    "GENERATE_TRAINING_REPORT",
+    "RECORD_REPORT_REVIEW",
+    "DRAFT_NEXT_PLAN_FROM_REPORT",
+    "ACCEPT_AI_DRAFT",
+    "REPLAY_OFFLINE_EVIDENCE",
+    "REVIEW_FAILED_OFFLINE_ITEM",
+    "SYNC_ACCEPTED_PLAN_TO_M33",
+}
+
+
+def _normalized_workflow_action_code(action_code: str) -> str:
+    return str(action_code or "").strip().upper().replace("-", "_").replace(" ", "_")
+
+
+def _workflow_action_lookup(workflow: dict, action_code: str) -> dict | None:
+    normalized = _normalized_workflow_action_code(action_code)
+    for action in workflow.get("action_queue") or []:
+        if _normalized_workflow_action_code(str(action.get("code") or "")) == normalized:
+            return action
+    return None
+
+
+def _workflow_action_error_details(workflow: dict) -> dict:
+    return {
+        "current_next_action": ((workflow.get("next_action") or {}).get("code") or ""),
+        "available_action_codes": [item.get("code") for item in workflow.get("action_queue") or [] if item.get("code")],
+        "forbidden_actions": workflow.get("forbidden_actions") or [],
+        "control_boundary": "app_workflow_evidence_only_not_motion_permission",
+    }
+
+
+def _workflow_action_response(db: Session, user_id: str, action_code: str, result: dict) -> dict:
+    return {
+        "action_code": action_code,
+        "result": result,
+        "workflow": get_app_workflow(db, user_id),
+        "control_boundary": "app_workflow_evidence_only_not_motion_permission",
+    }
+
+
+def execute_workflow_action(db: Session, user_id: str, action_code: str, payload: dict | None = None) -> dict:
+    normalized = _normalized_workflow_action_code(action_code)
+    workflow = get_app_workflow(db, user_id)
+    if normalized in WORKFLOW_FORBIDDEN_ACTIONS:
+        raise AppError(
+            "WORKFLOW_ACTION_FORBIDDEN",
+            "this workflow action cannot be executed by the App HTTP path",
+            status_code=409,
+            details=_workflow_action_error_details(workflow),
+        )
+    action = _workflow_action_lookup(workflow, normalized)
+    if action is None:
+        raise AppError(
+            "WORKFLOW_ACTION_NOT_AVAILABLE",
+            "workflow action is not available in the current user state",
+            status_code=409,
+            details=_workflow_action_error_details(workflow),
+        )
+    if normalized not in WORKFLOW_EXECUTABLE_ACTIONS:
+        raise AppError(
+            "WORKFLOW_ACTION_NOT_EXECUTABLE",
+            "workflow action is view-only or awaits hardware protocol support",
+            status_code=409,
+            details={**_workflow_action_error_details(workflow), "action_code": normalized},
+        )
+    data = dict(payload or {})
+    entities = workflow.get("primary_entities") or {}
+    hint = action.get("payload_hint") or {}
+
+    if normalized == "READY_TO_START":
+        plan_id = str(data.get("plan_id") or hint.get("plan_id") or entities.get("plan_id") or "")
+        device_id = str(data.get("device_id") or hint.get("device_id") or entities.get("device_id") or "")
+        result = start_training_session(db, user_id, plan_id, device_id)
+    elif normalized == "FINISH_SESSION":
+        session_id = str(data.pop("session_id", "") or entities.get("active_session_id") or "")
+        finish_payload = RehabAppTrainingSessionFinishRequest(**data).model_dump()
+        result = finish_training_session(db, user_id, session_id, finish_payload)
+    elif normalized == "RECORD_PROGRESS":
+        session_id = str(data.pop("session_id", "") or entities.get("active_session_id") or "")
+        progress_payload = RehabAppTrainingSessionProgressRequest(**data).model_dump(exclude_unset=True)
+        result = update_training_session_progress(db, user_id, session_id, progress_payload)
+    elif normalized == "RESUME_SESSION":
+        session_id = str(data.get("session_id") or entities.get("active_session_id") or "")
+        result = resume_training_session(db, user_id, session_id, str(data.get("note") or "workflow action resume"))
+    elif normalized == "CANCEL_SESSION":
+        session_id = str(data.get("session_id") or entities.get("active_session_id") or "")
+        result = cancel_training_session(db, user_id, session_id, str(data.get("reason") or "workflow action cancel"))
+    elif normalized == "RECORD_SAFETY_REVIEW":
+        session_id = str(data.pop("session_id", "") or entities.get("active_session_id") or "")
+        review_payload = {
+            "event_type": "safety_review",
+            "severity": "info",
+            "source": "therapist",
+            "payload": {"review_status": "approved"},
+            "note": "workflow action safety review",
+            **data,
+        }
+        result = record_session_safety_event(db, user_id, session_id, RehabAppSessionSafetyEventCreate(**review_payload))
+    elif normalized == "GENERATE_TRAINING_REPORT":
+        session_id = str(data.get("session_id") or hint.get("session_id") or entities.get("active_session_id") or "")
+        result = generate_training_report(db, user_id, session_id)
+    elif normalized == "RECORD_REPORT_REVIEW":
+        report_id = str(data.pop("report_id", "") or entities.get("latest_report_id") or "")
+        review_payload = {
+            "reviewer_role": "patient",
+            "review_status": "reviewed",
+            "reviewer_note": "workflow action review",
+            "next_step": "continue_current_plan",
+            "request_new_plan": False,
+            "follow_up_payload": {"source": "workflow_action"},
+            **data,
+        }
+        result = create_training_report_review(db, user_id, report_id, RehabAppTrainingReportReviewCreate(**review_payload))
+    elif normalized == "DRAFT_NEXT_PLAN_FROM_REPORT":
+        report_id = str(data.get("report_id") or hint.get("report_id") or entities.get("latest_report_id") or "")
+        result = draft_next_plan_from_report(db, user_id, report_id)
+    elif normalized == "ACCEPT_AI_DRAFT":
+        draft_id = str(data.get("draft_id") or hint.get("draft_id") or entities.get("latest_open_ai_draft_id") or "")
+        result = accept_ai_training_draft(db, user_id, draft_id)
+    elif normalized == "REPLAY_OFFLINE_EVIDENCE":
+        item_ids = list(data.get("item_ids") or hint.get("item_ids") or [])
+        result = replay_offline_queue(db, user_id, item_ids)
+    elif normalized == "REVIEW_FAILED_OFFLINE_ITEM":
+        item_id = str(data.pop("item_id", "") or hint.get("item_id") or "")
+        review_payload = {
+            "reviewer_role": "patient",
+            "review_status": "reviewed",
+            "note": "workflow action reviewed failed offline evidence",
+            **data,
+        }
+        result = review_failed_offline_item(db, user_id, item_id, RehabAppOfflineQueueReviewRequest(**review_payload))
+    elif normalized == "SYNC_ACCEPTED_PLAN_TO_M33":
+        plan_id = str(data.get("plan_id") or entities.get("plan_id") or "")
+        device_id = str(data.get("device_id") or hint.get("device_id") or entities.get("device_id") or "")
+        result = sync_training_plan_to_device(db, user_id, plan_id, device_id)
+    else:
+        raise AppError(
+            "WORKFLOW_ACTION_NOT_EXECUTABLE",
+            "workflow action is not implemented for execution",
+            status_code=409,
+            details={**_workflow_action_error_details(workflow), "action_code": normalized},
+        )
+    return _workflow_action_response(db, user_id, normalized, result)
 
 
 def bind_device(db: Session, user_id: str, payload: RehabAppDeviceBindRequest) -> dict:

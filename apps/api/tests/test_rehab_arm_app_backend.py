@@ -159,6 +159,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert config_data["auth"]["required_headers"] == {"Authorization": "Bearer {access_token}"}
     assert config_data["rehab_app"]["bootstrap_endpoint"] == "/api/rehab-arm/app/v1/me"
     assert config_data["rehab_app"]["workflow_endpoint"] == "/api/rehab-arm/app/v1/me/workflow"
+    assert config_data["rehab_app"]["workflow_action_endpoint"] == "/api/rehab-arm/app/v1/me/workflow/actions"
     assert config_data["rehab_app"]["catalog_endpoint"] == "/api/rehab-arm/app/v1/catalog"
     assert [item["step"] for item in config_data["mobile_boot_flow"]] == [
         "load_public_config",
@@ -166,6 +167,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         "fetch_workspace_user",
         "fetch_rehab_bootstrap",
         "fetch_rehab_workflow",
+        "execute_safe_rehab_workflow_action",
     ]
     assert config_data["release_gate"]["status"] == "blocked"
     assert any("Authorization: Bearer" in item for item in config_data["release_gate"]["required_frontend_work"])
@@ -175,9 +177,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["APK_FRONTEND_API_WIRING"]["status"] == "pass"
     assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "awaiting_protocol"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
-    assert config_data["downloads"]["debug_apk_version"] == "1.0.3"
-    assert config_data["downloads"]["debug_apk_sha256"] == "F79334A33AAE69946CA0240022A5649B25CBE15F92F386B5E3DE6659ECA486BC"
-    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_panel_debug_build_hardware_protocol_pending"
+    assert config_data["downloads"]["debug_apk_version"] == "1.0.4"
+    assert config_data["downloads"]["debug_apk_sha256"] == "DFCBD3EADEE230947A0E6FC5AFCADAD46095CCC5963A9FE9ACDF7EBC355031B2"
+    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_debug_build_hardware_protocol_pending"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
     catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
     assert catalog_response.status_code == 200
@@ -2161,3 +2163,118 @@ def test_rehab_arm_app_workflow_contract_tracks_user_loop(tmp_path, monkeypatch)
     assert review_workflow["primary_entities"]["latest_report_id"] == report["id"]
     assert review_workflow["next_action"]["code"] == "REVIEW_LATEST_REPORT"
     assert any(action["code"] == "RECORD_REPORT_REVIEW" for action in review_workflow["action_queue"])
+
+
+def test_rehab_arm_app_workflow_action_endpoint_executes_safe_loop_actions(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+
+    owner_token, _owner_user_id = _issue_rehab_app_token()
+    headers = auth_headers(owner_token)
+
+    client.patch(
+        "/api/rehab-arm/app/v1/me/profile",
+        headers=headers,
+        json={
+            "name": "Workflow Action Patient",
+            "role": "patient",
+            "affected_side": "left",
+            "rehab_stage": "early_active",
+            "pain_baseline": 2,
+        },
+    )
+    device = client.post(
+        "/api/rehab-arm/app/v1/devices/bind",
+        headers=headers,
+        json={"m33_device_id": "m33-workflow-action-alpha", "ble_name": "ArmControl-Action", "trust_status": "trusted"},
+    ).json()["data"]
+    plan = client.post(
+        "/api/rehab-arm/app/v1/training-plans",
+        headers=headers,
+        json={"title": "Workflow action elbow", "movement_type": "elbow_flexion", "sets": 1, "reps": 4, "status": "active"},
+    ).json()["data"]
+
+    forbidden_before_m33 = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={"action_code": "M33_ACCEPTANCE_REQUIRED"},
+    )
+    assert forbidden_before_m33.status_code == 409
+    assert forbidden_before_m33.json()["error"]["code"] == "WORKFLOW_ACTION_FORBIDDEN"
+    assert forbidden_before_m33.json()["error"]["details"]["control_boundary"] == "app_workflow_evidence_only_not_motion_permission"
+
+    sync = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
+        headers=headers,
+        json={"device_id": device["id"]},
+    ).json()["data"]
+    client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/m33-status",
+        headers=headers,
+        json={"sync_id": sync["id"], "sync_status": "m33_accepted", "m33_reason": "accepted for action endpoint test"},
+    )
+    _pass_preflight(owner_token, plan["id"], device["id"], sync["id"])
+
+    start_action = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={"action_code": "READY_TO_START"},
+    )
+    assert start_action.status_code == 200
+    start_data = start_action.json()["data"]
+    assert start_data["action_code"] == "READY_TO_START"
+    assert start_data["result"]["status"] == "started"
+    assert start_data["result"]["control_boundary"] == "training_session_record_only_not_motion_permission"
+    assert start_data["workflow"]["phase"]["status"] == "active_session"
+
+    finish_action = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={"action_code": "FINISH_SESSION", "payload": {"completion_rate": 0.9, "pain_after": 2, "user_note": "action endpoint finish"}},
+    )
+    assert finish_action.status_code == 200
+    assert finish_action.json()["data"]["result"]["status"] == "finished"
+    assert finish_action.json()["data"]["workflow"]["phase"]["status"] == "report_required"
+
+    report_action = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={"action_code": "GENERATE_TRAINING_REPORT"},
+    )
+    assert report_action.status_code == 200
+    report_data = report_action.json()["data"]
+    assert report_data["result"]["summary"]["completion_rate"] == 0.9
+    assert report_data["workflow"]["phase"]["status"] == "report_review_required"
+
+    review_action = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={"action_code": "RECORD_REPORT_REVIEW", "payload": {"next_step": "request_new_plan", "request_new_plan": True}},
+    )
+    assert review_action.status_code == 200
+    assert review_action.json()["data"]["result"]["request_new_plan"] is True
+    assert review_action.json()["data"]["workflow"]["phase"]["status"] == "next_plan_draft_required"
+
+
+def test_rehab_arm_app_workflow_action_endpoint_rejects_unavailable_or_dangerous_actions(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+
+    owner_token, _owner_user_id = _issue_rehab_app_token()
+    headers = auth_headers(owner_token)
+
+    dangerous = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={"action_code": "DIRECT_MOTOR_COMMAND", "payload": {"torque": 1.0}},
+    )
+    assert dangerous.status_code == 409
+    assert dangerous.json()["error"]["code"] == "WORKFLOW_ACTION_FORBIDDEN"
+    assert "direct_motor_command" in dangerous.json()["error"]["details"]["forbidden_actions"]
+
+    unavailable = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={"action_code": "READY_TO_START"},
+    )
+    assert unavailable.status_code == 409
+    assert unavailable.json()["error"]["code"] == "WORKFLOW_ACTION_NOT_AVAILABLE"
+    assert unavailable.json()["error"]["details"]["current_next_action"] == "PROFILE_REQUIRED"

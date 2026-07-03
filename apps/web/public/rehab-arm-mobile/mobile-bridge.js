@@ -237,6 +237,42 @@
     return action.label || action.title || action.code || "等待后端下一步";
   }
 
+  function canExecuteWorkflowAction(action) {
+    const code = action && action.code;
+    return [
+      "READY_TO_START",
+      "FINISH_SESSION",
+      "RECORD_PROGRESS",
+      "RESUME_SESSION",
+      "CANCEL_SESSION",
+      "RECORD_SAFETY_REVIEW",
+      "GENERATE_TRAINING_REPORT",
+      "RECORD_REPORT_REVIEW",
+      "DRAFT_NEXT_PLAN_FROM_REPORT",
+      "ACCEPT_AI_DRAFT",
+      "REPLAY_OFFLINE_EVIDENCE",
+      "REVIEW_FAILED_OFFLINE_ITEM",
+      "SYNC_ACCEPTED_PLAN_TO_M33"
+    ].includes(code);
+  }
+
+  function actionPayload(action) {
+    const hint = (action && action.payload_hint) || {};
+    if (action && action.code === "FINISH_SESSION") {
+      return { completion_rate: 1, pain_after: null, user_note: "手机端完成训练记录" };
+    }
+    if (action && action.code === "RECORD_REPORT_REVIEW") {
+      return {
+        reviewer_role: "patient",
+        review_status: "reviewed",
+        reviewer_note: "手机端已复盘训练报告",
+        next_step: "continue_current_plan",
+        request_new_plan: false
+      };
+    }
+    return hint;
+  }
+
   function insertWorkflowPanel(state) {
     removeWorkflowPanel();
     const workflow = state.workflow || {};
@@ -264,6 +300,9 @@
       `<div style="font-size:16px;font-weight:900;color:#0f172a">${phase.title || "等待后端工作流"}</div>`,
       `<div style="margin-top:4px;color:#334155">${phase.description || "登录后读取 /me/workflow，页面不再使用本地 demo 成功状态。"}</div>`,
       `<div style="margin-top:10px;padding:10px;border-radius:8px;background:#ffffff;border:1px solid #dbeafe"><span style="color:#1d4ed8">下一步：</span>${actionLabel(nextAction)}</div>`,
+      canExecuteWorkflowAction(nextAction)
+        ? `<button type="button" data-arm-workflow-action="${nextAction.code}" style="width:100%;margin-top:10px;padding:10px 12px;border:0;border-radius:8px;background:#1d4ed8;color:#fff;font:900 13px/1.2 Inter,system-ui,sans-serif">执行后端下一步</button>`
+        : '<div style="margin-top:10px;color:#475569">当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。</div>',
       actions.length
         ? `<div style="margin-top:10px;color:#334155">动作队列：${actions.map(actionLabel).join(" / ")}</div>`
         : '<div style="margin-top:10px;color:#334155">动作队列：等待读取后端动作</div>',
@@ -441,6 +480,23 @@
     }
   }
 
+  async function executeWorkflowAction(actionCode) {
+    const state = readState();
+    const workflow = state.workflow || {};
+    const action = [workflow.next_action, ...(workflow.action_queue || [])].find((item) => item && item.code === actionCode);
+    if (!token() || !action) {
+      toast("请先登录并刷新后端工作流。", "warn");
+      return;
+    }
+    const result = await api("/api/rehab-arm/app/v1/me/workflow/actions", {
+      method: "POST",
+      body: JSON.stringify({ action_code: actionCode, payload: actionPayload(action) })
+    });
+    writeState({ ...state, workflow: result.workflow, lastWorkflowAction: result });
+    toast("后端工作流已推进；真实运动许可仍由 M33 裁决。");
+    await refreshFromBackend();
+  }
+
   async function handlePrimaryAction(label) {
     const state = readState();
     if (label.includes("同步")) {
@@ -479,6 +535,12 @@
   }
 
   function bindActions() {
+    document.addEventListener("click", (event) => {
+      const button = event.target && event.target.closest ? event.target.closest("[data-arm-workflow-action]") : null;
+      if (!button) return;
+      event.preventDefault();
+      executeWorkflowAction(button.getAttribute("data-arm-workflow-action")).catch((error) => toast(error.message, "warn"));
+    });
     document.querySelectorAll("button").forEach((button) => {
       button.addEventListener("click", () => {
         const label = (button.textContent || button.innerText || "").trim();

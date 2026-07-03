@@ -307,3 +307,12 @@
 - Validation passed with python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60 from apps/api (7 passed, deprecation warnings only). No credentials or hardware authority are exposed by the public config.
 - Added backend CORS support for rehab-arm mobile shell origins. Settings now include REHAB_ARM_APP_CORS_ORIGINS defaulting to capacitor://localhost, https://localhost, and http://localhost, merged with existing CORS origins so Capacitor/WebView preflight requests can reach public-config and authenticated App APIs after frontend wiring.
 - Validation passed with python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60 from apps/api (7 passed, deprecation warnings only), including an OPTIONS preflight from Origin https://localhost.
+
+## 2026-07-04
+
+- Added `POST /api/rehab-arm/app/v1/me/workflow/actions` as the App's unified safe workflow-action endpoint. It executes only backend-available, whitelisted workflow actions such as `READY_TO_START`, `FINISH_SESSION`, `GENERATE_TRAINING_REPORT`, `RECORD_REPORT_REVIEW`, `DRAFT_NEXT_PLAN_FROM_REPORT`, `ACCEPT_AI_DRAFT`, offline replay/review, and safety-review evidence.
+- Preserved the safety boundary: `M33_ACCEPTANCE_REQUIRED`, `RECORD_M33_DECISION`, direct motor commands, CAN frame send, M33 override, emergency-stop release, and App-granted motion permission are explicitly rejected with `WORKFLOW_ACTION_FORBIDDEN`.
+- Updated `public-config` with `workflow_action_endpoint`, extended `mobile_boot_flow`, and published Android debug APK `1.0.4` (`versionCode=5`) with a workflow panel button that calls the unified endpoint and refreshes backend workflow state.
+- APK `1.0.4` download metadata: `DFCBD3EADEE230947A0E6FC5AFCADAD46095CCC5963A9FE9ACDF7EBC355031B2`, `4,173,198 bytes`, package `com.lingdong.rehabarm`.
+- Validated locally: `python -m pytest apps/api/tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`10 passed`), `node --check` for both PWA and Android `mobile-bridge.js`, `npm run build:debug`, `apksigner verify --verbose`, and `aapt dump badging` showing `versionCode=5 versionName=1.0.4`.
+- Next step: deploy the branch to cloud, verify `/public-config` reports `1.0.4`, download the cloud APK, and QA the phone/PWA workflow-action button with the test account.
