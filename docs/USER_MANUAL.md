@@ -293,3 +293,24 @@ python scripts\check_web_api_alignment.py --web-base http://106.55.62.122:3001 -
 ```
 
 Pass criteria: ok is true, direct API and Web proxy deployment metadata match, and /api/rehab-arm/app/v1/me returns workflow guidance only. App HTTP responses do not grant BLE, CAN, motor, or M33 override authority.
+
+## Rehab Arm App Profile Setup
+
+The first-run profile action can be called with only the fields advertised by `/api/rehab-arm/app/v1/me.onboarding_guide.next_step.payload_hint`:
+
+```http
+PATCH /api/rehab-arm/app/v1/me/profile
+```
+
+Example payload:
+
+```json
+{
+  "affected_side": "left",
+  "rehab_stage": "early_active",
+  "pain_baseline": 2,
+  "medical_constraints": ["no overhead motion"]
+}
+```
+
+If `name` is omitted on first creation, the backend stores a default profile name. Later partial PATCH calls preserve existing fields unless a field is explicitly sent.
