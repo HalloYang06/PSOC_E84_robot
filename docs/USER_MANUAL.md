@@ -274,3 +274,22 @@ apps/mobile/rehab-arm-android/android/app/build/outputs/apk/debug/app-debug.apk
 On the rehab-arm control-room page, open the `AI模型` workspace from the top navigation or left module rail. The model relay console now stays inside the same control-room page and includes provider configuration, high-level prompt suggestions, restricted device token generation, HTTP/XiaoZhi endpoints, and relay audit events.
 
 Safety rule: AI model output is review/dry-run evidence only. It does not send CAN frames, motor current, motor torque, raw joint position/velocity, M33 overrides, or emergency-stop release commands.
+
+## Rehab Arm Cloud Backend Verification
+
+Current cloud backend deployment:
+
+```text
+Web: http://106.55.62.122:3001
+API: http://106.55.62.122:8011
+build_sha: 17d7e78b2b10
+build_ref: app/rehab-arm-mobile-stitch
+```
+
+Verify Web/API alignment:
+
+```powershell
+python scripts\check_web_api_alignment.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id e201f41c-25a6-46e1-baf8-be6dcb83284c
+```
+
+Pass criteria: ok is true, direct API and Web proxy deployment metadata match, and /api/rehab-arm/app/v1/me returns workflow guidance only. App HTTP responses do not grant BLE, CAN, motor, or M33 override authority.
