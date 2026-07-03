@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.common.access import resolve_human_principal, resolve_project_write_principal
@@ -389,8 +389,16 @@ def api_enqueue_offline_item(payload: RehabAppOfflineQueueItemCreate, request: R
 
 
 @router.get("/offline-queue")
-def api_list_offline_queue(request: Request, db: Session = Depends(get_db)):
-    return ok(list_offline_queue(db, _user_id(db, request)))
+def api_list_offline_queue(
+    request: Request,
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+):
+    normalized_status = status.strip().lower() if status else None
+    if normalized_status and normalized_status not in {"queued", "replayed", "failed"}:
+        normalized_status = None
+    return ok(list_offline_queue(db, _user_id(db, request), status=normalized_status, limit=limit))
 
 
 @router.post("/offline-queue/replay")

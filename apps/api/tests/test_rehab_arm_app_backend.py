@@ -1504,6 +1504,20 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     assert failed_offline_guide["counts"]["failed"] == 1
     assert failed_offline_guide["failed_item_ids"] == [bad_queue_item["id"]]
     assert failed_offline_guide["actions"][0]["code"] == "VIEW_OFFLINE_QUEUE"
+    failed_queue = client.get(
+        "/api/rehab-arm/app/v1/offline-queue",
+        headers=auth_headers(owner_token),
+        params={"status": "failed"},
+    )
+    assert failed_queue.status_code == 200
+    assert [item["id"] for item in failed_queue.json()["data"]] == [bad_queue_item["id"]]
+    queued_queue = client.get(
+        "/api/rehab-arm/app/v1/offline-queue",
+        headers=auth_headers(owner_token),
+        params={"status": "queued"},
+    )
+    assert queued_queue.status_code == 200
+    assert {item["id"] for item in queued_queue.json()["data"]} == {queue_item["id"], safety_queue_item["id"]}
 
     replay = client.post(
         "/api/rehab-arm/app/v1/offline-queue/replay",
