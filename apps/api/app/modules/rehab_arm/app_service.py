@@ -472,6 +472,7 @@ def _daily_action(
 def _app_daily_action_guide(
     onboarding_guide: dict,
     active_session: dict | None,
+    finished_session_report_guide: dict | None,
     primary_start_guide: dict | None,
     latest_report: dict | None,
     latest_open_ai_draft: dict | None,
@@ -509,6 +510,23 @@ def _app_daily_action_guide(
                     "event_id": blocking_event.get("event_id", ""),
                     "guide": "safety_review_guide",
                 },
+            ),
+            "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
+        }
+    if finished_session_report_guide and finished_session_report_guide.get("status") == "report_required":
+        session = finished_session_report_guide.get("session") or {}
+        next_action = finished_session_report_guide.get("next_action") or {}
+        return {
+            "status": "action_required",
+            "next_action": _daily_action(
+                next_action.get("code") or "GENERATE_TRAINING_REPORT",
+                18,
+                next_action.get("label") or "生成训练报告",
+                "最近训练已经结束但还没有生成训练报告。先生成报告，再进行人工复盘和下一计划闭环。",
+                next_action.get("endpoint") or f"/api/rehab-arm/app/v1/training-sessions/{session.get('id', '{session_id}')}/report",
+                next_action.get("method") or "POST",
+                next_action.get("payload_hint") or {},
+                source={"session_id": session.get("id", ""), "guide": "finished_session_report_guide"},
             ),
             "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
         }
@@ -916,6 +934,39 @@ def _app_report_followup_guide(latest_report: dict | None, drafts: list[dict]) -
     }
 
 
+def _app_finished_session_report_guide(db: Session, user_id: str, sessions: list[dict]) -> dict | None:
+    for session in sessions:
+        if session.get("status") != "finished":
+            continue
+        existing_report = _session_report(db, user_id, session["id"])
+        if existing_report is not None:
+            continue
+        session_id = session["id"]
+        return {
+            "status": "report_required",
+            "session": session,
+            "next_action": _report_followup_action(
+                "GENERATE_TRAINING_REPORT",
+                "生成训练报告",
+                f"/api/rehab-arm/app/v1/training-sessions/{session_id}/report",
+                "POST",
+                {"session_id": session_id},
+            ),
+            "actions": [
+                _report_followup_action("VIEW_SESSION", "查看训练记录", f"/api/rehab-arm/app/v1/training-sessions/{session_id}", "GET"),
+                _report_followup_action(
+                    "GENERATE_TRAINING_REPORT",
+                    "生成训练报告",
+                    f"/api/rehab-arm/app/v1/training-sessions/{session_id}/report",
+                    "POST",
+                    {"session_id": session_id},
+                ),
+            ],
+            "control_boundary": "finished_session_report_guide_evidence_only_not_motion_permission",
+        }
+    return None
+
+
 def _device_operational_action(code: str, label: str, endpoint: str, method: str, payload_hint: dict | None = None) -> dict:
     return {
         "code": code,
@@ -1238,6 +1289,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         primary_start_guide = get_training_start_guide(db, user_id, primary_plan["id"], primary_device["id"])
     safety_review_guide = _app_safety_review_guide(db, user_id, sessions)
     accepted_plan_guide = _app_accepted_plan_guide(db, user_id, all_drafts, devices)
+    finished_session_report_guide = _app_finished_session_report_guide(db, user_id, sessions)
     return {
         "profile": profile,
         "devices": devices,
@@ -1248,6 +1300,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "daily_action_guide": _app_daily_action_guide(
             onboarding_guide,
             active_session,
+            finished_session_report_guide,
             primary_start_guide,
             latest_report,
             latest_open_ai_draft,
@@ -1258,6 +1311,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
         "offline_sync_guide": _app_offline_sync_guide(offline_queue),
         "session_recovery_guide": _app_session_recovery_guide(db, user_id, active_session),
+        "finished_session_report_guide": finished_session_report_guide,
         "report_followup_guide": _app_report_followup_guide(latest_report, all_drafts),
         "device_operational_guide": _app_device_operational_guide(db, user_id, devices, primary_plan),
         "safety_review_guide": safety_review_guide,

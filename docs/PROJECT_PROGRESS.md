@@ -179,3 +179,6 @@
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only). The guide is `safety_review_guide_evidence_only_not_motion_permission`.
 - Added `/me.accepted_plan_guide` for AI drafts that have been accepted into normal training plans. It routes the phone through trusted-device binding, M33 sync/decision, preflight/readiness, and start-record creation without treating AI acceptance as motion permission.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only). The guide is `accepted_plan_guide_evidence_only_not_motion_permission`.
+- Added rehab arm app `finished_session_report_guide` in `/me` so a finished training session without a report returns `GENERATE_TRAINING_REPORT` before report review or next-plan drafting.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only).
+- Next step: continue closing phone-app loops for user-visible states that still require manual endpoint discovery, while leaving hardware/BLE protocol behavior for later supplied specs.

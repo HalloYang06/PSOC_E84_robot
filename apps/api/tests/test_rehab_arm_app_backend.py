@@ -968,6 +968,16 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert finish_again.status_code == 409
     assert finish_again.json()["error"]["code"] == "TRAINING_SESSION_NOT_ACTIVE"
 
+    bootstrap_needs_report = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_needs_report.status_code == 200
+    finished_report_guide = bootstrap_needs_report.json()["data"]["finished_session_report_guide"]
+    assert finished_report_guide["status"] == "report_required"
+    assert finished_report_guide["session"]["id"] == session["id"]
+    assert finished_report_guide["control_boundary"] == "finished_session_report_guide_evidence_only_not_motion_permission"
+    assert finished_report_guide["next_action"]["code"] == "GENERATE_TRAINING_REPORT"
+    assert "GENERATE_TRAINING_REPORT" in {item["code"] for item in finished_report_guide["actions"]}
+    assert bootstrap_needs_report.json()["data"]["daily_action_guide"]["next_action"]["code"] == "GENERATE_TRAINING_REPORT"
+
     report_response = client.post(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
         headers=auth_headers(owner_token),
@@ -992,6 +1002,7 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert report["latest_review"] is None
     bootstrap_needs_report_review = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_needs_report_review.status_code == 200
+    assert bootstrap_needs_report_review.json()["data"]["finished_session_report_guide"] is None
     assert bootstrap_needs_report_review.json()["data"]["daily_action_guide"]["next_action"]["code"] == "REVIEW_LATEST_REPORT"
     report_followup_review = bootstrap_needs_report_review.json()["data"]["report_followup_guide"]
     assert report_followup_review["status"] == "review_required"

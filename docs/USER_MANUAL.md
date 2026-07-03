@@ -84,11 +84,11 @@ GET /offline-queue
 GET /safety-audit
 ```
 
-`GET /me` is the phone bootstrap endpoint. In addition to profile, devices, plans, active session, latest preflight, latest report, latest open AI draft, platform sync, and queued offline items, it returns `onboarding_guide`, `primary_start_guide`, `daily_action_guide`, `care_summary`, `care_timeline`, `offline_sync_guide`, `session_recovery_guide`, `report_followup_guide`, `device_operational_guide`, `safety_review_guide`, and `accepted_plan_guide`.
+`GET /me` is the phone bootstrap endpoint. In addition to profile, devices, plans, active session, latest preflight, latest report, latest open AI draft, platform sync, and queued offline items, it returns `onboarding_guide`, `primary_start_guide`, `daily_action_guide`, `care_summary`, `care_timeline`, `offline_sync_guide`, `session_recovery_guide`, `finished_session_report_guide`, `report_followup_guide`, `device_operational_guide`, `safety_review_guide`, and `accepted_plan_guide`.
 
 Use `onboarding_guide` for first-run setup. It gives ordered steps for profile, trusted M33 device binding, and training plan creation/acceptance, with endpoint, method, and payload hints. Use `primary_start_guide` for the home screen's main training CTA when setup basics exist; it is the same evidence-only guide returned by `start-guide`.
 
-Use `daily_action_guide` for the home screen's top action. It prioritizes unfinished training recovery, AI draft review, latest report review, report-to-next-plan drafting, normal training start guidance, and onboarding fallback. It is evidence-only and should not be treated as motion permission.
+Use `daily_action_guide` for the home screen's top action. It prioritizes unfinished training recovery, blocking safety review, finished-session report generation, AI draft review, latest report review, report-to-next-plan drafting, normal training start guidance, and onboarding fallback. It is evidence-only and should not be treated as motion permission.
 
 Use `care_summary` for home overview counters and status chips. It reports start readiness, active/finished/cancelled sessions, report review count, open AI drafts, queued offline evidence, and blockers. It is a backend-composed summary of persisted records.
 
@@ -97,6 +97,8 @@ Use `care_timeline` for the recent history surface. It aggregates persisted trai
 Use `offline_sync_guide` to show queued/replayed/failed offline evidence counts and the safe replay payload. It points to `POST /api/rehab-arm/app/v1/offline-queue/replay` and includes queued item ids only for whitelisted evidence operations.
 
 Use `session_recovery_guide` when `active_session` is present. It lists allowed evidence-state actions such as view, progress, finish, cancel, resume, or record safety review. A paused session with an unreviewed critical safety event returns `safety_review_required` instead of a direct resume action.
+
+Use `finished_session_report_guide` when the latest finished session has no generated training report yet. It returns a `GENERATE_TRAINING_REPORT` action pointing to `POST /training-sessions/{session_id}/report`, then clears after the report exists so `report_followup_guide` can drive review and next-plan decisions.
 
 Use `report_followup_guide` when `latest_report` is present. It keeps the post-training loop backend-authored: record report review, generate a next-plan AI draft when requested, review/accept the open draft, then sync the accepted plan to M33. It is evidence and workflow guidance only, not motion permission.
 
