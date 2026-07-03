@@ -182,3 +182,6 @@
 - Added rehab arm app `finished_session_report_guide` in `/me` so a finished training session without a report returns `GENERATE_TRAINING_REPORT` before report review or next-plan drafting.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only).
 - Next step: continue closing phone-app loops for user-visible states that still require manual endpoint discovery, while leaving hardware/BLE protocol behavior for later supplied specs.
+- Added structured `actions` to rehab arm app `offline_sync_guide` so the phone can render `REPLAY_OFFLINE_EVIDENCE` and failed-queue inspection without inferring endpoints from loose fields.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only).
+- Next step: keep converting remaining phone bootstrap states into explicit backend-authored actions, while preserving evidence-only App HTTP boundaries until hardware protocols are supplied.

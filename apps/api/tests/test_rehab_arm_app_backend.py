@@ -1462,6 +1462,15 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     assert offline_guide["counts"]["queued"] == 2
     assert set(offline_guide["queued_item_ids"]) == {queue_item["id"], safety_queue_item["id"]}
     assert offline_guide["payload_hint"] == {"item_ids": [queue_item["id"], safety_queue_item["id"]]}
+    assert offline_guide["actions"] == [
+        {
+            "code": "REPLAY_OFFLINE_EVIDENCE",
+            "label": "重放离线证据",
+            "endpoint": "/api/rehab-arm/app/v1/offline-queue/replay",
+            "method": "POST",
+            "payload_hint": {"item_ids": [queue_item["id"], safety_queue_item["id"]]},
+        }
+    ]
 
     replay = client.post(
         "/api/rehab-arm/app/v1/offline-queue/replay",
@@ -1475,6 +1484,7 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     bootstrap_after_offline_replay = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_after_offline_replay.status_code == 200
     assert bootstrap_after_offline_replay.json()["data"]["offline_sync_guide"]["status"] == "synced"
+    assert bootstrap_after_offline_replay.json()["data"]["offline_sync_guide"]["actions"] == []
 
     latest_emg = client.get("/api/rehab-arm/app/v1/emg/latest", headers=auth_headers(owner_token))
     assert latest_emg.status_code == 200

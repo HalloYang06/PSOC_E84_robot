@@ -734,15 +734,35 @@ def _app_offline_sync_guide(offline_items: list[dict]) -> dict:
     queued = [item for item in offline_items if item["replay_status"] == "queued"]
     replayed = [item for item in offline_items if item["replay_status"] == "replayed"]
     failed = [item for item in offline_items if item["replay_status"] == "failed"]
+    actions = []
     if failed:
         status = "review_failed_items"
         next_action = "inspect_failed_replay_results"
+        actions.append(
+            {
+                "code": "VIEW_OFFLINE_QUEUE",
+                "label": "查看离线队列",
+                "endpoint": "/api/rehab-arm/app/v1/offline-queue",
+                "method": "GET",
+                "payload_hint": {"status": "failed"},
+            }
+        )
     elif queued:
         status = "ready_to_replay"
         next_action = "replay_queued_evidence"
     else:
         status = "synced"
         next_action = "none"
+    if queued:
+        actions.append(
+            {
+                "code": "REPLAY_OFFLINE_EVIDENCE",
+                "label": "重放离线证据",
+                "endpoint": "/api/rehab-arm/app/v1/offline-queue/replay",
+                "method": "POST",
+                "payload_hint": {"item_ids": [item["id"] for item in queued]},
+            }
+        )
     return {
         "status": status,
         "next_action": next_action,
@@ -756,6 +776,7 @@ def _app_offline_sync_guide(offline_items: list[dict]) -> dict:
         "replay_endpoint": "/api/rehab-arm/app/v1/offline-queue/replay",
         "replay_method": "POST",
         "payload_hint": {"item_ids": [item["id"] for item in queued]},
+        "actions": actions,
         "control_boundary": "offline_sync_guide_evidence_only_not_motion_permission",
     }
 
