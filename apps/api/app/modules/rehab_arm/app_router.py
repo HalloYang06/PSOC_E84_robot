@@ -178,6 +178,28 @@ def api_public_config(request: Request):
             "release_gate": {
                 "status": "blocked",
                 "reason": "android_wrapper_uses_static_preview_until_frontend_login_api_wiring_is_connected",
+                "checks": [
+                    {
+                        "code": "PUBLIC_CONFIG_AVAILABLE",
+                        "status": "pass",
+                        "description": "Backend exposes the unauthenticated boot contract for the phone shell.",
+                    },
+                    {
+                        "code": "TOKEN_AUTH_CONTRACT",
+                        "status": "pass",
+                        "description": "Phone clients must use /api/auth/session and send Authorization: Bearer {access_token}.",
+                    },
+                    {
+                        "code": "APK_FRONTEND_API_WIRING",
+                        "status": "blocked",
+                        "description": "Current APK still uses static preview fallback until Stitch/frontend wires login and /me bootstrap.",
+                    },
+                    {
+                        "code": "HARDWARE_PROTOCOL_PACKET_MAP",
+                        "status": "awaiting_protocol",
+                        "description": "BLE/M33 packet details are intentionally not invented; hardware protocol must be supplied before motion-adjacent UX can be certified.",
+                    },
+                ],
                 "required_frontend_work": [
                     "load public-config on app start",
                     "post credentials to auth.session_endpoint",

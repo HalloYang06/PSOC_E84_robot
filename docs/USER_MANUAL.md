@@ -253,6 +253,22 @@ sha256: C80F78CE4CCF315368ADC13C178E40CA620B2CD3A7CF48EC751CF42F72CB84ED
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
+Current user-release gate:
+
+```text
+status: blocked
+reason: the current APK still needs Stitch/frontend wiring for public-config, login token storage, and /api/rehab-arm/app/v1/me bootstrap rendering.
+hardware_protocol: awaiting BLE/M33/M55 packet maps before motion-adjacent UX can be certified.
+```
+
+Backend readiness endpoints:
+
+```text
+GET /api/rehab-arm/app/v1/public-config
+GET /api/rehab-arm/app/v1/me
+```
+
+`public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, and hardware-protocol blockers. These responses are workflow/evidence guidance only and do not grant BLE, CAN, motor, or M33 override authority.
 
 Rebuild locally:
 

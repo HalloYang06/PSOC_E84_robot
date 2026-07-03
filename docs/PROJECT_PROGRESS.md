@@ -101,6 +101,10 @@
 
 ## 2026-07-03
 
+- Continued the rehab-arm mobile App backend toward user-usable closure without changing Stitch/frontend files. `GET /api/rehab-arm/app/v1/public-config` now includes explicit release-gate checks for public config availability, token auth contract, APK frontend API wiring, and missing BLE/M33 hardware protocol packet maps.
+- Added authenticated `mobile_readiness_guide` to `GET /api/rehab-arm/app/v1/me`. The guide exposes account onboarding, device binding, training plan, training start gate, APK frontend wiring, hardware protocol, offline queue, and safety-review blockers as phone-renderable evidence only.
+- Current release state remains blocked for user download as a real product: the backend is returning honest readiness fields, but the current APK still needs Stitch/frontend login/API wiring and hardware protocol details before it should be described as user-ready.
+- Validation passed locally: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, existing deprecation warnings only).
 - Continued the rehab-arm mobile backend closed loop without changing Stitch/frontend files. Added durable diagnostic uploads, offline queue items, and platform sync run records to the App backend.
 - Added `/api/rehab-arm/app/v1/devices/{device_id}/diagnostic-upload` and `/diagnostics` so phone/M33 diagnostic snapshots can update device heartbeat evidence and be reviewed later.
 - Added evidence-only offline queue endpoints: `POST /offline-queue`, `GET /offline-queue`, and `POST /offline-queue/replay`. Replay is explicitly whitelisted to diagnostic upload, training session progress, EMG summary, M55 intent summary, and platform sync; motor/CAN-like operations return `OFFLINE_OPERATION_NOT_ALLOWED`.

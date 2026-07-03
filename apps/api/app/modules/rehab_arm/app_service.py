@@ -1829,6 +1829,143 @@ def _app_accepted_plan_guide(db: Session, user_id: str, drafts: list[dict], devi
     }
 
 
+def _app_mobile_readiness_guide(
+    onboarding_guide: dict,
+    primary_start_guide: dict | None,
+    devices: list[dict],
+    plans: list[dict],
+    offline_sync_guide: dict | None,
+    safety_review_guide: dict | None,
+) -> dict:
+    blockers: list[dict] = []
+    checks = [
+        {
+            "code": "BACKEND_BOOTSTRAP_AUTH",
+            "status": "pass",
+            "title": "账号后端已接通",
+            "detail": "当前请求已通过 Bearer token 读取 /api/rehab-arm/app/v1/me。",
+        },
+        {
+            "code": "APK_FRONTEND_API_WIRING",
+            "status": "blocked",
+            "title": "安装包前端仍需接入真实 API",
+            "detail": "当前 APK 的 mobile bridge 仍可能使用静态预览兜底；需要 Stitch/frontend 接入 public-config、登录 token 和 /me bootstrap。",
+        },
+        {
+            "code": "HARDWARE_PROTOCOL_PACKET_MAP",
+            "status": "awaiting_protocol",
+            "title": "等待 BLE/M33 硬件协议",
+            "detail": "后端不会虚构蓝牙、M33、M55 或电机报文；协议补齐前只开放计划、证据、诊断和门禁状态。",
+        },
+    ]
+
+    blockers.append(
+        {
+            "code": "apk_frontend_api_wiring",
+            "severity": "critical",
+            "title": "安装包还不是用户可用版",
+            "clear_condition": "Stitch/frontend 必须读取 public-config，完成登录 token 存储，并用 Authorization: Bearer 调 /me 渲染真实数据。",
+            "related_action_codes": ["LOAD_PUBLIC_CONFIG", "LOGIN_WITH_SESSION_TOKEN", "FETCH_REHAB_BOOTSTRAP"],
+        }
+    )
+    blockers.append(
+        {
+            "code": "hardware_protocol_packet_map_missing",
+            "severity": "warning",
+            "title": "硬件运动协议待补充",
+            "clear_condition": "补齐 BLE/M33/M55 协议后，才能把硬件状态从证据记录推进到受控训练执行闭环。",
+            "related_action_codes": ["BIND_TRUSTED_DEVICE", "UPLOAD_DEVICE_DIAGNOSTIC"],
+        }
+    )
+
+    if onboarding_guide.get("status") != "complete":
+        checks.append(
+            {
+                "code": "ACCOUNT_ONBOARDING",
+                "status": "blocked",
+                "title": "首次设置未完成",
+                "detail": "需完成康复档案、可信 M33 设备和训练计划。",
+            }
+        )
+        blockers.append(
+            {
+                "code": "onboarding_incomplete",
+                "severity": "warning",
+                "title": "完成首次设置",
+                "clear_condition": "完成 profile/device/plan 三步后再检查训练开始条件。",
+                "related_action_codes": [action["code"] for action in onboarding_guide.get("actions", [])],
+            }
+        )
+    else:
+        checks.append(
+            {
+                "code": "ACCOUNT_ONBOARDING",
+                "status": "pass",
+                "title": "首次设置已完成",
+                "detail": "账号已有必要的康复档案、设备和训练计划记录。",
+            }
+        )
+
+    if not devices:
+        checks.append({"code": "DEVICE_BINDING", "status": "blocked", "title": "未绑定设备", "detail": "需要绑定 M33 BLE 身份。"})
+    elif any(device["trust_status"] != "revoked" for device in devices):
+        checks.append({"code": "DEVICE_BINDING", "status": "pass", "title": "设备记录可用", "detail": "至少一个设备未被撤销。"})
+    else:
+        checks.append({"code": "DEVICE_BINDING", "status": "blocked", "title": "设备不可用", "detail": "所有设备均已撤销。"})
+
+    if not plans:
+        checks.append({"code": "TRAINING_PLAN", "status": "blocked", "title": "未创建训练计划", "detail": "需要治疗师计划或 AI 草稿接受后的训练计划。"})
+    elif any(plan["status"] not in {"archived", "rejected"} for plan in plans):
+        checks.append({"code": "TRAINING_PLAN", "status": "pass", "title": "训练计划可用", "detail": "存在未归档、未拒绝的训练计划。"})
+    else:
+        checks.append({"code": "TRAINING_PLAN", "status": "blocked", "title": "训练计划不可用", "detail": "现有训练计划均已归档或拒绝。"})
+
+    if primary_start_guide is None:
+        checks.append({"code": "TRAINING_START_GATE", "status": "blocked", "title": "开始门禁未形成", "detail": "需要先有可用计划和可信设备。"})
+    elif primary_start_guide.get("readiness", {}).get("can_start") is True:
+        checks.append({"code": "TRAINING_START_GATE", "status": "pass", "title": "训练记录可开始", "detail": "后端证据门禁已满足；实际运动仍由 M33 决定。"})
+    else:
+        checks.append({"code": "TRAINING_START_GATE", "status": "blocked", "title": "训练开始门禁未通过", "detail": "需完成 M33 接受、preflight 和安全复核。"})
+
+    if offline_sync_guide and offline_sync_guide.get("status") in {"ready_to_replay", "review_failed_items"}:
+        blockers.append(
+            {
+                "code": "offline_queue_attention_required",
+                "severity": "warning",
+                "title": "离线证据需要处理",
+                "clear_condition": "重放 queued 离线证据，或人工复核 failed 离线项。",
+                "related_action_codes": [action["code"] for action in offline_sync_guide.get("actions", [])],
+            }
+        )
+
+    if safety_review_guide and safety_review_guide.get("status") == "review_required":
+        blockers.append(
+            {
+                "code": "safety_review_required",
+                "severity": "critical",
+                "title": "安全事件待复核",
+                "clear_condition": "记录 safety_review 后才允许下一次训练记录。",
+                "related_action_codes": [action["code"] for action in safety_review_guide.get("actions", [])],
+            }
+        )
+
+    actionable_blockers = [blocker for blocker in blockers if blocker["severity"] in {"critical", "warning"}]
+    return {
+        "status": "blocked" if actionable_blockers else "ready_for_backend_trial",
+        "summary": "后端闭环已返回真实状态；用户版安装包仍取决于 Stitch/frontend API 接线和硬件协议补充。",
+        "checks": checks,
+        "blockers": blockers,
+        "required_frontend_contract": {
+            "public_config_endpoint": "/api/rehab-arm/app/v1/public-config",
+            "session_endpoint": "/api/auth/session",
+            "token_response_path": "data.access_token",
+            "bootstrap_endpoint": "/api/rehab-arm/app/v1/me",
+            "required_header": "Authorization: Bearer {access_token}",
+        },
+        "control_boundary": "mobile_readiness_guide_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
@@ -1909,6 +2046,14 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "device_operational_guide": _app_device_operational_guide(db, user_id, devices, primary_plan),
         "safety_review_guide": safety_review_guide,
         "accepted_plan_guide": accepted_plan_guide,
+        "mobile_readiness_guide": _app_mobile_readiness_guide(
+            onboarding_guide,
+            primary_start_guide,
+            devices,
+            plans,
+            offline_sync_guide,
+            safety_review_guide,
+        ),
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_report,

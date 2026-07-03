@@ -138,6 +138,15 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_home_status["control_boundary"] == "app_home_status_guide_evidence_only_not_motion_permission"
     assert empty_bootstrap.json()["data"]["device_operational_guide"]["status"] == "device_required"
     assert "BIND_TRUSTED_DEVICE" in {item["code"] for item in empty_bootstrap.json()["data"]["device_operational_guide"]["actions"]}
+    empty_mobile_readiness = empty_bootstrap.json()["data"]["mobile_readiness_guide"]
+    assert empty_mobile_readiness["status"] == "blocked"
+    assert empty_mobile_readiness["required_frontend_contract"]["bootstrap_endpoint"] == "/api/rehab-arm/app/v1/me"
+    assert empty_mobile_readiness["required_frontend_contract"]["required_header"] == "Authorization: Bearer {access_token}"
+    assert {item["code"] for item in empty_mobile_readiness["blockers"]}.issuperset(
+        {"apk_frontend_api_wiring", "hardware_protocol_packet_map_missing", "onboarding_incomplete"}
+    )
+    assert {item["code"]: item["status"] for item in empty_mobile_readiness["checks"]}["APK_FRONTEND_API_WIRING"] == "blocked"
+    assert {item["code"]: item["status"] for item in empty_mobile_readiness["checks"]}["HARDWARE_PROTOCOL_PACKET_MAP"] == "awaiting_protocol"
 
     public_config = client.get("/api/rehab-arm/app/v1/public-config")
     assert public_config.status_code == 200
@@ -157,6 +166,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     ]
     assert config_data["release_gate"]["status"] == "blocked"
     assert "Authorization: Bearer" in config_data["release_gate"]["required_frontend_work"][3]
+    release_checks = {item["code"]: item for item in config_data["release_gate"]["checks"]}
+    assert release_checks["PUBLIC_CONFIG_AVAILABLE"]["status"] == "pass"
+    assert release_checks["TOKEN_AUTH_CONTRACT"]["status"] == "pass"
+    assert release_checks["APK_FRONTEND_API_WIRING"]["status"] == "blocked"
+    assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "awaiting_protocol"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
     assert config_data["downloads"]["debug_apk_status"] == "preview_static_shell_needs_frontend_login_api_wiring"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
@@ -321,6 +335,14 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert "CHECK_START_READINESS" in start_ready_progress["related_action_codes"]
     start_group = next(item for item in start_home_status["action_groups"]["blocker_related"] if item["blocker_code"] == "start_readiness_blocked")
     assert {"VIEW_START_GUIDE", "CHECK_START_READINESS", "M33_ACCEPTANCE_REQUIRED"}.issubset({item["code"] for item in start_group["actions"]})
+    start_mobile_readiness = bootstrap_after_basics.json()["data"]["mobile_readiness_guide"]
+    assert start_mobile_readiness["status"] == "blocked"
+    start_readiness_checks = {item["code"]: item["status"] for item in start_mobile_readiness["checks"]}
+    assert start_readiness_checks["ACCOUNT_ONBOARDING"] == "pass"
+    assert start_readiness_checks["DEVICE_BINDING"] == "pass"
+    assert start_readiness_checks["TRAINING_PLAN"] == "pass"
+    assert start_readiness_checks["TRAINING_START_GATE"] == "blocked"
+    assert "apk_frontend_api_wiring" in {item["code"] for item in start_mobile_readiness["blockers"]}
 
     contraindicated_plan_response = client.post(
         "/api/rehab-arm/app/v1/training-plans",

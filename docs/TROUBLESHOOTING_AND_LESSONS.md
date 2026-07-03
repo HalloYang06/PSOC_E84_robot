@@ -1,5 +1,9 @@
 # Troubleshooting and Lessons
 
+## 2026-07-03
+
+- Mobile release lesson: do not publish a new APK as user-ready just because backend endpoints pass tests. The public config and authenticated `/me.mobile_readiness_guide` must keep saying `blocked` while the Android wrapper still falls back to static preview data or lacks `Authorization: Bearer {access_token}` bootstrap wiring.
+- Hardware protocol lesson: missing BLE/M33/M55 packet maps are a product blocker, not a reason to invent demo behavior. The App backend should expose `awaiting_protocol` readiness and continue recording plans, diagnostics, evidence, and safety reviews without pretending it can certify motion.
 ## 2026-06-17
 
 - Lesson: for a first-pass vision stack, two RGB cameras are enough for coarse stereo + YOLO perception, but not for trustworthy depth or motion authority.
