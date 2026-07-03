@@ -347,7 +347,7 @@ Current cloud backend deployment:
 ```text
 Web: http://106.55.62.122:3001
 API: http://106.55.62.122:8011
-build_sha: cee3ec49
+build_sha: 01284b7c
 build_ref: app/rehab-arm-mobile-stitch
 ```
 
