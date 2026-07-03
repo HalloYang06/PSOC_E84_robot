@@ -2,6 +2,7 @@
 
 #include "control/control_layer.h"
 #include "control/control_layer_cfg.h"
+#include "m55_voice_mode_bridge.h"
 
 #define M55_MODEL_CODE_WAKE_WORD 1U
 #define M55_RESULT_CODE_NONE 0U
@@ -155,6 +156,7 @@ void m55_model_bridge_handle_message(const m33_m55_message_t *msg)
         break;
     case MSG_TYPE_ASR_TEXT:
         rt_kprintf("[m55_model_bridge] asr text: %.64s\n", msg->payload.text.text);
+        (void)m55_voice_mode_bridge_handle_text(msg->payload.text.text);
         break;
     case MSG_TYPE_TTS_REQUEST:
         rt_kprintf("[m55_model_bridge] tts text: %.64s\n", msg->payload.text.text);
