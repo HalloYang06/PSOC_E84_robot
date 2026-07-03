@@ -241,6 +241,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     pending_device_guide = bootstrap_pending_m33.json()["data"]["device_operational_guide"]
     assert pending_device_guide["status"] == "m33_decision_pending"
     assert {"REQUEST_DEVICE_STATUS", "RECORD_M33_DECISION"}.issubset({item["code"] for item in pending_device_guide["actions"]})
+    pending_home_status = bootstrap_pending_m33.json()["data"]["home_status_guide"]
+    assert pending_home_status["primary_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
+    assert pending_home_status["secondary_actions"] == []
 
     ble_plan_message = client.post(
         f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
@@ -900,6 +903,9 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert blocked_recovery["status"] == "safety_review_required"
     assert blocked_recovery["blocking_event"]["event_type"] == "pain_report"
     assert "RECORD_SAFETY_REVIEW" in {item["code"] for item in blocked_recovery["actions"]}
+    blocked_recovery_home = blocked_recovery_bootstrap.json()["data"]["home_status_guide"]
+    assert blocked_recovery_home["primary_action"]["code"] == "RECOVER_ACTIVE_SESSION"
+    assert {"RECORD_SAFETY_REVIEW", "CANCEL_SESSION"}.issubset({item["code"] for item in blocked_recovery_home["secondary_actions"]})
     paused_event_progress = client.patch(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/progress",
         headers=auth_headers(owner_token),
@@ -983,6 +989,10 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert finished_report_guide["next_action"]["code"] == "GENERATE_TRAINING_REPORT"
     assert "GENERATE_TRAINING_REPORT" in {item["code"] for item in finished_report_guide["actions"]}
     assert bootstrap_needs_report.json()["data"]["daily_action_guide"]["next_action"]["code"] == "GENERATE_TRAINING_REPORT"
+    finished_home_status = bootstrap_needs_report.json()["data"]["home_status_guide"]
+    assert finished_home_status["primary_action"]["code"] == "GENERATE_TRAINING_REPORT"
+    assert finished_home_status["secondary_actions"][0]["code"] == "VIEW_SESSION"
+    assert finished_home_status["secondary_actions"][0]["endpoint"] == f"/api/rehab-arm/app/v1/training-sessions/{session['id']}"
 
     report_response = client.post(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
@@ -1316,6 +1326,10 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     assert followup_guide["device"]["id"] == device["id"]
     assert followup_guide["next_action"]["code"] == "SYNC_ACCEPTED_PLAN_TO_M33"
     assert bootstrap_followup_plan.json()["data"]["daily_action_guide"]["next_action"]["code"] == "SYNC_ACCEPTED_PLAN_TO_M33"
+    followup_home_status = bootstrap_followup_plan.json()["data"]["home_status_guide"]
+    assert followup_home_status["primary_action"]["code"] == "SYNC_ACCEPTED_PLAN_TO_M33"
+    assert followup_home_status["secondary_actions"][0]["code"] == "VIEW_ACCEPTED_PLAN"
+    assert followup_home_status["secondary_actions"][0]["endpoint"] == f"/api/rehab-arm/app/v1/training-plans/{followup_plan['id']}"
     followup_sync = client.post(
         f"/api/rehab-arm/app/v1/training-plans/{followup_plan['id']}/sync-to-device",
         headers=auth_headers(owner_token),

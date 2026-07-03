@@ -491,7 +491,7 @@ def _app_daily_action_guide(
                 "设备已有未关闭训练，请先恢复、完成或取消当前训练，再开始新的训练。",
                 f"/api/rehab-arm/app/v1/training-sessions/{active_session['id']}",
                 "GET",
-                source={"session_id": active_session["id"], "session_status": active_session["status"]},
+                source={"session_id": active_session["id"], "session_status": active_session["status"], "guide": "session_recovery_guide"},
             ),
             "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
         }
@@ -592,7 +592,7 @@ def _app_daily_action_guide(
                 f"/api/rehab-arm/app/v1/training-reports/{latest_report['id']}/reviews",
                 "POST",
                 {"reviewer_role": "patient_or_therapist", "review_status": "reviewed", "next_step": "continue_or_adjust"},
-                source={"report_id": latest_report["id"]},
+                source={"report_id": latest_report["id"], "guide": "report_followup_guide"},
             ),
             "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
         }
@@ -607,7 +607,7 @@ def _app_daily_action_guide(
                 "最近复盘要求调整计划。先生成 AI 草稿，再由用户或治疗师接受为普通训练计划。",
                 f"/api/rehab-arm/app/v1/training-reports/{latest_report['id']}/draft-next-plan",
                 "POST",
-                source={"report_id": latest_report["id"], "review_id": latest_review["id"]},
+                source={"report_id": latest_report["id"], "review_id": latest_review["id"], "guide": "report_followup_guide"},
             ),
             "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
         }
@@ -757,6 +757,8 @@ def _app_care_summary(
 def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related_actions: list[dict] | None = None) -> dict:
     next_action = daily_action_guide.get("next_action") or {}
     action_code = str(next_action.get("code") or "")
+    action_endpoint = str(next_action.get("endpoint") or "")
+    action_method = str(next_action.get("method") or "").upper()
     body = next_action.get("description") or next_action.get("detail") or next_action.get("message") or ""
     critical_actions = {"RECOVER_ACTIVE_SESSION", "REVIEW_BLOCKING_SAFETY_EVENT", "VIEW_OFFLINE_QUEUE"}
     warning_actions = {"GENERATE_TRAINING_REPORT", "REPLAY_OFFLINE_EVIDENCE", "REVIEW_LATEST_REPORT", "DRAFT_NEXT_PLAN_FROM_REPORT"}
@@ -774,11 +776,17 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         headline = next_action.get("title") or next_action.get("label") or "继续完成设置"
     secondary_actions: list[dict] = []
     seen_action_codes = {action_code} if action_code else set()
+    seen_action_targets = {(action_method, action_endpoint)} if action_method and action_endpoint else set()
     for action in related_actions or []:
         code = str(action.get("code") or "")
-        if not code or code in seen_action_codes:
+        endpoint = str(action.get("endpoint") or "")
+        method = str(action.get("method") or "").upper()
+        target = (method, endpoint)
+        if not code or code in seen_action_codes or (method and endpoint and target in seen_action_targets):
             continue
         seen_action_codes.add(code)
+        if method and endpoint:
+            seen_action_targets.add(target)
         secondary_actions.append(action)
     return {
         "status": daily_action_guide.get("status") or care_summary.get("status"),
@@ -792,6 +800,16 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         "safety_note": "本卡片只提供手机端证据和流程引导，不授予硬件运动权限；真实运动仍由 M33 最终裁决。",
         "control_boundary": "app_home_status_guide_evidence_only_not_motion_permission",
     }
+
+
+def _app_home_related_actions(daily_action_guide: dict, guides_by_name: dict[str, dict | None]) -> list[dict]:
+    next_action = daily_action_guide.get("next_action") or {}
+    source = next_action.get("source") or daily_action_guide.get("source") or {}
+    source_guide = source.get("guide")
+    guide = guides_by_name.get(source_guide) if source_guide else None
+    if not guide:
+        return []
+    return guide.get("actions") or []
 
 
 def _app_offline_sync_guide(offline_items: list[dict]) -> dict:
@@ -1401,6 +1419,8 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     accepted_plan_guide = _app_accepted_plan_guide(db, user_id, all_drafts, devices)
     finished_session_report_guide = _app_finished_session_report_guide(db, user_id, sessions)
     offline_sync_guide = _app_offline_sync_guide(offline_queue)
+    session_recovery_guide = _app_session_recovery_guide(db, user_id, active_session)
+    report_followup_guide = _app_report_followup_guide(latest_report, all_drafts)
     daily_action_guide = _app_daily_action_guide(
         onboarding_guide,
         active_session,
@@ -1413,9 +1433,19 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         accepted_plan_guide,
     )
     care_summary = _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue)
-    home_related_actions = None
-    if (daily_action_guide.get("next_action") or {}).get("source", {}).get("guide") == "offline_sync_guide":
-        home_related_actions = offline_sync_guide.get("actions") or []
+    home_related_actions = _app_home_related_actions(
+        daily_action_guide,
+        {
+            "onboarding_guide": onboarding_guide,
+            "primary_start_guide": primary_start_guide,
+            "session_recovery_guide": session_recovery_guide,
+            "finished_session_report_guide": finished_session_report_guide,
+            "report_followup_guide": report_followup_guide,
+            "offline_sync_guide": offline_sync_guide,
+            "safety_review_guide": safety_review_guide,
+            "accepted_plan_guide": accepted_plan_guide,
+        },
+    )
     return {
         "profile": profile,
         "devices": devices,
@@ -1428,9 +1458,9 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "care_summary": care_summary,
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
         "offline_sync_guide": offline_sync_guide,
-        "session_recovery_guide": _app_session_recovery_guide(db, user_id, active_session),
+        "session_recovery_guide": session_recovery_guide,
         "finished_session_report_guide": finished_session_report_guide,
-        "report_followup_guide": _app_report_followup_guide(latest_report, all_drafts),
+        "report_followup_guide": report_followup_guide,
         "device_operational_guide": _app_device_operational_guide(db, user_id, devices, primary_plan),
         "safety_review_guide": safety_review_guide,
         "accepted_plan_guide": accepted_plan_guide,
