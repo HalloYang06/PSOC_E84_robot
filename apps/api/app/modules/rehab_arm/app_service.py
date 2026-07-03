@@ -916,6 +916,22 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
     onboarding_complete = "onboarding_incomplete" not in blockers
     no_open_work = not blockers and not secondary_actions
     ready_to_start = bool(care_summary.get("can_start"))
+    start_readiness_blocker = next(
+        (
+            item
+            for item in care_summary.get("blocker_details") or []
+            if item.get("code") == "start_readiness_blocked"
+        ),
+        {},
+    )
+    start_ready_action_codes = [
+        item
+        for item in (
+            start_readiness_blocker.get("related_action_codes")
+            or ["VIEW_START_GUIDE", "CHECK_START_READINESS", "READY_TO_START"]
+        )
+        if item
+    ]
     progress_items = [
         {
             "code": "onboarding",
@@ -979,7 +995,7 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
             "description": "当前计划、设备、M33 接受、preflight 和安全检查满足开始记录条件。",
             "done": ready_to_start,
             "related_blocker_codes": ["start_readiness_blocked"],
-            "related_action_codes": ["VIEW_START_GUIDE", "CHECK_START_READINESS", "READY_TO_START"],
+            "related_action_codes": start_ready_action_codes,
         },
     ]
     done_count = sum(1 for item in progress_items if item["done"])
@@ -991,6 +1007,8 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         )
     if next_progress_item is None:
         next_progress_item = next((item for item in progress_items if not item["done"]), None)
+    next_progress_action_codes = set((next_progress_item or {}).get("related_action_codes") or [])
+    next_progress_actions = [action for action in all_actions if action.get("code") in next_progress_action_codes]
     if ready_to_start:
         stage = "ready_to_start"
     elif primary_blocker_code and primary_blocker_code != "onboarding_incomplete":
@@ -1056,6 +1074,7 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
             "total": len(progress_items),
             "remaining": len(progress_items) - done_count,
             "next_item": next_progress_item,
+            "next_item_actions": next_progress_actions,
             "items": progress_items,
         },
         "safety_note": "本卡片只提供手机端证据和流程引导，不授予硬件运动权限；真实运动仍由 M33 最终裁决。",

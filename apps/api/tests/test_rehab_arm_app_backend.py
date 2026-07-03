@@ -83,6 +83,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_home_status["progress"]["stage_tone"] == "info"
     assert empty_home_status["progress"]["remaining"] > 0
     assert empty_home_status["progress"]["next_item"]["code"] == "onboarding"
+    assert {item["code"] for item in empty_home_status["progress"]["next_item_actions"]} == {
+        "PROFILE_REQUIRED",
+        "TRUSTED_DEVICE_REQUIRED",
+        "TRAINING_PLAN_REQUIRED",
+    }
     onboarding_progress = next(item for item in empty_home_status["progress"]["items"] if item["code"] == "onboarding")
     assert onboarding_progress["done"] is False
     assert onboarding_progress["title"] == "首次设置"
@@ -190,6 +195,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert start_home_status["progress"]["stage_title"] == "先处理阻塞事项"
     assert start_home_status["progress"]["stage_tone"] == "warning"
     assert start_home_status["progress"]["next_item"]["code"] == "start_ready"
+    assert {"VIEW_START_GUIDE", "CHECK_START_READINESS", "M33_ACCEPTANCE_REQUIRED"}.issubset(
+        {item["code"] for item in start_home_status["progress"]["next_item_actions"]}
+    )
     assert next(item for item in start_home_status["progress"]["items"] if item["code"] == "onboarding")["done"] is True
     start_ready_progress = next(item for item in start_home_status["progress"]["items"] if item["code"] == "start_ready")
     assert start_ready_progress["done"] is False
@@ -509,6 +517,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert ready_home_status["progress"]["stage_tone"] == "success"
     assert ready_home_status["progress"]["remaining"] == 0
     assert ready_home_status["progress"]["next_item"] is None
+    assert ready_home_status["progress"]["next_item_actions"] == []
     ready_progress_item = next(item for item in ready_home_status["progress"]["items"] if item["code"] == "start_ready")
     assert ready_progress_item["done"] is True
     assert ready_progress_item["title"] == "开始条件"
@@ -1494,6 +1503,9 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
     assert "offline_queue_failed" in failed_home_status["blockers"]
     assert failed_home_status["progress"]["stage"] == "resolve_blockers"
     assert failed_home_status["progress"]["next_item"]["code"] == "offline_clear"
+    assert {"VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM", "REPLAY_OFFLINE_EVIDENCE"}.issubset(
+        {item["code"] for item in failed_home_status["progress"]["next_item_actions"]}
+    )
     offline_progress = next(item for item in failed_home_status["progress"]["items"] if item["code"] == "offline_clear")
     assert offline_progress["done"] is False
     assert "offline_queue_failed" in offline_progress["related_blocker_codes"]

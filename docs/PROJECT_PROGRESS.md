@@ -252,3 +252,5 @@
 - Added `/me.home_status_guide.progress.next_item` so the phone can highlight the next progress row without scanning checklist state. It follows `primary_blocker` when possible, falls back to the first incomplete progress item, and returns `null` when all progress items are complete.
 - Regression coverage asserts `next_item` for first-run onboarding, start-readiness blocking, failed offline evidence, and ready-to-start completion.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). `next_item` remains UI workflow guidance only and does not grant hardware or motion authority.
+- Added `/me.home_status_guide.progress.next_item_actions` so the phone home card can render CTAs for the highlighted progress item directly from backend-authored action matching.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). This remains App HTTP workflow/evidence guidance and does not create BLE, CAN, motor, or M33 override authority.
