@@ -1013,6 +1013,19 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         )
     if next_progress_item is None:
         next_progress_item = next((item for item in progress_items if not item["done"]), None)
+    next_progress_position = (
+        next(
+            (index + 1 for index, item in enumerate(progress_items) if item is next_progress_item),
+            None,
+        )
+        if next_progress_item
+        else None
+    )
+    next_progress_label = (
+        f"第 {next_progress_position}/{total_count} 项"
+        if next_progress_position
+        else "全部完成"
+    )
     next_progress_action_codes = set((next_progress_item or {}).get("related_action_codes") or [])
     next_progress_actions = [action for action in all_actions if action.get("code") in next_progress_action_codes]
     next_progress_blocker_codes = set((next_progress_item or {}).get("related_blocker_codes") or [])
@@ -1123,6 +1136,8 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
             "completion_label": completion_label,
             "remaining_label": remaining_label,
             "next_item": next_progress_item,
+            "next_item_position": next_progress_position,
+            "next_item_label": next_progress_label,
             "next_item_actions": next_progress_actions,
             "next_item_blockers": next_progress_blockers,
             "next_item_context": next_progress_context,

@@ -86,6 +86,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_home_status["progress"]["completion_label"] == "已完成 6/8 项"
     assert empty_home_status["progress"]["remaining_label"] == "还剩 2 项"
     assert empty_home_status["progress"]["next_item"]["code"] == "onboarding"
+    assert empty_home_status["progress"]["next_item_position"] == 1
+    assert empty_home_status["progress"]["next_item_label"] == "第 1/8 项"
     assert {item["code"] for item in empty_home_status["progress"]["next_item_actions"]} == {
         "PROFILE_REQUIRED",
         "TRUSTED_DEVICE_REQUIRED",
@@ -216,6 +218,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert start_home_status["progress"]["stage_title"] == "先处理阻塞事项"
     assert start_home_status["progress"]["stage_tone"] == "warning"
     assert start_home_status["progress"]["next_item"]["code"] == "start_ready"
+    assert start_home_status["progress"]["next_item_position"] == 8
+    assert start_home_status["progress"]["next_item_label"] == "第 8/8 项"
     assert {"VIEW_START_GUIDE", "CHECK_START_READINESS", "M33_ACCEPTANCE_REQUIRED"}.issubset(
         {item["code"] for item in start_home_status["progress"]["next_item_actions"]}
     )
@@ -555,6 +559,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert ready_home_status["progress"]["completion_label"] == "已完成 8/8 项"
     assert ready_home_status["progress"]["remaining_label"] == "全部完成"
     assert ready_home_status["progress"]["next_item"] is None
+    assert ready_home_status["progress"]["next_item_position"] is None
+    assert ready_home_status["progress"]["next_item_label"] == "全部完成"
     assert ready_home_status["progress"]["next_item_actions"] == []
     assert ready_home_status["progress"]["next_item_blockers"] == []
     assert ready_home_status["progress"]["next_item_context"] is None

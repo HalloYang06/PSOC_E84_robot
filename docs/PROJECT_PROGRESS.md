@@ -264,3 +264,5 @@
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). This keeps the phone next-step card copy backend-authored and evidence-only.
 - Added `completion_percent`, `completion_label`, and `remaining_label` to `/me.home_status_guide.progress` so phone shells can render workflow progress without recalculating checklist totals.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). The percentage covers the full home workflow checklist, not just onboarding substeps.
+- Added `next_item_position` and `next_item_label` to `/me.home_status_guide.progress` so phone step indicators can show the backend-highlighted progress row without scanning checklist order.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). Position is 1-based and becomes null when the home workflow is complete.
