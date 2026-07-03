@@ -139,6 +139,19 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_bootstrap.json()["data"]["device_operational_guide"]["status"] == "device_required"
     assert "BIND_TRUSTED_DEVICE" in {item["code"] for item in empty_bootstrap.json()["data"]["device_operational_guide"]["actions"]}
 
+    partial_name_profile = client.patch(
+        "/api/rehab-arm/app/v1/me/profile",
+        headers=auth_headers(owner_token),
+        json={"name": "Patient Alpha", "role": "patient"},
+    )
+    assert partial_name_profile.status_code == 200
+    partial_name_bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert partial_name_bootstrap.status_code == 200
+    partial_name_next_step = partial_name_bootstrap.json()["data"]["onboarding_guide"]["next_step"]
+    assert partial_name_next_step["code"] == "PROFILE_REQUIRED"
+    assert partial_name_next_step["missing_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
+    assert partial_name_bootstrap.json()["data"]["home_status_guide"]["primary_action"]["code"] == "PROFILE_REQUIRED"
+
     hinted_profile_response = client.patch(
         "/api/rehab-arm/app/v1/me/profile",
         headers=auth_headers(owner_token),
@@ -152,7 +165,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     )
     assert hinted_profile_response.status_code == 200
     hinted_profile = hinted_profile_response.json()["data"]
-    assert hinted_profile["name"] == "Rehab App User"
+    assert hinted_profile["name"] == "Patient Alpha"
     assert hinted_profile["affected_side"] == "left"
     assert hinted_profile["rehab_stage"] == "early_active"
     assert hinted_profile["medical_constraints"] == ["no overhead motion"]
@@ -162,14 +175,14 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         "/api/rehab-arm/app/v1/me/profile",
         headers=auth_headers(owner_token),
         json={
-            "name": "Patient Alpha",
+            "name": "Patient Alpha Updated",
             "role": "patient",
         },
     )
     assert profile_response.status_code == 200
     profile = profile_response.json()["data"]
     assert profile["user_id"] == owner_user_id
-    assert profile["name"] == "Patient Alpha"
+    assert profile["name"] == "Patient Alpha Updated"
     assert profile["role"] == "patient"
     assert profile["affected_side"] == "left"
     assert profile["rehab_stage"] == "early_active"

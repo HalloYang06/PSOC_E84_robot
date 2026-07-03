@@ -412,7 +412,17 @@ def _onboarding_step(code: str, status: str, title: str, description: str, endpo
 
 
 def _app_onboarding_guide(profile: dict | None, devices: list[dict], plans: list[dict]) -> dict:
-    has_profile = profile is not None
+    missing_profile_fields = []
+    if profile is None:
+        missing_profile_fields = ["affected_side", "rehab_stage", "pain_baseline"]
+    else:
+        if not str(profile.get("affected_side") or "").strip():
+            missing_profile_fields.append("affected_side")
+        if not str(profile.get("rehab_stage") or "").strip():
+            missing_profile_fields.append("rehab_stage")
+        if profile.get("pain_baseline") is None:
+            missing_profile_fields.append("pain_baseline")
+    has_profile = not missing_profile_fields
     has_trusted_device = any(device["trust_status"] != "revoked" for device in devices)
     has_usable_plan = any(plan["status"] not in {"archived", "rejected"} for plan in plans)
     steps = [
@@ -445,6 +455,8 @@ def _app_onboarding_guide(profile: dict | None, devices: list[dict], plans: list
         ),
     ]
     next_step = next((step for step in steps if step["status"] == "todo"), None)
+    if next_step and next_step["code"] == "PROFILE_REQUIRED":
+        next_step["missing_fields"] = missing_profile_fields
     return {
         "status": "complete" if next_step is None else "incomplete",
         "next_step": next_step,
