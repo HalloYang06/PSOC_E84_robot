@@ -737,18 +737,50 @@ def _app_care_summary(
     if queued_offline_count:
         blockers.append("offline_queue_pending")
     blocker_copy = {
-        "onboarding_incomplete": ("完成首次设置", "康复档案、可信 M33 设备或可用训练计划还没有完成。"),
-        "active_session": ("处理未结束训练", "存在 started/in_progress/paused 训练记录，请先恢复、完成或取消。"),
-        "report_review_required": ("复盘训练报告", "存在训练报告尚未记录患者或治疗师复盘。"),
-        "ai_draft_open": ("审核 AI 训练草稿", "存在未接受的 AI 草稿；接受后仍需 M33 同步和 preflight。"),
-        "offline_queue_failed": ("处理离线失败证据", "存在重放失败的离线证据，需要查看并记录人工复核。"),
-        "offline_queue_pending": ("同步离线证据", "存在 queued 离线证据，需要先重放到后端证据流。"),
+        "onboarding_incomplete": (
+            "warning",
+            "完成首次设置",
+            "康复档案、可信 M33 设备或可用训练计划还没有完成。",
+            ["PROFILE_REQUIRED", "TRUSTED_DEVICE_REQUIRED", "TRAINING_PLAN_REQUIRED"],
+        ),
+        "active_session": (
+            "critical",
+            "处理未结束训练",
+            "存在 started/in_progress/paused 训练记录，请先恢复、完成或取消。",
+            ["RECOVER_ACTIVE_SESSION", "VIEW_SESSION", "RECORD_PROGRESS", "FINISH_SESSION", "RESUME_SESSION", "CANCEL_SESSION"],
+        ),
+        "report_review_required": (
+            "warning",
+            "复盘训练报告",
+            "存在训练报告尚未记录患者或治疗师复盘。",
+            ["REVIEW_LATEST_REPORT", "RECORD_REPORT_REVIEW"],
+        ),
+        "ai_draft_open": (
+            "info",
+            "审核 AI 训练草稿",
+            "存在未接受的 AI 草稿；接受后仍需 M33 同步和 preflight。",
+            ["REVIEW_AI_DRAFT", "VIEW_AI_DRAFT", "ACCEPT_AI_DRAFT"],
+        ),
+        "offline_queue_failed": (
+            "critical",
+            "处理离线失败证据",
+            "存在重放失败的离线证据，需要查看并记录人工复核。",
+            ["VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM"],
+        ),
+        "offline_queue_pending": (
+            "warning",
+            "同步离线证据",
+            "存在 queued 离线证据，需要先重放到后端证据流。",
+            ["REPLAY_OFFLINE_EVIDENCE"],
+        ),
     }
     blocker_details = [
         {
             "code": code,
-            "title": blocker_copy.get(code, (code, ""))[0],
-            "description": blocker_copy.get(code, ("", ""))[1],
+            "severity": blocker_copy.get(code, ("info", code, "", []))[0],
+            "title": blocker_copy.get(code, ("info", code, "", []))[1],
+            "description": blocker_copy.get(code, ("info", "", "", []))[2],
+            "related_action_codes": blocker_copy.get(code, ("info", "", "", []))[3],
         }
         for code in blockers
     ]

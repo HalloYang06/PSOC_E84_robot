@@ -79,7 +79,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert "疼痛基线" in empty_home_status["body"]
     assert "onboarding_incomplete" in empty_home_status["blockers"]
     assert empty_home_status["blocker_details"][0]["code"] == "onboarding_incomplete"
+    assert empty_home_status["blocker_details"][0]["severity"] == "warning"
     assert empty_home_status["blocker_details"][0]["title"] == "完成首次设置"
+    assert "PROFILE_REQUIRED" in empty_home_status["blocker_details"][0]["related_action_codes"]
     assert empty_home_status["control_boundary"] == "app_home_status_guide_evidence_only_not_motion_permission"
     assert empty_bootstrap.json()["data"]["device_operational_guide"]["status"] == "device_required"
     assert "BIND_TRUSTED_DEVICE" in {item["code"] for item in empty_bootstrap.json()["data"]["device_operational_guide"]["actions"]}
@@ -1435,7 +1437,10 @@ def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_sess
     assert failed_home_status["secondary_actions"][0]["endpoint"] == f"/api/rehab-arm/app/v1/offline-queue/{failed_source['id']}/review"
     assert failed_home_status["counts"]["offline_items_failed"] == 1
     assert "offline_queue_failed" in failed_home_status["blockers"]
-    assert any(item["title"] == "处理离线失败证据" for item in failed_home_status["blocker_details"])
+    failed_blocker = next(item for item in failed_home_status["blocker_details"] if item["code"] == "offline_queue_failed")
+    assert failed_blocker["severity"] == "critical"
+    assert failed_blocker["title"] == "处理离线失败证据"
+    assert failed_blocker["related_action_codes"] == ["VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM"]
 
 
 def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeypatch) -> None:

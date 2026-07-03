@@ -225,3 +225,5 @@
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). These actions remain workflow guidance only and do not grant hardware motion authority.
 - Added backend-authored `blocker_details` to `/me.care_summary` and `/me.home_status_guide`. Blockers now include stable code plus user-facing title/description for onboarding, active session, report review, AI draft, failed offline evidence, and pending offline sync states.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only). This is display guidance only and does not alter safety gates or hardware authority.
+- Extended `blocker_details` with `severity` and `related_action_codes` so phone UI can style blockers and link them to the current primary/secondary actions without maintaining its own blocker-to-action map.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
