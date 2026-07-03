@@ -1026,6 +1026,29 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
         if next_progress_position
         else "全部完成"
     )
+    blocker_severity_by_code = {
+        str(blocker.get("code") or ""): str(blocker.get("severity") or "warning")
+        for blocker in blocker_details
+    }
+    for item in progress_items:
+        related_blocker_codes = item.get("related_blocker_codes") or []
+        item_blocker_tones = [
+            blocker_severity_by_code[code]
+            for code in related_blocker_codes
+            if code in blocker_severity_by_code
+        ]
+        if item["done"]:
+            item["status"] = "done"
+            item["status_label"] = "已完成"
+            item["tone"] = "success"
+        elif item is next_progress_item:
+            item["status"] = "current"
+            item["status_label"] = "当前处理"
+            item["tone"] = item_blocker_tones[0] if item_blocker_tones else "warning"
+        else:
+            item["status"] = "pending"
+            item["status_label"] = "待处理"
+            item["tone"] = item_blocker_tones[0] if item_blocker_tones else "muted"
     next_progress_action_codes = set((next_progress_item or {}).get("related_action_codes") or [])
     next_progress_actions = [action for action in all_actions if action.get("code") in next_progress_action_codes]
     next_progress_blocker_codes = set((next_progress_item or {}).get("related_blocker_codes") or [])

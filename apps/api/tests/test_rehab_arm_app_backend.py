@@ -113,9 +113,16 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     )
     onboarding_progress = next(item for item in empty_home_status["progress"]["items"] if item["code"] == "onboarding")
     assert onboarding_progress["done"] is False
+    assert onboarding_progress["status"] == "current"
+    assert onboarding_progress["status_label"] == "当前处理"
+    assert onboarding_progress["tone"] == "warning"
     assert onboarding_progress["title"] == "首次设置"
     assert "onboarding_incomplete" in onboarding_progress["related_blocker_codes"]
     assert "PROFILE_REQUIRED" in onboarding_progress["related_action_codes"]
+    active_clear_progress = next(item for item in empty_home_status["progress"]["items"] if item["code"] == "active_session_clear")
+    assert active_clear_progress["done"] is True
+    assert active_clear_progress["status"] == "done"
+    assert active_clear_progress["tone"] == "success"
     assert empty_home_status["blocker_details"][0]["code"] == "onboarding_incomplete"
     assert empty_bootstrap.json()["data"]["care_summary"]["primary_blocker"]["code"] == "onboarding_incomplete"
     assert empty_home_status["primary_blocker"]["code"] == "onboarding_incomplete"
@@ -240,6 +247,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert next(item for item in start_home_status["progress"]["items"] if item["code"] == "onboarding")["done"] is True
     start_ready_progress = next(item for item in start_home_status["progress"]["items"] if item["code"] == "start_ready")
     assert start_ready_progress["done"] is False
+    assert start_ready_progress["status"] == "current"
+    assert start_ready_progress["tone"] == "warning"
     assert "start_readiness_blocked" in start_ready_progress["related_blocker_codes"]
     assert "CHECK_START_READINESS" in start_ready_progress["related_action_codes"]
     start_group = next(item for item in start_home_status["action_groups"]["blocker_related"] if item["blocker_code"] == "start_readiness_blocked")
@@ -566,6 +575,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert ready_home_status["progress"]["next_item_context"] is None
     ready_progress_item = next(item for item in ready_home_status["progress"]["items"] if item["code"] == "start_ready")
     assert ready_progress_item["done"] is True
+    assert ready_progress_item["status"] == "done"
+    assert ready_progress_item["tone"] == "success"
     assert ready_progress_item["title"] == "开始条件"
 
     allowed_start = client.post(
