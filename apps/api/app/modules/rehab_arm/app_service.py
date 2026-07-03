@@ -673,6 +673,36 @@ def _app_care_summary(
     }
 
 
+def _app_offline_sync_guide(offline_items: list[dict]) -> dict:
+    queued = [item for item in offline_items if item["replay_status"] == "queued"]
+    replayed = [item for item in offline_items if item["replay_status"] == "replayed"]
+    failed = [item for item in offline_items if item["replay_status"] == "failed"]
+    if failed:
+        status = "review_failed_items"
+        next_action = "inspect_failed_replay_results"
+    elif queued:
+        status = "ready_to_replay"
+        next_action = "replay_queued_evidence"
+    else:
+        status = "synced"
+        next_action = "none"
+    return {
+        "status": status,
+        "next_action": next_action,
+        "counts": {
+            "queued": len(queued),
+            "replayed": len(replayed),
+            "failed": len(failed),
+        },
+        "queued_item_ids": [item["id"] for item in queued],
+        "failed_item_ids": [item["id"] for item in failed],
+        "replay_endpoint": "/api/rehab-arm/app/v1/offline-queue/replay",
+        "replay_method": "POST",
+        "payload_hint": {"item_ids": [item["id"] for item in queued]},
+        "control_boundary": "offline_sync_guide_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
@@ -702,6 +732,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "daily_action_guide": _app_daily_action_guide(onboarding_guide, active_session, primary_start_guide, latest_report, latest_open_ai_draft),
         "care_summary": _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue),
         "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
+        "offline_sync_guide": _app_offline_sync_guide(offline_queue),
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_report,
