@@ -2554,6 +2554,7 @@ def get_app_workflow(db: Session, user_id: str) -> dict:
         "ai_draft_review_guide",
         "report_followup_guide",
         "accepted_plan_guide",
+        "device_operational_guide",
     ]
     guide_actions: list[dict | None] = []
     for guide_name in guide_names:
@@ -2588,6 +2589,7 @@ def get_app_workflow(db: Session, user_id: str) -> dict:
             "offline_sync_guide": bootstrap.get("offline_sync_guide"),
             "report_followup_guide": bootstrap.get("report_followup_guide"),
             "ai_draft_review_guide": bootstrap.get("ai_draft_review_guide"),
+            "device_operational_guide": bootstrap.get("device_operational_guide"),
         },
         "frontend_contract": {
             "bootstrap_endpoint": "/api/rehab-arm/app/v1/me",
@@ -2636,6 +2638,7 @@ WORKFLOW_EXECUTABLE_ACTIONS = {
     "ACCEPT_AI_DRAFT",
     "REPLAY_OFFLINE_EVIDENCE",
     "REVIEW_FAILED_OFFLINE_ITEM",
+    "SYNC_PLAN_TO_M33",
     "SYNC_ACCEPTED_PLAN_TO_M33",
 }
 
@@ -2775,6 +2778,10 @@ def execute_workflow_action(db: Session, user_id: str, action_code: str, payload
             **data,
         }
         result = review_failed_offline_item(db, user_id, item_id, RehabAppOfflineQueueReviewRequest(**review_payload))
+    elif normalized == "SYNC_PLAN_TO_M33":
+        plan_id = str(data.get("plan_id") or entities.get("plan_id") or "")
+        device_id = str(data.get("device_id") or hint.get("device_id") or entities.get("device_id") or "")
+        result = sync_training_plan_to_device(db, user_id, plan_id, device_id)
     elif normalized == "SYNC_ACCEPTED_PLAN_TO_M33":
         plan_id = str(data.get("plan_id") or entities.get("plan_id") or "")
         device_id = str(data.get("device_id") or hint.get("device_id") or entities.get("device_id") or "")

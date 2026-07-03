@@ -2148,6 +2148,8 @@ def test_rehab_arm_app_workflow_contract_tracks_user_loop(tmp_path, monkeypatch)
     assert blocked_workflow["primary_entities"]["plan_id"] == plan["id"]
     assert blocked_workflow["primary_entities"]["device_id"] == device["id"]
     assert any(action["code"] == "M33_ACCEPTANCE_REQUIRED" for action in blocked_workflow["action_queue"])
+    sync_action = next(action for action in blocked_workflow["action_queue"] if action["code"] == "SYNC_PLAN_TO_M33")
+    assert sync_action["payload_hint"] == {"device_id": device["id"]}
 
     sync = client.post(
         f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
@@ -2369,6 +2371,20 @@ def test_rehab_arm_app_workflow_action_endpoint_executes_onboarding_actions(tmp_
     assert plan_data["workflow"]["phase"]["status"] == "start_blocked"
     assert plan_data["workflow"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
     assert plan_data["workflow"]["guides"]["daily_care_plan"]["stage"] == "resolve_blockers"
+    assert any(action["code"] == "SYNC_PLAN_TO_M33" for action in plan_data["workflow"]["action_queue"])
+
+    sync_action = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={"action_code": "SYNC_PLAN_TO_M33"},
+    )
+    assert sync_action.status_code == 200
+    sync_data = sync_action.json()["data"]
+    assert sync_data["result"]["sync_status"] == "pending"
+    assert sync_data["result"]["plan_id"] == plan_data["result"]["id"]
+    assert sync_data["workflow"]["phase"]["status"] == "start_blocked"
+    assert sync_data["workflow"]["guides"]["device_operational_guide"]["status"] == "m33_decision_pending"
+    assert sync_data["control_boundary"] == "app_workflow_evidence_only_not_motion_permission"
 
 
 def test_rehab_arm_app_workflow_action_endpoint_rejects_unavailable_or_dangerous_actions(tmp_path, monkeypatch) -> None:

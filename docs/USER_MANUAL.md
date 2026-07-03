@@ -289,6 +289,8 @@ The backend only executes actions present in the current workflow queue and reje
 
 The same endpoint can complete first-run setup when the returned workflow action queue exposes `PROFILE_REQUIRED`, `TRUSTED_DEVICE_REQUIRED`, or `TRAINING_PLAN_REQUIRED`. Send the payload advertised by the current action. Project-scoped device binding with `platform_project_id` must use `/api/rehab-arm/app/v1/devices/bind` so project write authorization is checked.
 
+When the action queue exposes `SYNC_PLAN_TO_M33`, the phone may call `/me/workflow/actions` with `{"action_code":"SYNC_PLAN_TO_M33","payload":{}}` to create the backend plan-sync evidence record. The expected result is `sync_status=pending`; M33 acceptance or rejection still requires the real M33 decision path and is not App-granted motion permission.
+
 
 Current user-release gate:
 
