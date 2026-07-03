@@ -549,12 +549,95 @@ def _app_daily_action_guide(
     }
 
 
+def _timeline_item(kind: str, event_at: object, title: str, status: str, source_id: str, detail: dict | None = None) -> dict:
+    return {
+        "kind": kind,
+        "event_at": event_at,
+        "title": title,
+        "status": status,
+        "source_id": source_id,
+        "detail": detail or {},
+    }
+
+
+def _timeline_sort_value(item: dict) -> str:
+    value = item.get("event_at")
+    return value.isoformat() if hasattr(value, "isoformat") else str(value or "")
+
+
+def _app_care_timeline(sessions: list[dict], reports: list[dict], drafts: list[dict], offline_items: list[dict], limit: int = 8) -> dict:
+    items: list[dict] = []
+    for session in sessions:
+        items.append(
+            _timeline_item(
+                "training_session",
+                session.get("ended_at") or session.get("started_at"),
+                "训练会话",
+                session["status"],
+                session["id"],
+                {
+                    "plan_id": session["plan_id"],
+                    "device_id": session["device_id"],
+                    "completion_rate": session["completion_rate"],
+                    "pain_after": session["pain_after"],
+                },
+            )
+        )
+    for report in reports:
+        latest_review = report.get("latest_review") or {}
+        items.append(
+            _timeline_item(
+                "training_report",
+                report.get("created_at"),
+                "训练报告",
+                "reviewed" if latest_review else "review_required",
+                report["id"],
+                {
+                    "session_id": report["session_id"],
+                    "plan_id": report["plan_id"],
+                    "latest_review_id": latest_review.get("id", ""),
+                    "recommendations": report.get("recommendations", []),
+                },
+            )
+        )
+    for draft in drafts:
+        items.append(
+            _timeline_item(
+                "ai_training_draft",
+                draft.get("created_at"),
+                "AI 训练草稿",
+                "accepted" if draft.get("accepted_plan_id") else "open",
+                draft["id"],
+                {"accepted_plan_id": draft.get("accepted_plan_id") or "", "risk_notes": draft.get("risk_notes", [])},
+            )
+        )
+    for item in offline_items:
+        items.append(
+            _timeline_item(
+                "offline_queue_item",
+                item.get("replayed_at") or item.get("created_at"),
+                "离线证据",
+                item["replay_status"],
+                item["id"],
+                {"operation_type": item["operation_type"], "resource_type": item["resource_type"]},
+            )
+        )
+    items = sorted(items, key=_timeline_sort_value, reverse=True)[:limit]
+    return {
+        "items": items,
+        "control_boundary": "app_care_timeline_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
-    sessions = list_training_sessions(db, user_id, limit=1)
+    sessions = list_training_sessions(db, user_id, limit=5)
+    reports = list_training_reports(db, user_id, limit=5)
     drafts = list_ai_training_drafts(db, user_id, status="open", limit=1)
+    all_drafts = list_ai_training_drafts(db, user_id, status="all", limit=5)
     preflights = list_preflight_checks(db, user_id, limit=1)
+    offline_queue = list_offline_queue(db, user_id, status="queued", limit=20)
     profile = get_profile(db, user_id)
     active_session = sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress", "paused"} else None
     latest_report = latest_training_report(db, user_id)
@@ -573,12 +656,13 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "active_session": active_session,
         "primary_start_guide": primary_start_guide,
         "daily_action_guide": _app_daily_action_guide(onboarding_guide, active_session, primary_start_guide, latest_report, latest_open_ai_draft),
+        "care_timeline": _app_care_timeline(sessions, reports, all_drafts, offline_queue),
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_report,
         "latest_open_ai_draft": latest_open_ai_draft,
         "platform_sync": get_platform_sync_status(db, user_id),
-        "offline_queue": list_offline_queue(db, user_id, status="queued", limit=20),
+        "offline_queue": offline_queue,
         "control_boundary": "app_bootstrap_evidence_only_not_motion_permission",
     }
 

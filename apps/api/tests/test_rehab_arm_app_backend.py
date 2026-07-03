@@ -1079,6 +1079,13 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert bootstrap.status_code == 200
     assert bootstrap.json()["data"]["latest_report"]["id"] == report["id"]
     assert bootstrap.json()["data"]["latest_report"]["latest_review"]["id"] == review["id"]
+    care_timeline = bootstrap.json()["data"]["care_timeline"]
+    assert care_timeline["control_boundary"] == "app_care_timeline_evidence_only_not_motion_permission"
+    timeline_kinds = {item["kind"] for item in care_timeline["items"]}
+    assert {"training_session", "training_report", "ai_training_draft"}.issubset(timeline_kinds)
+    report_timeline = next(item for item in care_timeline["items"] if item["kind"] == "training_report")
+    assert report_timeline["source_id"] == report["id"]
+    assert report_timeline["status"] == "reviewed"
 
     sync_run = client.post(
         "/api/rehab-arm/app/v1/platform/sync",
