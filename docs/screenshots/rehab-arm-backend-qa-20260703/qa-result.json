@@ -1,0 +1,15 @@
+{
+  "landedControlPage": true,
+  "hasRehabSignal": false,
+  "hasNoPermissionBlocker": true,
+  "hasNoRawRuntimeError": true,
+  "url": "http://localhost:3000/projects/proj_rehab_arm/rehab-arm-control",
+  "title": "研发基地庄园",
+  "consoleMessages": [
+    {
+      "type": "warning",
+      "text": "cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation"
+    }
+  ],
+  "visibleTextSample": ""
+}
