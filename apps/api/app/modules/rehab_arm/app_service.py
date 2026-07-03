@@ -16,6 +16,7 @@ from app.db.models.rehab_arm_app import (
     RehabAppEmgSummary,
     RehabAppIntentInferenceSummary,
     RehabAppOfflineQueueItem,
+    RehabAppPlanConstraintReview,
     RehabAppPlatformSyncRun,
     RehabAppPreflightCheck,
     RehabAppTrainingPlan,
@@ -32,6 +33,7 @@ from .app_schemas import (
     RehabAppDiagnosticUploadRequest,
     RehabAppBleMessageCreate,
     RehabAppOfflineQueueItemCreate,
+    RehabAppPlanConstraintReviewCreate,
     RehabAppPreflightCheckCreate,
     RehabAppProfileUpdate,
     RehabAppTrainingReportReviewCreate,
@@ -197,6 +199,21 @@ def _report_review_dict(review: RehabAppTrainingReportReview) -> dict:
         "follow_up_payload": review.follow_up_payload or {},
         "created_at": review.created_at,
         "control_boundary": "training_report_review_only_not_medical_diagnosis_or_motion_permission",
+    }
+
+
+def _constraint_review_dict(review: RehabAppPlanConstraintReview) -> dict:
+    return {
+        "id": review.id,
+        "user_id": review.user_id,
+        "plan_id": review.plan_id,
+        "plan_version": review.plan_version,
+        "reviewer_role": review.reviewer_role,
+        "review_status": review.review_status,
+        "reviewed_constraints": review.reviewed_constraints or [],
+        "review_note": review.review_note,
+        "created_at": review.created_at,
+        "control_boundary": "constraint_review_evidence_only_not_motion_permission",
     }
 
 
@@ -623,8 +640,6 @@ def _plan_constraint_violations(profile: RehabAppUserProfile | None, plan: Rehab
     constraints = [str(item).strip().lower() for item in (profile.medical_constraints or []) if str(item).strip()]
     if not constraints:
         return []
-    if (plan.safety_constraints or {}).get("therapist_constraint_reviewed") is True:
-        return []
     terms = _normalized_plan_terms(plan)
     max_deg = None
     if isinstance(plan.target_angle_range, dict):
@@ -643,21 +658,96 @@ def _plan_constraint_violations(profile: RehabAppUserProfile | None, plan: Rehab
     return violations
 
 
+def _latest_plan_constraint_review(db: Session, user_id: str, plan_id: str, plan_version: int) -> RehabAppPlanConstraintReview | None:
+    return db.scalar(
+        select(RehabAppPlanConstraintReview)
+        .where(
+            RehabAppPlanConstraintReview.user_id == user_id,
+            RehabAppPlanConstraintReview.plan_id == plan_id,
+            RehabAppPlanConstraintReview.plan_version == plan_version,
+            RehabAppPlanConstraintReview.review_status.in_(["approved", "conditional"]),
+        )
+        .order_by(RehabAppPlanConstraintReview.created_at.desc(), RehabAppPlanConstraintReview.id.desc())
+        .limit(1)
+    )
+
+
 def _require_plan_matches_profile_constraints(db: Session, user_id: str, plan: RehabAppTrainingPlan) -> None:
     profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
     violations = _plan_constraint_violations(profile, plan)
     if violations:
+        review = _latest_plan_constraint_review(db, user_id, plan.id, plan.version)
+        if review is not None:
+            return
         raise AppError(
             "TRAINING_PLAN_CONTRAINDICATED",
             "training plan conflicts with the user's recorded medical constraints and needs therapist review",
             status_code=409,
             details={
                 "plan_id": plan.id,
+                "plan_version": plan.version,
                 "violations": violations,
-                "allowed_review_flag": "safety_constraints.therapist_constraint_reviewed",
+                "required_review_endpoint": f"/api/rehab-arm/app/v1/training-plans/{plan.id}/constraint-reviews",
                 "control_boundary": "training_plan_blocked_not_medical_diagnosis_or_motion_permission",
             },
         )
+
+
+def create_plan_constraint_review(db: Session, user_id: str, plan_id: str, payload: RehabAppPlanConstraintReviewCreate) -> dict:
+    plan = db.get(RehabAppTrainingPlan, plan_id)
+    if plan is None or plan.user_id != user_id:
+        raise AppError("TRAINING_PLAN_NOT_FOUND", "training plan not found", status_code=404)
+    profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
+    violations = _plan_constraint_violations(profile, plan)
+    if not violations and payload.review_status != "rejected":
+        raise AppError(
+            "CONSTRAINT_REVIEW_NOT_REQUIRED",
+            "this plan has no detected profile-constraint conflict that requires review",
+            status_code=409,
+            details={"plan_id": plan.id, "plan_version": plan.version, "control_boundary": "constraint_review_evidence_only_not_motion_permission"},
+        )
+    review = RehabAppPlanConstraintReview(
+        user_id=user_id,
+        plan_id=plan.id,
+        plan_version=plan.version,
+        reviewer_role=payload.reviewer_role,
+        review_status=payload.review_status,
+        reviewed_constraints=payload.reviewed_constraints or [item["constraint"] for item in violations],
+        review_note=payload.review_note,
+    )
+    db.add(review)
+    db.flush()
+    create_audit_log(
+        db,
+        actor_type="human",
+        actor_id=user_id,
+        action=f"rehab_app.training_plan.constraint_review.{review.review_status}",
+        resource_type="rehab_app_plan_constraint_review",
+        resource_id=review.id,
+        after={
+            "plan_id": plan.id,
+            "plan_version": plan.version,
+            "review_status": review.review_status,
+            "control_boundary": "constraint_review_evidence_only_not_motion_permission",
+        },
+    )
+    db.commit()
+    db.refresh(review)
+    return _constraint_review_dict(review)
+
+
+def list_plan_constraint_reviews(db: Session, user_id: str, plan_id: str) -> list[dict]:
+    plan = db.get(RehabAppTrainingPlan, plan_id)
+    if plan is None or plan.user_id != user_id:
+        raise AppError("TRAINING_PLAN_NOT_FOUND", "training plan not found", status_code=404)
+    reviews = list(
+        db.scalars(
+            select(RehabAppPlanConstraintReview)
+            .where(RehabAppPlanConstraintReview.user_id == user_id, RehabAppPlanConstraintReview.plan_id == plan.id)
+            .order_by(RehabAppPlanConstraintReview.created_at.desc(), RehabAppPlanConstraintReview.id.desc())
+        )
+    )
+    return [_constraint_review_dict(review) for review in reviews]
 
 
 def sync_training_plan_to_device(db: Session, user_id: str, plan_id: str, device_id: str) -> dict:

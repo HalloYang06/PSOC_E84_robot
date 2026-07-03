@@ -128,6 +128,24 @@ class RehabAppTrainingPlanSyncRequest(BaseModel):
     device_id: str = Field(min_length=1)
 
 
+class RehabAppPlanConstraintReviewCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reviewer_role: str = Field(default="therapist", pattern="^(therapist|engineer)$")
+    review_status: str = Field(default="approved", pattern="^(approved|conditional|rejected)$")
+    reviewed_constraints: list[str] = Field(default_factory=list)
+    review_note: str = Field(default="", max_length=4000)
+
+
+class RehabAppPlanConstraintReviewRead(RehabAppPlanConstraintReviewCreate):
+    id: str
+    user_id: str
+    plan_id: str
+    plan_version: int
+    created_at: datetime | None = None
+    control_boundary: str = "constraint_review_evidence_only_not_motion_permission"
+
+
 class RehabAppM33StatusUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

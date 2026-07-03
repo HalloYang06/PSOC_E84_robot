@@ -20,6 +20,7 @@ from .app_schemas import (
     RehabAppM33StatusUpdate,
     RehabAppOfflineQueueItemCreate,
     RehabAppOfflineQueueReplayRequest,
+    RehabAppPlanConstraintReviewCreate,
     RehabAppPlatformSyncRequest,
     RehabAppPreflightCheckCreate,
     RehabAppProfileUpdate,
@@ -40,6 +41,7 @@ from .app_service import (
     bind_device,
     cancel_training_session,
     create_ble_message,
+    create_plan_constraint_review,
     create_preflight_check,
     create_training_report_review,
     create_training_plan,
@@ -54,6 +56,7 @@ from .app_service import (
     list_ble_messages,
     list_offline_queue,
     list_platform_sync_runs,
+    list_plan_constraint_reviews,
     list_preflight_checks,
     list_safety_audit_logs,
     get_platform_sync_status,
@@ -196,6 +199,16 @@ def api_archive_training_plan(plan_id: str, request: Request, db: Session = Depe
 @router.post("/training-plans/{plan_id}/sync-to-device")
 def api_sync_training_plan(plan_id: str, payload: RehabAppTrainingPlanSyncRequest, request: Request, db: Session = Depends(get_db)):
     return ok(sync_training_plan_to_device(db, _user_id(db, request), plan_id, payload.device_id))
+
+
+@router.post("/training-plans/{plan_id}/constraint-reviews")
+def api_create_plan_constraint_review(plan_id: str, payload: RehabAppPlanConstraintReviewCreate, request: Request, db: Session = Depends(get_db)):
+    return ok(create_plan_constraint_review(db, _user_id(db, request), plan_id, payload))
+
+
+@router.get("/training-plans/{plan_id}/constraint-reviews")
+def api_list_plan_constraint_reviews(plan_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(list_plan_constraint_reviews(db, _user_id(db, request), plan_id))
 
 
 @router.post("/training-preflight")

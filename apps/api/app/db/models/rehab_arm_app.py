@@ -164,6 +164,20 @@ class RehabAppTrainingReportReview(Base):
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class RehabAppPlanConstraintReview(Base):
+    __tablename__ = "rehab_app_plan_constraint_reviews"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    plan_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_plans.id"), nullable=False, index=True)
+    plan_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, index=True)
+    reviewer_role: Mapped[str] = mapped_column(String(40), nullable=False, default="therapist", index=True)
+    review_status: Mapped[str] = mapped_column(String(40), nullable=False, default="approved", index=True)
+    reviewed_constraints: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    review_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class RehabAppEmgSummary(Base):
     __tablename__ = "rehab_app_emg_summaries"
 

@@ -153,6 +153,32 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
         json={"safety_constraints": {"therapist_constraint_reviewed": True, "review_note": "limited supervised range only"}},
     )
     assert therapist_reviewed_plan.status_code == 200
+    still_blocked_constraint_sync = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{contraindicated_plan['id']}/sync-to-device",
+        headers=auth_headers(owner_token),
+        json={"device_id": device["id"]},
+    )
+    assert still_blocked_constraint_sync.status_code == 409
+    assert still_blocked_constraint_sync.json()["error"]["code"] == "TRAINING_PLAN_CONTRAINDICATED"
+    constraint_review = client.post(
+        f"/api/rehab-arm/app/v1/training-plans/{contraindicated_plan['id']}/constraint-reviews",
+        headers=auth_headers(owner_token),
+        json={
+            "reviewer_role": "therapist",
+            "review_status": "conditional",
+            "reviewed_constraints": ["no overhead motion"],
+            "review_note": "limited supervised range only",
+        },
+    )
+    assert constraint_review.status_code == 200
+    assert constraint_review.json()["data"]["plan_version"] == 2
+    assert constraint_review.json()["data"]["review_status"] == "conditional"
+    constraint_reviews = client.get(
+        f"/api/rehab-arm/app/v1/training-plans/{contraindicated_plan['id']}/constraint-reviews",
+        headers=auth_headers(owner_token),
+    )
+    assert constraint_reviews.status_code == 200
+    assert constraint_reviews.json()["data"][0]["id"] == constraint_review.json()["data"]["id"]
     reviewed_sync = client.post(
         f"/api/rehab-arm/app/v1/training-plans/{contraindicated_plan['id']}/sync-to-device",
         headers=auth_headers(owner_token),

@@ -25,6 +25,7 @@ from app.db.models.rehab_arm_app import (
     RehabAppEmgSummary,
     RehabAppIntentInferenceSummary,
     RehabAppOfflineQueueItem,
+    RehabAppPlanConstraintReview,
     RehabAppPlatformSyncRun,
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
@@ -67,6 +68,7 @@ def ensure_schema_extensions() -> None:
             RehabAppAiTrainingDraft,
             RehabAppDiagnosticUpload,
             RehabAppOfflineQueueItem,
+            RehabAppPlanConstraintReview,
             RehabAppPlatformSyncRun,
         ):
             if model.__tablename__ not in table_names:
