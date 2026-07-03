@@ -714,6 +714,8 @@ def _app_care_summary(
     reports: list[dict],
     drafts: list[dict],
     offline_items: list[dict],
+    safety_review_guide: dict | None = None,
+    finished_session_report_guide: dict | None = None,
 ) -> dict:
     active_count = sum(1 for session in sessions if session["status"] in {"started", "in_progress", "paused"})
     finished_count = sum(1 for session in sessions if session["status"] == "finished")
@@ -722,12 +724,18 @@ def _app_care_summary(
     open_draft_count = sum(1 for draft in drafts if not draft.get("accepted_plan_id"))
     queued_offline_count = sum(1 for item in offline_items if item["replay_status"] == "queued")
     failed_offline_count = sum(1 for item in offline_items if item["replay_status"] == "failed")
+    safety_review_required = bool(safety_review_guide and safety_review_guide.get("status") == "review_required")
+    finished_report_required = bool(finished_session_report_guide and finished_session_report_guide.get("status") == "report_required")
     can_start = bool(primary_start_guide and primary_start_guide.get("can_start"))
     blockers = []
     if onboarding_guide["status"] != "complete":
         blockers.append("onboarding_incomplete")
     if active_count:
         blockers.append("active_session")
+    if safety_review_required:
+        blockers.append("safety_review_required")
+    if finished_report_required:
+        blockers.append("finished_report_required")
     if review_required_count:
         blockers.append("report_review_required")
     if open_draft_count:
@@ -751,6 +759,18 @@ def _app_care_summary(
             "处理未结束训练",
             "存在 started/in_progress/paused 训练记录，请先恢复、完成或取消。",
             ["RECOVER_ACTIVE_SESSION", "VIEW_SESSION", "RECORD_PROGRESS", "FINISH_SESSION", "RESUME_SESSION", "CANCEL_SESSION"],
+        ),
+        "safety_review_required": (
+            "critical",
+            "复核安全事件",
+            "存在未复核的 critical 安全事件，需要记录治疗师或工程复核后才能继续训练闭环。",
+            ["REVIEW_BLOCKING_SAFETY_EVENT", "VIEW_SESSION", "VIEW_SAFETY_EVENTS", "RECORD_SAFETY_REVIEW"],
+        ),
+        "finished_report_required": (
+            "warning",
+            "生成训练报告",
+            "最近训练已结束但尚未生成训练报告，需要先生成报告再进入复盘或下一计划。",
+            ["GENERATE_TRAINING_REPORT", "VIEW_SESSION"],
         ),
         "report_review_required": (
             "warning",
@@ -795,6 +815,8 @@ def _app_care_summary(
     ]
     primary_blocker_priority = {
         "active_session": 10,
+        "safety_review_required": 15,
+        "finished_report_required": 18,
         "offline_queue_failed": 19,
         "offline_queue_pending": 19,
         "ai_draft_open": 20,
@@ -817,6 +839,8 @@ def _app_care_summary(
             "cancelled_sessions": cancelled_count,
             "reports": len(reports),
             "reports_pending_review": review_required_count,
+            "finished_sessions_pending_report": 1 if finished_report_required else 0,
+            "safety_reviews_pending": 1 if safety_review_required else 0,
             "ai_drafts_open": open_draft_count,
             "offline_items_queued": queued_offline_count,
             "offline_items_failed": failed_offline_count,
@@ -1572,7 +1596,16 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         safety_review_guide,
         accepted_plan_guide,
     )
-    care_summary = _app_care_summary(onboarding_guide, primary_start_guide, sessions, reports, all_drafts, offline_queue)
+    care_summary = _app_care_summary(
+        onboarding_guide,
+        primary_start_guide,
+        sessions,
+        reports,
+        all_drafts,
+        offline_queue,
+        safety_review_guide,
+        finished_session_report_guide,
+    )
     home_related_actions = _app_home_related_actions(
         daily_action_guide,
         {

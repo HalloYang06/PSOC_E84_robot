@@ -933,6 +933,11 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert "RECORD_SAFETY_REVIEW" in {item["code"] for item in blocked_recovery["actions"]}
     blocked_recovery_home = blocked_recovery_bootstrap.json()["data"]["home_status_guide"]
     assert blocked_recovery_home["primary_action"]["code"] == "RECOVER_ACTIVE_SESSION"
+    assert "safety_review_required" in blocked_recovery_home["blockers"]
+    assert blocked_recovery_home["primary_blocker"]["code"] == "active_session"
+    safety_blocker = next(item for item in blocked_recovery_home["blocker_details"] if item["code"] == "safety_review_required")
+    assert safety_blocker["severity"] == "critical"
+    assert "RECORD_SAFETY_REVIEW" in safety_blocker["related_action_codes"]
     assert {"RECORD_SAFETY_REVIEW", "CANCEL_SESSION"}.issubset({item["code"] for item in blocked_recovery_home["secondary_actions"]})
     paused_event_progress = client.patch(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/progress",
@@ -1019,6 +1024,11 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert bootstrap_needs_report.json()["data"]["daily_action_guide"]["next_action"]["code"] == "GENERATE_TRAINING_REPORT"
     finished_home_status = bootstrap_needs_report.json()["data"]["home_status_guide"]
     assert finished_home_status["primary_action"]["code"] == "GENERATE_TRAINING_REPORT"
+    assert "finished_report_required" in finished_home_status["blockers"]
+    assert finished_home_status["primary_blocker"]["code"] == "finished_report_required"
+    assert finished_home_status["counts"]["finished_sessions_pending_report"] == 1
+    finished_report_blocker = next(item for item in finished_home_status["blocker_details"] if item["code"] == "finished_report_required")
+    assert finished_report_blocker["related_action_codes"] == ["GENERATE_TRAINING_REPORT", "VIEW_SESSION"]
     assert finished_home_status["secondary_actions"][0]["code"] == "VIEW_SESSION"
     assert finished_home_status["secondary_actions"][0]["endpoint"] == f"/api/rehab-arm/app/v1/training-sessions/{session['id']}"
 
@@ -1737,6 +1747,14 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     assert safety_review_guide["blocking_event"]["event_type"] == "pain_report"
     assert "RECORD_SAFETY_REVIEW" in {item["code"] for item in safety_review_guide["actions"]}
     assert bootstrap_needs_safety_review.json()["data"]["daily_action_guide"]["next_action"]["code"] == "REVIEW_BLOCKING_SAFETY_EVENT"
+    safety_review_home = bootstrap_needs_safety_review.json()["data"]["home_status_guide"]
+    assert "safety_review_required" in safety_review_home["blockers"]
+    assert safety_review_home["primary_blocker"]["code"] == "safety_review_required"
+    assert safety_review_home["counts"]["safety_reviews_pending"] == 1
+    safety_review_blocker = next(item for item in safety_review_home["blocker_details"] if item["code"] == "safety_review_required")
+    assert "RECORD_SAFETY_REVIEW" in safety_review_blocker["related_action_codes"]
+    safety_review_group = next(item for item in safety_review_home["action_groups"]["blocker_related"] if item["blocker_code"] == "safety_review_required")
+    assert {"REVIEW_BLOCKING_SAFETY_EVENT", "VIEW_SESSION", "VIEW_SAFETY_EVENTS"}.issubset({item["code"] for item in safety_review_group["actions"]})
     _pass_preflight(owner_token, plan_id, device["id"], sync_id)
     blocked_restart_without_review = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
