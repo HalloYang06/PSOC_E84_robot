@@ -287,6 +287,8 @@ POST /api/rehab-arm/app/v1/me/workflow/actions
 
 The backend only executes actions present in the current workflow queue and rejects forbidden motion/hardware actions such as direct motor commands, CAN frame send, M33 override, emergency-stop release, M33 decision spoofing, or App-granted motion permission.
 
+The same endpoint can complete first-run setup when the returned workflow action queue exposes `PROFILE_REQUIRED`, `TRUSTED_DEVICE_REQUIRED`, or `TRAINING_PLAN_REQUIRED`. Send the payload advertised by the current action. Project-scoped device binding with `platform_project_id` must use `/api/rehab-arm/app/v1/devices/bind` so project write authorization is checked.
+
 
 Current user-release gate:
 

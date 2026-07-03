@@ -2621,6 +2621,9 @@ WORKFLOW_FORBIDDEN_ACTIONS = {
 
 
 WORKFLOW_EXECUTABLE_ACTIONS = {
+    "PROFILE_REQUIRED",
+    "TRUSTED_DEVICE_REQUIRED",
+    "TRAINING_PLAN_REQUIRED",
     "READY_TO_START",
     "FINISH_SESSION",
     "RECORD_PROGRESS",
@@ -2696,7 +2699,21 @@ def execute_workflow_action(db: Session, user_id: str, action_code: str, payload
     entities = workflow.get("primary_entities") or {}
     hint = action.get("payload_hint") or {}
 
-    if normalized == "READY_TO_START":
+    if normalized == "PROFILE_REQUIRED":
+        result = upsert_profile(db, user_id, RehabAppProfileUpdate(**data))
+    elif normalized == "TRUSTED_DEVICE_REQUIRED":
+        if str(data.get("platform_project_id") or "").strip():
+            raise AppError(
+                "WORKFLOW_ACTION_PAYLOAD_UNSUPPORTED",
+                "platform_project_id binding must use the direct device bind endpoint with project write authorization",
+                status_code=409,
+                details={**_workflow_action_error_details(workflow), "action_code": normalized},
+            )
+        data["platform_project_id"] = ""
+        result = bind_device(db, user_id, RehabAppDeviceBindRequest(**data))
+    elif normalized == "TRAINING_PLAN_REQUIRED":
+        result = create_training_plan(db, user_id, RehabAppTrainingPlanCreate(**data))
+    elif normalized == "READY_TO_START":
         plan_id = str(data.get("plan_id") or hint.get("plan_id") or entities.get("plan_id") or "")
         device_id = str(data.get("device_id") or hint.get("device_id") or entities.get("device_id") or "")
         result = start_training_session(db, user_id, plan_id, device_id)

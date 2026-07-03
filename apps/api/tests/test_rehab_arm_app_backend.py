@@ -2288,6 +2288,89 @@ def test_rehab_arm_app_workflow_action_endpoint_executes_safe_loop_actions(tmp_p
     assert review_action.json()["data"]["workflow"]["phase"]["status"] == "next_plan_draft_required"
 
 
+def test_rehab_arm_app_workflow_action_endpoint_executes_onboarding_actions(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+
+    owner_token, _owner_user_id = _issue_rehab_app_token()
+    headers = auth_headers(owner_token)
+
+    profile_action = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={
+            "action_code": "PROFILE_REQUIRED",
+            "payload": {
+                "name": "Workflow Setup Patient",
+                "role": "patient",
+                "affected_side": "left",
+                "rehab_stage": "early_active",
+                "pain_baseline": 2,
+                "medical_constraints": ["no overhead motion"],
+            },
+        },
+    )
+    assert profile_action.status_code == 200
+    profile_data = profile_action.json()["data"]
+    assert profile_data["result"]["affected_side"] == "left"
+    assert profile_data["workflow"]["next_action"]["code"] == "TRUSTED_DEVICE_REQUIRED"
+    assert profile_data["control_boundary"] == "app_workflow_evidence_only_not_motion_permission"
+
+    unsafe_project_bind = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={
+            "action_code": "TRUSTED_DEVICE_REQUIRED",
+            "payload": {
+                "m33_device_id": "m33-should-not-bind",
+                "trust_status": "trusted",
+                "platform_project_id": "not-authorized-through-workflow-action",
+            },
+        },
+    )
+    assert unsafe_project_bind.status_code == 409
+    assert unsafe_project_bind.json()["error"]["code"] == "WORKFLOW_ACTION_PAYLOAD_UNSUPPORTED"
+    assert unsafe_project_bind.json()["error"]["details"]["control_boundary"] == "app_workflow_evidence_only_not_motion_permission"
+
+    device_action = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={
+            "action_code": "TRUSTED_DEVICE_REQUIRED",
+            "payload": {
+                "m33_device_id": "m33-onboarding-action-alpha",
+                "ble_name": "ArmControl-Onboarding",
+                "firmware_version": "m33-0.3.3",
+                "trust_status": "trusted",
+            },
+        },
+    )
+    assert device_action.status_code == 200
+    device_data = device_action.json()["data"]
+    assert device_data["result"]["trust_status"] == "trusted"
+    assert device_data["workflow"]["next_action"]["code"] == "TRAINING_PLAN_REQUIRED"
+
+    plan_action = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={
+            "action_code": "TRAINING_PLAN_REQUIRED",
+            "payload": {
+                "title": "Workflow onboarding elbow",
+                "movement_type": "elbow_flexion",
+                "sets": 1,
+                "reps": 4,
+                "status": "active",
+            },
+        },
+    )
+    assert plan_action.status_code == 200
+    plan_data = plan_action.json()["data"]
+    assert plan_data["result"]["movement_type"] == "elbow_flexion"
+    assert plan_data["workflow"]["phase"]["status"] == "start_blocked"
+    assert plan_data["workflow"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
+    assert plan_data["workflow"]["guides"]["daily_care_plan"]["stage"] == "resolve_blockers"
+
+
 def test_rehab_arm_app_workflow_action_endpoint_rejects_unavailable_or_dangerous_actions(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
 
