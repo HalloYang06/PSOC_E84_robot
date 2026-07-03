@@ -444,6 +444,7 @@ def _app_onboarding_guide(profile: dict | None, devices: list[dict], plans: list
         "status": "complete" if next_step is None else "incomplete",
         "next_step": next_step,
         "steps": steps,
+        "actions": [step for step in steps if step["status"] == "todo"],
         "control_boundary": "app_onboarding_guide_evidence_only_not_motion_permission",
     }
 
@@ -2114,6 +2115,27 @@ def get_training_start_guide(db: Session, user_id: str, plan_id: str, device_id:
         "readiness": readiness,
         "next_action": next_action,
         "steps": ordered_steps,
+        "actions": [
+            action(
+                "VIEW_START_GUIDE",
+                "patient_or_therapist",
+                "查看训练开始指引",
+                "查看当前计划、设备、M33、preflight 和安全复核的完整开始条件。",
+                f"/api/rehab-arm/app/v1/training-plans/{plan_id}/start-guide",
+                "GET",
+                {"device_id": device_id},
+            ),
+            action(
+                "CHECK_START_READINESS",
+                "patient_or_therapist",
+                "检查训练开始条件",
+                "读取当前计划和设备是否满足 App 记录开始条件。结果仍然不是硬件运动许可。",
+                f"/api/rehab-arm/app/v1/training-plans/{plan_id}/readiness",
+                "GET",
+                {"device_id": device_id},
+            ),
+            *([next_action] if next_action else []),
+        ],
         "control_boundary": "training_start_guide_evidence_only_not_motion_permission",
     }
 

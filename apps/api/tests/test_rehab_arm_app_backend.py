@@ -66,10 +66,16 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_bootstrap.status_code == 200
     assert empty_bootstrap.json()["data"]["onboarding_guide"]["status"] == "incomplete"
     assert empty_bootstrap.json()["data"]["onboarding_guide"]["next_step"]["code"] == "PROFILE_REQUIRED"
+    assert {item["code"] for item in empty_bootstrap.json()["data"]["onboarding_guide"]["actions"]} == {
+        "PROFILE_REQUIRED",
+        "TRUSTED_DEVICE_REQUIRED",
+        "TRAINING_PLAN_REQUIRED",
+    }
     assert empty_bootstrap.json()["data"]["primary_start_guide"] is None
     empty_home_status = empty_bootstrap.json()["data"]["home_status_guide"]
     assert empty_home_status["tone"] == "info"
     assert empty_home_status["primary_action"]["code"] == "PROFILE_REQUIRED"
+    assert {item["code"] for item in empty_home_status["secondary_actions"]} == {"TRUSTED_DEVICE_REQUIRED", "TRAINING_PLAN_REQUIRED"}
     assert "疼痛基线" in empty_home_status["body"]
     assert "onboarding_incomplete" in empty_home_status["blockers"]
     assert empty_home_status["control_boundary"] == "app_home_status_guide_evidence_only_not_motion_permission"
@@ -140,7 +146,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     onboarding = bootstrap_after_basics.json()["data"]["onboarding_guide"]
     assert onboarding["status"] == "complete"
     assert onboarding["next_step"] is None
+    assert onboarding["actions"] == []
     assert bootstrap_after_basics.json()["data"]["primary_start_guide"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
+    assert {"VIEW_START_GUIDE", "CHECK_START_READINESS", "M33_ACCEPTANCE_REQUIRED"}.issubset(
+        {item["code"] for item in bootstrap_after_basics.json()["data"]["primary_start_guide"]["actions"]}
+    )
     assert bootstrap_after_basics.json()["data"]["daily_action_guide"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
     assert bootstrap_after_basics.json()["data"]["device_operational_guide"]["status"] == "plan_sync_required"
     assert "SYNC_PLAN_TO_M33" in {item["code"] for item in bootstrap_after_basics.json()["data"]["device_operational_guide"]["actions"]}
@@ -243,7 +253,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert {"REQUEST_DEVICE_STATUS", "RECORD_M33_DECISION"}.issubset({item["code"] for item in pending_device_guide["actions"]})
     pending_home_status = bootstrap_pending_m33.json()["data"]["home_status_guide"]
     assert pending_home_status["primary_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
-    assert pending_home_status["secondary_actions"] == []
+    assert {"VIEW_START_GUIDE", "CHECK_START_READINESS"}.issubset({item["code"] for item in pending_home_status["secondary_actions"]})
 
     ble_plan_message = client.post(
         f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
