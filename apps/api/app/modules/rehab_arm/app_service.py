@@ -736,6 +736,9 @@ def _app_care_summary(
         blockers.append("offline_queue_failed")
     if queued_offline_count:
         blockers.append("offline_queue_pending")
+    primary_start_action_code = str(((primary_start_guide or {}).get("next_action") or {}).get("code") or "")
+    if onboarding_guide["status"] == "complete" and primary_start_guide and not can_start and primary_start_action_code:
+        blockers.append("start_readiness_blocked")
     blocker_copy = {
         "onboarding_incomplete": (
             "warning",
@@ -773,6 +776,12 @@ def _app_care_summary(
             "存在 queued 离线证据，需要先重放到后端证据流。",
             ["REPLAY_OFFLINE_EVIDENCE"],
         ),
+        "start_readiness_blocked": (
+            "warning",
+            "完成训练开始条件",
+            "基础设置已完成，但当前计划/设备仍需完成 M33 接受、preflight、安全复核或其它开始条件。",
+            ["VIEW_START_GUIDE", "CHECK_START_READINESS", primary_start_action_code],
+        ),
     }
     blocker_details = [
         {
@@ -780,7 +789,7 @@ def _app_care_summary(
             "severity": blocker_copy.get(code, ("info", code, "", []))[0],
             "title": blocker_copy.get(code, ("info", code, "", []))[1],
             "description": blocker_copy.get(code, ("info", "", "", []))[2],
-            "related_action_codes": blocker_copy.get(code, ("info", "", "", []))[3],
+            "related_action_codes": [item for item in blocker_copy.get(code, ("info", "", "", []))[3] if item],
         }
         for code in blockers
     ]

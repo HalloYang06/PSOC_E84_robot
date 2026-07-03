@@ -229,3 +229,5 @@
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
 - Added `/me.home_status_guide.action_groups` with `primary`, `secondary`, and `blocker_related` action groups. The backend now groups actions for the current blocker, so the phone can render "why blocked" and "what to tap" from one payload.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
+- Added `start_readiness_blocked` to `/me.care_summary.blockers` for the state where onboarding is complete but the plan/device still cannot start because M33 acceptance, preflight, safety review, or another readiness check is pending.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).

@@ -162,10 +162,16 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert bootstrap_after_basics.json()["data"]["device_operational_guide"]["status"] == "plan_sync_required"
     assert "SYNC_PLAN_TO_M33" in {item["code"] for item in bootstrap_after_basics.json()["data"]["device_operational_guide"]["actions"]}
     care_summary_after_basics = bootstrap_after_basics.json()["data"]["care_summary"]
-    assert care_summary_after_basics["status"] == "setup_required"
+    assert care_summary_after_basics["status"] == "attention_required"
     assert care_summary_after_basics["can_start"] is False
     assert care_summary_after_basics["counts"]["reports_pending_review"] == 0
-    assert care_summary_after_basics["blocker_details"] == []
+    start_blocker = care_summary_after_basics["blocker_details"][0]
+    assert start_blocker["code"] == "start_readiness_blocked"
+    assert start_blocker["severity"] == "warning"
+    assert "M33_ACCEPTANCE_REQUIRED" in start_blocker["related_action_codes"]
+    start_home_status = bootstrap_after_basics.json()["data"]["home_status_guide"]
+    start_group = next(item for item in start_home_status["action_groups"]["blocker_related"] if item["blocker_code"] == "start_readiness_blocked")
+    assert {"VIEW_START_GUIDE", "CHECK_START_READINESS", "M33_ACCEPTANCE_REQUIRED"}.issubset({item["code"] for item in start_group["actions"]})
 
     contraindicated_plan_response = client.post(
         "/api/rehab-arm/app/v1/training-plans",
