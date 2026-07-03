@@ -1,0 +1,10 @@
+{
+  "url": "http://106.55.62.122:3001/rehab-arm-mobile/home.html",
+  "hasEvidencePanel": true,
+  "hasBlockedGate": true,
+  "hasTruthfulM33": true,
+  "hasBackendSync": true,
+  "forbiddenStillVisible": [],
+  "consoleErrors": [],
+  "failedRequests": []
+}

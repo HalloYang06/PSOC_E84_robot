@@ -101,6 +101,7 @@
 
 ## 2026-07-03
 
+- Post-deploy cloud verification passed after restarting Tencent prod with `AI_COLLAB_BUILD_SHA=6716a8cf`: health reported build SHA `6716a8cf`, public-config returned APK `1.0.2` with SHA256 `93DD6C74DF139AB63778D0109CAA3CF994E04F9ED9974B87815269A70E75B1FE`, the public download page returned HTTP 200, the downloaded APK hash matched, and Playwright mobile QA against `/rehab-arm-mobile/home.html` passed with no forbidden static success copy. Post-deploy evidence saved under `docs/screenshots/rehab-arm-apk-qa-20260703/`.
 - Ran user-view QA against the cloud mobile PWA and found that APK 1.0.1 still showed static success claims such as `M33 ACTIVE`, `状态：M33 已允许执行`, `95%`, and optimistic AI copy even after backend login worked.
 - Updated the mobile bridge and rebuilt Android debug APK `1.0.2` (`versionCode=3`) so authenticated screens show a `真实后端状态` evidence panel and replace static success text with backend gate/device/plan/protocol status. Final APK SHA256 is `93DD6C74DF139AB63778D0109CAA3CF994E04F9ED9974B87815269A70E75B1FE` and size is `4,177,067` bytes.
 - User-view QA passed on the cloud PWA after the fix: login panel appeared, login with `3245056131@qq.com` / `1234` succeeded, the evidence panel showed `门禁：blocked`, no forbidden strings (`M33 ACTIVE`, `状态：M33 已允许执行`, `动作稳定性极佳`, `95%`, `M55 EMG 激活`, `Arm 安全`, `Cloud 已同步`) remained, and screenshots were saved under `docs/screenshots/rehab-arm-apk-qa-20260703/`.

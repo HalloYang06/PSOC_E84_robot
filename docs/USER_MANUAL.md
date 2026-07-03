@@ -243,6 +243,12 @@ Current debug APK download:
 http://106.55.62.122:3001/downloads/rehab-arm/lingdong-rehab-arm-debug.apk
 ```
 
+Browser QA entry for the packaged mobile surface:
+
+```text
+http://106.55.62.122:3001/rehab-arm-mobile/home.html
+```
+
 APK details:
 
 ```text
