@@ -399,11 +399,17 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     sessions = list_training_sessions(db, user_id, limit=1)
     drafts = list_ai_training_drafts(db, user_id, status="open", limit=1)
     preflights = list_preflight_checks(db, user_id, limit=1)
+    primary_plan = next((plan for plan in plans if plan["status"] not in {"archived", "rejected"}), None)
+    primary_device = next((device for device in devices if device["trust_status"] != "revoked"), None)
+    primary_start_guide = None
+    if primary_plan and primary_device:
+        primary_start_guide = get_training_start_guide(db, user_id, primary_plan["id"], primary_device["id"])
     return {
         "profile": get_profile(db, user_id),
         "devices": devices,
         "training_plans": plans,
         "active_session": sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress", "paused"} else None,
+        "primary_start_guide": primary_start_guide,
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
         "latest_report": latest_training_report(db, user_id),

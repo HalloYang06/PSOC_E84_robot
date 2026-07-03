@@ -84,6 +84,8 @@ GET /offline-queue
 GET /safety-audit
 ```
 
+`GET /me` is the phone bootstrap endpoint. In addition to profile, devices, plans, active session, latest preflight, latest report, latest open AI draft, platform sync, and queued offline items, it returns `primary_start_guide` when there is at least one usable plan and one trusted device. Use this field for the home screen's main training CTA; it is the same evidence-only guide returned by `start-guide`.
+
 Mobile diagnostic and offline replay:
 
 ```text

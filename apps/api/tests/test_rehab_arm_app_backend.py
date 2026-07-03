@@ -403,6 +403,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert latest_preflight["plan_id"] == plan["id"]
     assert latest_preflight["device_id"] == device["id"]
     assert latest_preflight["sync_id"] == resync["id"]
+    primary_guide = bootstrap_after_preflight.json()["data"]["primary_start_guide"]
+    assert primary_guide["can_start"] is True
+    assert primary_guide["next_action"]["code"] == "READY_TO_START"
+    assert primary_guide["readiness"]["plan_id"] == plan["id"]
+    assert primary_guide["readiness"]["device_id"] == device["id"]
 
     allowed_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
@@ -420,6 +425,10 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert readiness_active_session.status_code == 200
     active_checks = {item["name"]: item for item in readiness_active_session.json()["data"]["checks"]}
     assert active_checks["device_session_available"]["code"] == "ACTIVE_TRAINING_SESSION_EXISTS"
+    bootstrap_with_active = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_with_active.status_code == 200
+    assert bootstrap_with_active.json()["data"]["active_session"]["id"] == active_session["id"]
+    assert bootstrap_with_active.json()["data"]["primary_start_guide"]["next_action"]["code"] == "ACTIVE_TRAINING_SESSION_EXISTS"
 
     duplicate_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
