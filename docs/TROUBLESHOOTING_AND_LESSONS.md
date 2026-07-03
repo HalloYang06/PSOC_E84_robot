@@ -80,3 +80,4 @@
 - Session safety lesson: in-session pain, fit, M33 reject, fatigue, and stop-request evidence should be first-class records. High-risk App events may pause the App session state, but they still do not claim robot-side stop authority without M33/firmware evidence.
 - SQLite ordering fix: safety event timelines are user-visible, so write application-layer UTC `created_at` when inserting events instead of relying on SQLite server-default second precision.
 - Pytest recovery note: if `tests/test_rehab_arm_app_backend.py` appears to hang on Windows, rerun with `-o faulthandler_timeout=60` after checking for stale pytest processes. In this slice the faulthandler run passed, indicating no product deadlock.
+- Offline sync lesson: every new App evidence loop needs both platform sync counts and offline replay coverage, otherwise the phone can look closed-loop online while losing therapist/safety evidence after offline use.

@@ -186,6 +186,14 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     )
     assert reviewed_sync.status_code == 200
 
+    constraint_sync = client.post(
+        "/api/rehab-arm/app/v1/platform/sync",
+        headers=auth_headers(owner_token),
+        json={"resource_types": ["plan_constraint_reviews"]},
+    )
+    assert constraint_sync.status_code == 200
+    assert constraint_sync.json()["data"]["summary"]["plan_constraint_reviews"] == 1
+
     sync_response = client.post(
         f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/sync-to-device",
         headers=auth_headers(owner_token),
@@ -981,12 +989,13 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     sync_run = client.post(
         "/api/rehab-arm/app/v1/platform/sync",
         headers=auth_headers(owner_token),
-        json={"resource_types": ["training_reports", "training_report_reviews", "ai_training_drafts"]},
+        json={"resource_types": ["training_reports", "training_report_reviews", "ai_training_drafts", "session_safety_events"]},
     )
     assert sync_run.status_code == 200
     assert sync_run.json()["data"]["summary"]["training_reports"] == 1
     assert sync_run.json()["data"]["summary"]["training_report_reviews"] == 1
     assert sync_run.json()["data"]["summary"]["ai_training_drafts"] == 1
+    assert sync_run.json()["data"]["summary"]["session_safety_events"] == 2
 
     latest_emg = client.get("/api/rehab-arm/app/v1/emg/latest", headers=auth_headers(owner_token))
     assert latest_emg.status_code == 200
@@ -1185,6 +1194,27 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     queue_item = queued.json()["data"]
     assert queue_item["replay_status"] == "queued"
 
+    queued_safety = client.post(
+        "/api/rehab-arm/app/v1/offline-queue",
+        headers=auth_headers(owner_token),
+        json={
+            "client_item_id": "phone-safety-001",
+            "operation_type": "session_safety_event",
+            "resource_type": "session_safety_event",
+            "payload": {
+                "session_id": session_id,
+                "event_type": "pain_report",
+                "severity": "critical",
+                "source": "patient",
+                "pain_score": 8,
+                "note": "offline pain event",
+            },
+        },
+    )
+    assert queued_safety.status_code == 200
+    safety_queue_item = queued_safety.json()["data"]
+    assert safety_queue_item["replay_status"] == "queued"
+
     forbidden = client.post(
         "/api/rehab-arm/app/v1/offline-queue",
         headers=auth_headers(owner_token),
@@ -1201,24 +1231,38 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     replay = client.post(
         "/api/rehab-arm/app/v1/offline-queue/replay",
         headers=auth_headers(owner_token),
-        json={"item_ids": [queue_item["id"]]},
+        json={"item_ids": [queue_item["id"], safety_queue_item["id"]]},
     )
     assert replay.status_code == 200
     replay_data = replay.json()["data"]
-    assert replay_data["replayed_count"] == 1
-    assert replay_data["items"][0]["replay_status"] == "replayed"
+    assert replay_data["replayed_count"] == 2
+    assert {item["replay_status"] for item in replay_data["items"]} == {"replayed"}
 
     latest_emg = client.get("/api/rehab-arm/app/v1/emg/latest", headers=auth_headers(owner_token))
     assert latest_emg.status_code == 200
     assert latest_emg.json()["data"]["muscle_name"] == "triceps"
 
+    offline_safety_events = client.get(
+        f"/api/rehab-arm/app/v1/training-sessions/{session_id}/safety-events",
+        headers=auth_headers(owner_token),
+    )
+    assert offline_safety_events.status_code == 200
+    assert offline_safety_events.json()["data"][0]["event_type"] == "pain_report"
+    paused_after_offline_event = client.get(
+        f"/api/rehab-arm/app/v1/training-sessions/{session_id}",
+        headers=auth_headers(owner_token),
+    )
+    assert paused_after_offline_event.status_code == 200
+    assert paused_after_offline_event.json()["data"]["status"] == "paused"
+
     sync_run = client.post(
         "/api/rehab-arm/app/v1/platform/sync",
         headers=auth_headers(owner_token),
-        json={"resource_types": ["training_plans", "training_sessions", "emg_summaries", "m33_decisions"]},
+        json={"resource_types": ["training_plans", "training_sessions", "emg_summaries", "m33_decisions", "session_safety_events"]},
     )
     assert sync_run.status_code == 200
     assert sync_run.json()["data"]["summary"]["emg_summaries"] >= 1
+    assert sync_run.json()["data"]["summary"]["session_safety_events"] == 1
 
     sync_runs = client.get("/api/rehab-arm/app/v1/platform/sync-runs", headers=auth_headers(owner_token))
     assert sync_runs.status_code == 200

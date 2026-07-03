@@ -1795,6 +1795,8 @@ def record_intent_summary(db: Session, user_id: str, payload: dict) -> dict:
 ALLOWED_OFFLINE_OPERATIONS = {
     "device_diagnostic_upload",
     "training_session_progress",
+    "session_safety_event",
+    "plan_constraint_review",
     "emg_summary",
     "intent_summary",
     "platform_sync",
@@ -1881,6 +1883,20 @@ def replay_offline_queue(db: Session, user_id: str, item_ids: list[str] | None =
                     user_id,
                     str((item.payload or {}).get("session_id") or ""),
                     {k: v for k, v in (item.payload or {}).items() if k != "session_id"},
+                )
+            elif item.operation_type == "session_safety_event":
+                result = record_session_safety_event(
+                    db,
+                    user_id,
+                    str((item.payload or {}).get("session_id") or ""),
+                    RehabAppSessionSafetyEventCreate(**{k: v for k, v in (item.payload or {}).items() if k != "session_id"}),
+                )
+            elif item.operation_type == "plan_constraint_review":
+                result = create_plan_constraint_review(
+                    db,
+                    user_id,
+                    str((item.payload or {}).get("plan_id") or ""),
+                    RehabAppPlanConstraintReviewCreate(**{k: v for k, v in (item.payload or {}).items() if k != "plan_id"}),
                 )
             elif item.operation_type == "emg_summary":
                 result = record_emg_summary(db, user_id, item.payload or {})
@@ -2074,6 +2090,8 @@ def sync_platform_records(db: Session, user_id: str, resource_types: list[str]) 
         "training_sessions",
         "training_reports",
         "training_report_reviews",
+        "plan_constraint_reviews",
+        "session_safety_events",
         "ai_training_drafts",
         "emg_summaries",
         "m33_decisions",
@@ -2086,6 +2104,16 @@ def sync_platform_records(db: Session, user_id: str, resource_types: list[str]) 
             list(db.scalars(select(RehabAppTrainingReportReview).where(RehabAppTrainingReportReview.user_id == user_id)))
         )
         if "training_report_reviews" in selected_types
+        else 0,
+        "plan_constraint_reviews": len(
+            list(db.scalars(select(RehabAppPlanConstraintReview).where(RehabAppPlanConstraintReview.user_id == user_id)))
+        )
+        if "plan_constraint_reviews" in selected_types
+        else 0,
+        "session_safety_events": len(
+            list(db.scalars(select(RehabAppSessionSafetyEvent).where(RehabAppSessionSafetyEvent.user_id == user_id)))
+        )
+        if "session_safety_events" in selected_types
         else 0,
         "ai_training_drafts": len(list(db.scalars(select(RehabAppAiTrainingDraft).where(RehabAppAiTrainingDraft.user_id == user_id))))
         if "ai_training_drafts" in selected_types
@@ -2137,6 +2165,8 @@ def get_platform_sync_status(db: Session, user_id: str) -> dict:
             "training_sessions",
             "training_reports",
             "training_report_reviews",
+            "plan_constraint_reviews",
+            "session_safety_events",
             "ai_training_drafts",
             "emg_summaries",
             "m33_decisions",

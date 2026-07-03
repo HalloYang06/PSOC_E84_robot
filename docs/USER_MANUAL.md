@@ -63,9 +63,11 @@ GET /devices/{device_id}/status
 GET /devices/{device_id}/diagnostics
 GET /devices/{device_id}/ble/messages
 GET /training-plans/{plan_id}
+GET /training-plans/{plan_id}/constraint-reviews
 GET /training-preflight
 GET /training-sessions
 GET /training-sessions/{session_id}
+GET /training-sessions/{session_id}/safety-events
 GET /training-sessions/{session_id}/report
 GET /training-reports
 GET /training-reports/{report_id}
@@ -99,13 +101,15 @@ Training reports summarize session completion, EMG overview, M55 intent overview
 
 The report-to-next-plan endpoint turns a finished report and latest review into an AI draft. It is useful after fatigue, pain, or therapist review indicates adjustment, but the output is still `ai_draft_only_not_execution_permission`. After the draft is accepted, run `sync-to-device`, wait for `m33_accepted`, and only then call `training-sessions/start`.
 
-Platform sync accepts evidence resource types including `training_plans`, `training_sessions`, `training_reports`, `training_report_reviews`, `ai_training_drafts`, `emg_summaries`, and `m33_decisions`.
+Platform sync accepts evidence resource types including `training_plans`, `training_sessions`, `training_reports`, `training_report_reviews`, `plan_constraint_reviews`, `session_safety_events`, `ai_training_drafts`, `emg_summaries`, and `m33_decisions`.
 
 Allowed offline replay operations:
 
 ```text
 device_diagnostic_upload
 training_session_progress
+session_safety_event
+plan_constraint_review
 emg_summary
 intent_summary
 platform_sync
