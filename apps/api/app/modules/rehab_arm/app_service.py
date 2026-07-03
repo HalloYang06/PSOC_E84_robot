@@ -917,14 +917,70 @@ def _app_home_status_guide(daily_action_guide: dict, care_summary: dict, related
     no_open_work = not blockers and not secondary_actions
     ready_to_start = bool(care_summary.get("can_start"))
     progress_items = [
-        {"code": "onboarding", "done": onboarding_complete},
-        {"code": "active_session_clear", "done": not counts.get("active_sessions")},
-        {"code": "safety_review_clear", "done": not counts.get("safety_reviews_pending")},
-        {"code": "finished_report_clear", "done": not counts.get("finished_sessions_pending_report")},
-        {"code": "report_review_clear", "done": not counts.get("reports_pending_review")},
-        {"code": "ai_drafts_clear", "done": not counts.get("ai_drafts_open")},
-        {"code": "offline_clear", "done": not counts.get("offline_items_queued") and not counts.get("offline_items_failed")},
-        {"code": "start_ready", "done": ready_to_start},
+        {
+            "code": "onboarding",
+            "title": "首次设置",
+            "description": "康复档案、可信 M33 设备和可用训练计划已准备好。",
+            "done": onboarding_complete,
+            "related_blocker_codes": ["onboarding_incomplete"],
+            "related_action_codes": ["PROFILE_REQUIRED", "TRUSTED_DEVICE_REQUIRED", "TRAINING_PLAN_REQUIRED"],
+        },
+        {
+            "code": "active_session_clear",
+            "title": "未结束训练",
+            "description": "没有 started、in_progress 或 paused 训练占用设备。",
+            "done": not counts.get("active_sessions"),
+            "related_blocker_codes": ["active_session"],
+            "related_action_codes": ["RECOVER_ACTIVE_SESSION", "FINISH_SESSION", "RESUME_SESSION", "CANCEL_SESSION"],
+        },
+        {
+            "code": "safety_review_clear",
+            "title": "安全复核",
+            "description": "没有未复核的 critical 安全事件阻塞训练。",
+            "done": not counts.get("safety_reviews_pending"),
+            "related_blocker_codes": ["safety_review_required"],
+            "related_action_codes": ["REVIEW_BLOCKING_SAFETY_EVENT", "RECORD_SAFETY_REVIEW"],
+        },
+        {
+            "code": "finished_report_clear",
+            "title": "训练报告",
+            "description": "最近完成的训练已经生成报告。",
+            "done": not counts.get("finished_sessions_pending_report"),
+            "related_blocker_codes": ["finished_report_required"],
+            "related_action_codes": ["GENERATE_TRAINING_REPORT"],
+        },
+        {
+            "code": "report_review_clear",
+            "title": "报告复盘",
+            "description": "训练报告已经记录患者或治疗师复盘。",
+            "done": not counts.get("reports_pending_review"),
+            "related_blocker_codes": ["report_review_required"],
+            "related_action_codes": ["REVIEW_LATEST_REPORT", "RECORD_REPORT_REVIEW"],
+        },
+        {
+            "code": "ai_drafts_clear",
+            "title": "AI 草稿",
+            "description": "没有待审核的 AI 训练草稿。",
+            "done": not counts.get("ai_drafts_open"),
+            "related_blocker_codes": ["ai_draft_open"],
+            "related_action_codes": ["REVIEW_AI_DRAFT", "ACCEPT_AI_DRAFT"],
+        },
+        {
+            "code": "offline_clear",
+            "title": "离线证据",
+            "description": "没有 queued 或 failed 的离线证据等待同步或复核。",
+            "done": not counts.get("offline_items_queued") and not counts.get("offline_items_failed"),
+            "related_blocker_codes": ["offline_queue_pending", "offline_queue_failed"],
+            "related_action_codes": ["REPLAY_OFFLINE_EVIDENCE", "VIEW_OFFLINE_QUEUE", "REVIEW_FAILED_OFFLINE_ITEM"],
+        },
+        {
+            "code": "start_ready",
+            "title": "开始条件",
+            "description": "当前计划、设备、M33 接受、preflight 和安全检查满足开始记录条件。",
+            "done": ready_to_start,
+            "related_blocker_codes": ["start_readiness_blocked"],
+            "related_action_codes": ["VIEW_START_GUIDE", "CHECK_START_READINESS", "READY_TO_START"],
+        },
     ]
     done_count = sum(1 for item in progress_items if item["done"])
     if ready_to_start:
