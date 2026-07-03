@@ -133,6 +133,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert onboarding["status"] == "complete"
     assert onboarding["next_step"] is None
     assert bootstrap_after_basics.json()["data"]["primary_start_guide"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
+    assert bootstrap_after_basics.json()["data"]["daily_action_guide"]["next_action"]["code"] == "M33_ACCEPTANCE_REQUIRED"
 
     contraindicated_plan_response = client.post(
         "/api/rehab-arm/app/v1/training-plans",
@@ -441,6 +442,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert bootstrap_with_active.status_code == 200
     assert bootstrap_with_active.json()["data"]["active_session"]["id"] == active_session["id"]
     assert bootstrap_with_active.json()["data"]["primary_start_guide"]["next_action"]["code"] == "ACTIVE_TRAINING_SESSION_EXISTS"
+    assert bootstrap_with_active.json()["data"]["daily_action_guide"]["next_action"]["code"] == "RECOVER_ACTIVE_SESSION"
 
     duplicate_start = client.post(
         "/api/rehab-arm/app/v1/training-sessions/start",
@@ -951,6 +953,9 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert "critical_safety_event_review_required_before_next_session" in report["recommendations"]
     assert "high_in_session_pain_review_with_therapist" in report["recommendations"]
     assert report["latest_review"] is None
+    bootstrap_needs_report_review = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_needs_report_review.status_code == 200
+    assert bootstrap_needs_report_review.json()["data"]["daily_action_guide"]["next_action"]["code"] == "REVIEW_LATEST_REPORT"
 
     repeat_report_response = client.post(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
@@ -1011,6 +1016,9 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert review["next_step"] == "adjust_plan"
     assert review["request_new_plan"] is True
     assert review["control_boundary"] == "training_report_review_only_not_medical_diagnosis_or_motion_permission"
+    bootstrap_needs_next_draft = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
+    assert bootstrap_needs_next_draft.status_code == 200
+    assert bootstrap_needs_next_draft.json()["data"]["daily_action_guide"]["next_action"]["code"] == "DRAFT_NEXT_PLAN_FROM_REPORT"
 
     next_draft_response = client.post(
         f"/api/rehab-arm/app/v1/training-reports/{report['id']}/draft-next-plan",

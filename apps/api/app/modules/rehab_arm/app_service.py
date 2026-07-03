@@ -447,6 +447,108 @@ def _app_onboarding_guide(profile: dict | None, devices: list[dict], plans: list
     }
 
 
+def _daily_action(
+    code: str,
+    priority: int,
+    title: str,
+    description: str,
+    endpoint: str,
+    method: str,
+    payload_hint: dict | None = None,
+    source: dict | None = None,
+) -> dict:
+    return {
+        "code": code,
+        "priority": priority,
+        "title": title,
+        "description": description,
+        "endpoint": endpoint,
+        "method": method,
+        "payload_hint": payload_hint or {},
+        "source": source or {},
+    }
+
+
+def _app_daily_action_guide(
+    onboarding_guide: dict,
+    active_session: dict | None,
+    primary_start_guide: dict | None,
+    latest_report: dict | None,
+    latest_open_ai_draft: dict | None,
+) -> dict:
+    if active_session:
+        return {
+            "status": "action_required",
+            "next_action": _daily_action(
+                "RECOVER_ACTIVE_SESSION",
+                10,
+                "继续处理当前训练",
+                "设备已有未关闭训练，请先恢复、完成或取消当前训练，再开始新的训练。",
+                f"/api/rehab-arm/app/v1/training-sessions/{active_session['id']}",
+                "GET",
+                source={"session_id": active_session["id"], "session_status": active_session["status"]},
+            ),
+            "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
+        }
+    if latest_open_ai_draft:
+        return {
+            "status": "action_required",
+            "next_action": _daily_action(
+                "REVIEW_AI_DRAFT",
+                20,
+                "审核 AI 训练草稿",
+                "有未接受的 AI 训练草稿。接受后会成为普通训练计划，仍需 M33 同步和接受。",
+                f"/api/rehab-arm/app/v1/ai-training-drafts/{latest_open_ai_draft['id']}",
+                "GET",
+                source={"draft_id": latest_open_ai_draft["id"]},
+            ),
+            "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
+        }
+    if latest_report and latest_report.get("latest_review") is None:
+        return {
+            "status": "action_required",
+            "next_action": _daily_action(
+                "REVIEW_LATEST_REPORT",
+                30,
+                "复盘最近训练报告",
+                "最近训练报告还没有人工复核。请记录患者或治疗师复盘，再决定继续、调整或生成下一计划。",
+                f"/api/rehab-arm/app/v1/training-reports/{latest_report['id']}/reviews",
+                "POST",
+                {"reviewer_role": "patient_or_therapist", "review_status": "reviewed", "next_step": "continue_or_adjust"},
+                source={"report_id": latest_report["id"]},
+            ),
+            "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
+        }
+    latest_review = latest_report.get("latest_review") if latest_report else None
+    if latest_report and latest_review and latest_review.get("request_new_plan"):
+        return {
+            "status": "action_required",
+            "next_action": _daily_action(
+                "DRAFT_NEXT_PLAN_FROM_REPORT",
+                40,
+                "根据复盘生成下一计划草稿",
+                "最近复盘要求调整计划。先生成 AI 草稿，再由用户或治疗师接受为普通训练计划。",
+                f"/api/rehab-arm/app/v1/training-reports/{latest_report['id']}/draft-next-plan",
+                "POST",
+                source={"report_id": latest_report["id"], "review_id": latest_review["id"]},
+            ),
+            "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
+        }
+    if primary_start_guide:
+        return {
+            "status": "ready" if primary_start_guide["can_start"] else "action_required",
+            "next_action": primary_start_guide["next_action"],
+            "source": {"guide": "primary_start_guide"},
+            "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
+        }
+    return {
+        "status": onboarding_guide["status"],
+        "next_action": onboarding_guide["next_step"],
+        "source": {"guide": "onboarding_guide"},
+        "control_boundary": "app_daily_action_guide_evidence_only_not_motion_permission",
+    }
+
+
 def get_app_bootstrap(db: Session, user_id: str) -> dict:
     devices = list_devices(db, user_id)
     plans = list_training_plans(db, user_id)
@@ -454,6 +556,10 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
     drafts = list_ai_training_drafts(db, user_id, status="open", limit=1)
     preflights = list_preflight_checks(db, user_id, limit=1)
     profile = get_profile(db, user_id)
+    active_session = sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress", "paused"} else None
+    latest_report = latest_training_report(db, user_id)
+    latest_open_ai_draft = drafts[0] if drafts else None
+    onboarding_guide = _app_onboarding_guide(profile, devices, plans)
     primary_plan = next((plan for plan in plans if plan["status"] not in {"archived", "rejected"}), None)
     primary_device = next((device for device in devices if device["trust_status"] != "revoked"), None)
     primary_start_guide = None
@@ -463,13 +569,14 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         "profile": profile,
         "devices": devices,
         "training_plans": plans,
-        "onboarding_guide": _app_onboarding_guide(profile, devices, plans),
-        "active_session": sessions[0] if sessions and sessions[0]["status"] in {"started", "in_progress", "paused"} else None,
+        "onboarding_guide": onboarding_guide,
+        "active_session": active_session,
         "primary_start_guide": primary_start_guide,
+        "daily_action_guide": _app_daily_action_guide(onboarding_guide, active_session, primary_start_guide, latest_report, latest_open_ai_draft),
         "latest_preflight": preflights[0] if preflights else None,
         "latest_emg": latest_emg_summary(db, user_id),
-        "latest_report": latest_training_report(db, user_id),
-        "latest_open_ai_draft": drafts[0] if drafts else None,
+        "latest_report": latest_report,
+        "latest_open_ai_draft": latest_open_ai_draft,
         "platform_sync": get_platform_sync_status(db, user_id),
         "offline_queue": list_offline_queue(db, user_id, status="queued", limit=20),
         "control_boundary": "app_bootstrap_evidence_only_not_motion_permission",

@@ -161,3 +161,5 @@
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only).
 - Added `/me.onboarding_guide` for first-run phone users. It returns ordered setup steps for profile, trusted M33 device binding, and usable training plan creation/acceptance, with endpoint/method/payload hints and `app_onboarding_guide_evidence_only_not_motion_permission`.
 - Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only).
+- Added `/me.daily_action_guide` for the rehab-arm phone App. It prioritizes active-session recovery, open AI draft review, latest-report review, report-to-next-plan draft generation, primary training start guidance, and onboarding fallback so the home screen has one backend-authored daily action.
+- Validation passed with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`6 passed`, deprecation warnings only). The guide is `app_daily_action_guide_evidence_only_not_motion_permission`.
