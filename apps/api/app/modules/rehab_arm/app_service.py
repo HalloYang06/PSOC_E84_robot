@@ -45,6 +45,183 @@ from .app_schemas import (
 )
 
 
+REHAB_APP_PROFILE_CATALOG = {
+    "roles": [
+        {"value": "patient", "label": "患者"},
+        {"value": "therapist", "label": "治疗师"},
+        {"value": "family", "label": "家属"},
+        {"value": "engineer", "label": "工程师"},
+    ],
+    "affected_sides": [
+        {"value": "left", "label": "左侧"},
+        {"value": "right", "label": "右侧"},
+        {"value": "bilateral", "label": "双侧"},
+    ],
+    "rehab_stages": [
+        {"value": "early_passive", "label": "早期被动活动"},
+        {"value": "early_active", "label": "早期主动辅助"},
+        {"value": "strengthening", "label": "力量恢复"},
+        {"value": "maintenance", "label": "维持训练"},
+    ],
+    "pain_scale": {"min": 0, "max": 10, "warn_at": 5, "stop_at": 7},
+}
+
+
+REHAB_APP_MOVEMENT_CATALOG = {
+    "elbow_flexion": {
+        "label": "肘关节屈曲",
+        "joint": "elbow",
+        "target_joints": ["elbow"],
+        "movement_type": "elbow_flexion",
+        "default_angle_range": {"min_deg": 15, "max_deg": 70},
+        "default_sets": 2,
+        "default_reps": 6,
+        "default_duration_sec": 480,
+        "default_speed_level": "slow",
+        "default_assist_level": 0.2,
+        "requires_therapist_review": False,
+        "clinical_note": "低强度肘屈曲记录；实际运动仍需 M33 接受和 preflight。",
+    },
+    "wrist_flexion": {
+        "label": "腕关节屈曲",
+        "joint": "wrist",
+        "target_joints": ["wrist"],
+        "movement_type": "wrist_flexion",
+        "default_angle_range": {"min_deg": 0, "max_deg": 35},
+        "default_sets": 2,
+        "default_reps": 6,
+        "default_duration_sec": 360,
+        "default_speed_level": "slow",
+        "default_assist_level": 0.15,
+        "requires_therapist_review": False,
+        "clinical_note": "低强度腕屈曲记录；疼痛或疲劳升高时先复核。",
+    },
+    "wrist_extension": {
+        "label": "腕关节伸展",
+        "joint": "wrist",
+        "target_joints": ["wrist"],
+        "movement_type": "wrist_extension",
+        "default_angle_range": {"min_deg": 0, "max_deg": 30},
+        "default_sets": 2,
+        "default_reps": 6,
+        "default_duration_sec": 360,
+        "default_speed_level": "slow",
+        "default_assist_level": 0.15,
+        "requires_therapist_review": False,
+        "clinical_note": "低强度腕伸展记录；实际运动仍由 M33 审核。",
+    },
+    "shoulder_overhead_reach": {
+        "label": "肩部过肩/过头触达",
+        "joint": "shoulder",
+        "target_joints": ["shoulder"],
+        "movement_type": "shoulder_overhead_reach",
+        "default_angle_range": {"min_deg": 20, "max_deg": 120},
+        "default_sets": 1,
+        "default_reps": 3,
+        "default_duration_sec": 240,
+        "default_speed_level": "slow",
+        "default_assist_level": 0.1,
+        "requires_therapist_review": True,
+        "clinical_note": "高风险肩部动作，只能作为治疗师复核后的计划证据；不是运动许可。",
+    },
+}
+
+
+def get_app_catalog() -> dict:
+    movements = []
+    for movement in REHAB_APP_MOVEMENT_CATALOG.values():
+        movements.append(
+            {
+                **movement,
+                "emg_policy_template": {"intent_source": "m55", "assist_when_confidence_above": 0.72},
+                "safety_constraints_template": {"require_fresh_m33_heartbeat": True, "stop_on_pain_report": True},
+                "control_boundary": "movement_catalog_item_not_motion_permission",
+            }
+        )
+    return {
+        "profile": REHAB_APP_PROFILE_CATALOG,
+        "training_movements": movements,
+        "training_plan_defaults": {
+            "source": "manual",
+            "status": "draft",
+            "speed_level": "slow",
+            "assist_level": 0.2,
+            "emg_policy": {"intent_source": "m55", "assist_when_confidence_above": 0.72},
+            "safety_constraints": {"require_fresh_m33_heartbeat": True, "stop_on_pain_report": True},
+        },
+        "unsupported_policy": {
+            "status": "rejected",
+            "error_code": "TRAINING_MOVEMENT_UNSUPPORTED",
+            "message": "前端必须从 catalog.training_movements 选择动作；不要提交演示或自造 movement_type。",
+        },
+        "control_boundary": "rehab_app_catalog_options_only_not_medical_diagnosis_or_motion_permission",
+    }
+
+
+def _movement_catalog_item(movement_type: str) -> dict:
+    normalized = str(movement_type or "").strip().lower().replace("-", "_").replace(" ", "_")
+    item = REHAB_APP_MOVEMENT_CATALOG.get(normalized)
+    if item is None:
+        raise AppError(
+            "TRAINING_MOVEMENT_UNSUPPORTED",
+            "training movement_type is not in the rehab app catalog",
+            status_code=422,
+            details={
+                "movement_type": movement_type,
+                "allowed_movement_types": sorted(REHAB_APP_MOVEMENT_CATALOG.keys()),
+                "catalog_endpoint": "/api/rehab-arm/app/v1/catalog",
+                "control_boundary": "training_plan_catalog_validation_only_not_motion_permission",
+            },
+        )
+    return item
+
+
+def _normalize_training_plan_data(data: dict, *, partial: bool = False) -> dict:
+    if "movement_type" not in data:
+        return data
+    item = _movement_catalog_item(str(data.get("movement_type") or ""))
+    normalized = dict(data)
+    normalized["movement_type"] = item["movement_type"]
+    allowed_joints = set(item["target_joints"])
+    requested_joints = normalized.get("target_joints")
+    if requested_joints is None or requested_joints == []:
+        normalized["target_joints"] = list(item["target_joints"])
+    else:
+        invalid_joints = [joint for joint in requested_joints if str(joint) not in allowed_joints]
+        if invalid_joints:
+            raise AppError(
+                "TRAINING_TARGET_JOINT_UNSUPPORTED",
+                "target_joints must match the selected movement catalog item",
+                status_code=422,
+                details={
+                    "movement_type": item["movement_type"],
+                    "invalid_target_joints": invalid_joints,
+                    "allowed_target_joints": sorted(allowed_joints),
+                    "catalog_endpoint": "/api/rehab-arm/app/v1/catalog",
+                    "control_boundary": "training_plan_catalog_validation_only_not_motion_permission",
+                },
+            )
+    if not partial:
+        normalized.setdefault("target_angle_range", item["default_angle_range"])
+        normalized.setdefault("sets", item["default_sets"])
+        normalized.setdefault("reps", item["default_reps"])
+        normalized.setdefault("duration_sec", item["default_duration_sec"])
+        normalized.setdefault("speed_level", item["default_speed_level"])
+        normalized.setdefault("assist_level", item["default_assist_level"])
+    if not normalized.get("target_angle_range"):
+        normalized["target_angle_range"] = item["default_angle_range"]
+    if not normalized.get("emg_policy"):
+        normalized["emg_policy"] = {"intent_source": "m55", "assist_when_confidence_above": 0.72}
+    safety_constraints = dict(normalized.get("safety_constraints") or {})
+    safety_constraints.setdefault("require_fresh_m33_heartbeat", True)
+    safety_constraints.setdefault("stop_on_pain_report", True)
+    safety_constraints.setdefault("movement_catalog_version", "rehab_app_catalog_v1")
+    if item["requires_therapist_review"]:
+        safety_constraints.setdefault("requires_therapist_review", True)
+    normalized["safety_constraints"] = safety_constraints
+    return normalized
+
+
 def _profile_dict(profile: RehabAppUserProfile) -> dict:
     return {
         "id": profile.id,
@@ -2216,7 +2393,7 @@ def list_device_diagnostics(db: Session, user_id: str, device_id: str, limit: in
 
 
 def create_training_plan(db: Session, user_id: str, payload: RehabAppTrainingPlanCreate) -> dict:
-    data = payload.model_dump()
+    data = _normalize_training_plan_data(payload.model_dump())
     plan = RehabAppTrainingPlan(user_id=user_id, version=1, **data)
     db.add(plan)
     db.flush()
@@ -2257,7 +2434,8 @@ def update_training_plan(db: Session, user_id: str, plan_id: str, payload: Rehab
     if plan is None or plan.user_id != user_id:
         raise AppError("TRAINING_PLAN_NOT_FOUND", "training plan not found", status_code=404)
     changed = False
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    update_data = _normalize_training_plan_data(payload.model_dump(exclude_unset=True), partial=True)
+    for key, value in update_data.items():
         setattr(plan, key, value)
         changed = True
     if changed:

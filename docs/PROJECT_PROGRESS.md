@@ -101,6 +101,9 @@
 
 ## 2026-07-03
 
+- Added the public rehab-arm App catalog endpoint `GET /api/rehab-arm/app/v1/catalog`, and exposed it from `public-config.rehab_app.catalog_endpoint` so Stitch/mobile screens can render profile options and training movement choices from backend data instead of demo constants.
+- Training plan create/update now validates `movement_type` against the catalog, fills catalog defaults for target joints, angle range, EMG policy, and safety constraints, and rejects unsupported demo/custom movement strings with `TRAINING_MOVEMENT_UNSUPPORTED`.
+- Validation passed locally: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, existing deprecation warnings only).
 - Synced the rehab-arm mobile readiness gate backend files to the cloud host, ran cloud validation with `apps/api/.venv/bin/python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`7 passed`), and restarted API/Web with `build_sha=cee3ec49`.
 - Cloud verification passed: direct `/api/health` and Web proxy `/api/proxy/health` both report `cee3ec49`; `/api/rehab-arm/app/v1/public-config` returns `release_gate.checks`; authenticated `/api/rehab-arm/app/v1/me` returns `mobile_readiness_guide.status=blocked`; `scripts/check_web_api_alignment.py` returned `ok=true`.
 - Continued the rehab-arm mobile App backend toward user-usable closure without changing Stitch/frontend files. `GET /api/rehab-arm/app/v1/public-config` now includes explicit release-gate checks for public config availability, token auth contract, APK frontend API wiring, and missing BLE/M33 hardware protocol packet maps.

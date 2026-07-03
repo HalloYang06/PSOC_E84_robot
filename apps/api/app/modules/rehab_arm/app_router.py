@@ -53,6 +53,7 @@ from .app_service import (
     draft_next_plan_from_report,
     emg_history,
     generate_ai_training_draft,
+    get_app_catalog,
     generate_training_report,
     get_ai_training_draft,
     get_app_bootstrap,
@@ -161,6 +162,7 @@ def api_public_config(request: Request):
             "rehab_app": {
                 "bootstrap_endpoint": "/api/rehab-arm/app/v1/me",
                 "profile_endpoint": "/api/rehab-arm/app/v1/me/profile",
+                "catalog_endpoint": "/api/rehab-arm/app/v1/catalog",
                 "public_config_endpoint": "/api/rehab-arm/app/v1/public-config",
             },
             "downloads": {
@@ -212,6 +214,11 @@ def api_public_config(request: Request):
             "control_boundary": "rehab_app_public_config_only_not_auth_token_or_motion_permission",
         }
     )
+
+
+@router.get("/catalog")
+def api_catalog():
+    return ok(get_app_catalog())
 
 
 @router.get("/me/profile")

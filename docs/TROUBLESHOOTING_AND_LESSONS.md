@@ -2,6 +2,7 @@
 
 ## 2026-07-03
 
+- Catalog lesson: phone training-plan forms should not hard-code demo movement strings. Publish backend-authored movement/profile catalogs and reject unsupported `movement_type` values before M33 sync so the App cannot create plausible-looking but unreviewable demo plans.
 - Cloud test lesson: the Tencent host does not expose `python` or global `pytest` for the API test suite. Use `apps/api/.venv/bin/python -m pytest ...` when validating cloud-synced rehab-arm App backend files.
 - Mobile release lesson: do not publish a new APK as user-ready just because backend endpoints pass tests. The public config and authenticated `/me.mobile_readiness_guide` must keep saying `blocked` while the Android wrapper still falls back to static preview data or lacks `Authorization: Bearer {access_token}` bootstrap wiring.
 - Hardware protocol lesson: missing BLE/M33/M55 packet maps are a product blocker, not a reason to invent demo behavior. The App backend should expose `awaiting_protocol` readiness and continue recording plans, diagnostics, evidence, and safety reviews without pretending it can certify motion.

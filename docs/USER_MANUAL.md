@@ -291,6 +291,17 @@ On the rehab-arm control-room page, open the `AI模型` workspace from the top n
 
 Safety rule: AI model output is review/dry-run evidence only. It does not send CAN frames, motor current, motor torque, raw joint position/velocity, M33 overrides, or emergency-stop release commands.
 
+
+## Rehab Arm Mobile Catalog
+
+Frontend shells should load the backend catalog instead of hard-coding demo movements:
+
+```http
+GET /api/rehab-arm/app/v1/catalog
+```
+
+The response contains profile options, supported training movements, default angle ranges, EMG policy templates, safety-constraint templates, and `unsupported_policy`. Creating or updating a training plan with a movement outside `catalog.training_movements` returns `TRAINING_MOVEMENT_UNSUPPORTED` and points back to the catalog endpoint. Catalog values are options and evidence only; they are not medical diagnosis or motion permission.
+
 ## Rehab Arm Cloud Backend Verification
 
 Current cloud backend deployment:

@@ -158,6 +158,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert config_data["auth"]["token_response_path"] == "data.access_token"
     assert config_data["auth"]["required_headers"] == {"Authorization": "Bearer {access_token}"}
     assert config_data["rehab_app"]["bootstrap_endpoint"] == "/api/rehab-arm/app/v1/me"
+    assert config_data["rehab_app"]["catalog_endpoint"] == "/api/rehab-arm/app/v1/catalog"
     assert [item["step"] for item in config_data["mobile_boot_flow"]] == [
         "load_public_config",
         "login",
@@ -174,6 +175,15 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
     assert config_data["downloads"]["debug_apk_status"] == "preview_static_shell_needs_frontend_login_api_wiring"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
+    catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
+    assert catalog_response.status_code == 200
+    catalog = catalog_response.json()["data"]
+    movement_types = {item["movement_type"] for item in catalog["training_movements"]}
+    assert {"elbow_flexion", "wrist_flexion", "wrist_extension", "shoulder_overhead_reach"}.issubset(movement_types)
+    shoulder_catalog_item = next(item for item in catalog["training_movements"] if item["movement_type"] == "shoulder_overhead_reach")
+    assert shoulder_catalog_item["requires_therapist_review"] is True
+    assert catalog["unsupported_policy"]["error_code"] == "TRAINING_MOVEMENT_UNSUPPORTED"
+    assert catalog["control_boundary"] == "rehab_app_catalog_options_only_not_medical_diagnosis_or_motion_permission"
     cors_preflight = client.options(
         "/api/rehab-arm/app/v1/public-config",
         headers={
@@ -252,6 +262,15 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert device["platform_project_id"] == project_id
     assert device["control_boundary"] == "device_binding_only_not_motion_permission"
 
+    unsupported_plan_response = client.post(
+        "/api/rehab-arm/app/v1/training-plans",
+        headers=auth_headers(owner_token),
+        json={"title": "Demo wave", "movement_type": "demo_wave", "sets": 1, "reps": 1},
+    )
+    assert unsupported_plan_response.status_code == 422
+    assert unsupported_plan_response.json()["error"]["code"] == "TRAINING_MOVEMENT_UNSUPPORTED"
+    assert unsupported_plan_response.json()["error"]["details"]["catalog_endpoint"] == "/api/rehab-arm/app/v1/catalog"
+
     plan_response = client.post(
         "/api/rehab-arm/app/v1/training-plans",
         headers=auth_headers(owner_token),
@@ -275,7 +294,18 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert plan_response.status_code == 200
     plan = plan_response.json()["data"]
     assert plan["version"] == 1
+    assert plan["safety_constraints"]["movement_catalog_version"] == "rehab_app_catalog_v1"
     assert plan["control_boundary"] == "training_plan_only_not_motor_command"
+    minimal_catalog_plan_response = client.post(
+        "/api/rehab-arm/app/v1/training-plans",
+        headers=auth_headers(owner_token),
+        json={"title": "Catalog defaults wrist", "movement_type": "wrist_extension"},
+    )
+    assert minimal_catalog_plan_response.status_code == 200
+    minimal_catalog_plan = minimal_catalog_plan_response.json()["data"]
+    assert minimal_catalog_plan["target_joints"] == ["wrist"]
+    assert minimal_catalog_plan["target_angle_range"] == {"min_deg": 0, "max_deg": 30}
+    assert minimal_catalog_plan["safety_constraints"]["require_fresh_m33_heartbeat"] is True
     bootstrap_after_basics = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_after_basics.status_code == 200
     onboarding = bootstrap_after_basics.json()["data"]["onboarding_guide"]
