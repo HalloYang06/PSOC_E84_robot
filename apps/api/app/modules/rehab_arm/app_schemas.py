@@ -254,6 +254,25 @@ class RehabAppTrainingSessionProgressRequest(BaseModel):
     user_note: str | None = None
 
 
+class RehabAppSessionSafetyEventCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: str = Field(pattern="^(pain_report|device_fit_issue|m33_reject|fatigue_report|manual_stop_request|other)$")
+    severity: str = Field(default="info", pattern="^(info|warning|critical)$")
+    source: str = Field(default="patient", pattern="^(patient|therapist|m33|m55|app)$")
+    pain_score: float | None = Field(default=None, ge=0, le=10)
+    payload: dict = Field(default_factory=dict)
+    note: str = Field(default="", max_length=2000)
+
+
+class RehabAppSessionSafetyEventRead(RehabAppSessionSafetyEventCreate):
+    id: str
+    user_id: str
+    session_id: str
+    created_at: datetime | None = None
+    control_boundary: str = "session_safety_event_evidence_only_not_motion_permission"
+
+
 class RehabAppTrainingSessionRead(BaseModel):
     id: str
     user_id: str

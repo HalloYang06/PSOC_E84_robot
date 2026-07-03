@@ -19,6 +19,7 @@ from app.db.models.rehab_arm_app import (
     RehabAppPlanConstraintReview,
     RehabAppPlatformSyncRun,
     RehabAppPreflightCheck,
+    RehabAppSessionSafetyEvent,
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
     RehabAppTrainingReport,
@@ -36,6 +37,7 @@ from .app_schemas import (
     RehabAppPlanConstraintReviewCreate,
     RehabAppPreflightCheckCreate,
     RehabAppProfileUpdate,
+    RehabAppSessionSafetyEventCreate,
     RehabAppTrainingReportReviewCreate,
     RehabAppTrainingPlanCreate,
     RehabAppTrainingPlanUpdate,
@@ -165,6 +167,22 @@ def _preflight_dict(check: RehabAppPreflightCheck) -> dict:
         "notes": check.notes,
         "created_at": check.created_at,
         "control_boundary": "preflight_check_evidence_only_not_motion_permission",
+    }
+
+
+def _safety_event_dict(event: RehabAppSessionSafetyEvent) -> dict:
+    return {
+        "id": event.id,
+        "user_id": event.user_id,
+        "session_id": event.session_id,
+        "event_type": event.event_type,
+        "severity": event.severity,
+        "source": event.source,
+        "pain_score": event.pain_score,
+        "payload": event.payload or {},
+        "note": event.note,
+        "created_at": event.created_at,
+        "control_boundary": "session_safety_event_evidence_only_not_motion_permission",
     }
 
 
@@ -1455,6 +1473,76 @@ def get_training_session(db: Session, user_id: str, session_id: str) -> dict:
     return _session_dict(_require_user_session(db, user_id, session_id))
 
 
+def record_session_safety_event(db: Session, user_id: str, session_id: str, payload: RehabAppSessionSafetyEventCreate) -> dict:
+    session = _require_user_session(db, user_id, session_id)
+    if session.status not in {"started", "in_progress", "paused"}:
+        raise AppError(
+            "TRAINING_SESSION_NOT_ACTIVE",
+            "safety events can only be recorded while the session is active or paused",
+            status_code=409,
+            details={"session_id": session.id, "status": session.status, "control_boundary": "session_safety_event_evidence_only_not_motion_permission"},
+        )
+    event = RehabAppSessionSafetyEvent(
+        user_id=user_id,
+        session_id=session.id,
+        event_type=payload.event_type,
+        severity=payload.severity,
+        source=payload.source,
+        pain_score=payload.pain_score,
+        payload=payload.payload,
+        note=payload.note,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(event)
+    should_pause = payload.severity == "critical" or (payload.event_type == "pain_report" and payload.pain_score is not None and payload.pain_score >= 7)
+    if should_pause and session.status in {"started", "in_progress"}:
+        session.status = "paused"
+        session.interruption_count += 1
+        session.user_note = f"{session.user_note}\nSafety event pause: {payload.event_type} {payload.note}".strip()
+        db.add(session)
+    db.flush()
+    create_audit_log(
+        db,
+        actor_type="human" if payload.source in {"patient", "therapist", "app"} else payload.source,
+        actor_id=user_id,
+        action=f"rehab_app.training_session.safety_event.{payload.event_type}",
+        resource_type="rehab_app_session_safety_event",
+        resource_id=event.id,
+        after={
+            "session_id": session.id,
+            "event_type": payload.event_type,
+            "severity": payload.severity,
+            "session_status": session.status,
+            "control_boundary": "session_safety_event_evidence_only_not_motion_permission",
+        },
+    )
+    db.commit()
+    db.refresh(event)
+    return _safety_event_dict(event)
+
+
+def list_session_safety_events(db: Session, user_id: str, session_id: str) -> list[dict]:
+    _require_user_session(db, user_id, session_id)
+    events = list(
+        db.scalars(
+            select(RehabAppSessionSafetyEvent)
+            .where(RehabAppSessionSafetyEvent.user_id == user_id, RehabAppSessionSafetyEvent.session_id == session_id)
+            .order_by(RehabAppSessionSafetyEvent.created_at.asc(), RehabAppSessionSafetyEvent.id.asc())
+        )
+    )
+    return [_safety_event_dict(event) for event in events]
+
+
+def _session_safety_events(db: Session, user_id: str, session_id: str) -> list[RehabAppSessionSafetyEvent]:
+    return list(
+        db.scalars(
+            select(RehabAppSessionSafetyEvent)
+            .where(RehabAppSessionSafetyEvent.user_id == user_id, RehabAppSessionSafetyEvent.session_id == session_id)
+            .order_by(RehabAppSessionSafetyEvent.created_at.asc(), RehabAppSessionSafetyEvent.id.asc())
+        )
+    )
+
+
 def _session_emg_summaries(db: Session, user_id: str, session_id: str) -> list[RehabAppEmgSummary]:
     return list(
         db.scalars(
@@ -1491,6 +1579,7 @@ def generate_training_report(db: Session, user_id: str, session_id: str) -> dict
     device = db.get(RehabAppDeviceBinding, session.device_id)
     emg_items = _session_emg_summaries(db, user_id, session.id)
     intent_items = _session_intent_summaries(db, user_id, session.id)
+    safety_events = _session_safety_events(db, user_id, session.id)
     avg_activation = sum(item.activation_avg for item in emg_items) / len(emg_items) if emg_items else 0.0
     avg_fatigue = sum(item.fatigue_index for item in emg_items) / len(emg_items) if emg_items else 0.0
     avg_confidence = sum(item.confidence for item in intent_items) / len(intent_items) if intent_items else 0.0
@@ -1519,11 +1608,19 @@ def generate_training_report(db: Session, user_id: str, session_id: str) -> dict
     safety_overview = {
         "m33_reject_count": session.m33_reject_count,
         "max_assist_level": session.max_assist_level,
+        "event_count": len(safety_events),
+        "critical_event_count": sum(1 for event in safety_events if event.severity == "critical"),
+        "event_types": sorted({event.event_type for event in safety_events}),
+        "max_pain_score": max((event.pain_score for event in safety_events if event.pain_score is not None), default=None),
         "control_boundary": "m33_final_safety_authority",
     }
     recommendations = []
+    if safety_overview["critical_event_count"]:
+        recommendations.append("critical_safety_event_review_required_before_next_session")
     if session.pain_after is not None and session.pain_after >= 5:
         recommendations.append("pain_after_high_review_with_therapist_before_next_plan")
+    if safety_overview["max_pain_score"] is not None and safety_overview["max_pain_score"] >= 7:
+        recommendations.append("high_in_session_pain_review_with_therapist")
     if avg_fatigue >= 0.5:
         recommendations.append("fatigue_elevated_reduce_intensity_or_extend_rest")
     if avg_confidence and avg_confidence < 0.7:

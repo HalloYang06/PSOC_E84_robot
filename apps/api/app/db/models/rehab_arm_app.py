@@ -132,6 +132,21 @@ class RehabAppPreflightCheck(Base):
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class RehabAppSessionSafetyEvent(Base):
+    __tablename__ = "rehab_app_session_safety_events"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_sessions.id"), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String(40), nullable=False, default="info", index=True)
+    source: Mapped[str] = mapped_column(String(40), nullable=False, default="patient", index=True)
+    pain_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class RehabAppTrainingReport(Base):
     __tablename__ = "rehab_app_training_reports"
 

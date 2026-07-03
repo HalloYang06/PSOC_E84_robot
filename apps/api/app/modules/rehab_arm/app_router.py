@@ -24,6 +24,7 @@ from .app_schemas import (
     RehabAppPlatformSyncRequest,
     RehabAppPreflightCheckCreate,
     RehabAppProfileUpdate,
+    RehabAppSessionSafetyEventCreate,
     RehabAppTrainingReportReviewCreate,
     RehabAppTrainingSessionCancelRequest,
     RehabAppTrainingSessionFinishRequest,
@@ -59,6 +60,7 @@ from .app_service import (
     list_plan_constraint_reviews,
     list_preflight_checks,
     list_safety_audit_logs,
+    list_session_safety_events,
     get_platform_sync_status,
     get_profile,
     get_session_training_report,
@@ -76,6 +78,7 @@ from .app_service import (
     pause_training_session,
     record_emg_summary,
     record_intent_summary,
+    record_session_safety_event,
     replay_offline_queue,
     resume_training_session,
     start_training_session,
@@ -266,6 +269,16 @@ def api_resume_training_session(session_id: str, payload: RehabAppTrainingSessio
 @router.post("/training-sessions/{session_id}/cancel")
 def api_cancel_training_session(session_id: str, payload: RehabAppTrainingSessionCancelRequest, request: Request, db: Session = Depends(get_db)):
     return ok(cancel_training_session(db, _user_id(db, request), session_id, payload.reason))
+
+
+@router.post("/training-sessions/{session_id}/safety-events")
+def api_record_session_safety_event(session_id: str, payload: RehabAppSessionSafetyEventCreate, request: Request, db: Session = Depends(get_db)):
+    return ok(record_session_safety_event(db, _user_id(db, request), session_id, payload))
+
+
+@router.get("/training-sessions/{session_id}/safety-events")
+def api_list_session_safety_events(session_id: str, request: Request, db: Session = Depends(get_db)):
+    return ok(list_session_safety_events(db, _user_id(db, request), session_id))
 
 
 @router.post("/training-sessions/{session_id}/report")

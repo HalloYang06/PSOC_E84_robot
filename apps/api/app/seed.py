@@ -27,6 +27,7 @@ from app.db.models.rehab_arm_app import (
     RehabAppOfflineQueueItem,
     RehabAppPlanConstraintReview,
     RehabAppPlatformSyncRun,
+    RehabAppSessionSafetyEvent,
     RehabAppTrainingPlan,
     RehabAppTrainingPlanSync,
     RehabAppTrainingReport,
@@ -70,6 +71,7 @@ def ensure_schema_extensions() -> None:
             RehabAppOfflineQueueItem,
             RehabAppPlanConstraintReview,
             RehabAppPlatformSyncRun,
+            RehabAppSessionSafetyEvent,
         ):
             if model.__tablename__ not in table_names:
                 model.__table__.create(bind=connection, checkfirst=True)

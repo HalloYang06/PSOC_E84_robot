@@ -753,6 +753,47 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert intent_response.status_code == 200
     assert intent_response.json()["data"]["control_boundary"] == "intent_summary_only_not_motion_permission"
 
+    fit_event = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/safety-events",
+        headers=auth_headers(owner_token),
+        json={"event_type": "device_fit_issue", "severity": "warning", "source": "patient", "note": "strap felt loose"},
+    )
+    assert fit_event.status_code == 200
+    assert fit_event.json()["data"]["control_boundary"] == "session_safety_event_evidence_only_not_motion_permission"
+
+    pain_event = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/safety-events",
+        headers=auth_headers(owner_token),
+        json={"event_type": "pain_report", "severity": "critical", "source": "patient", "pain_score": 8, "note": "sharp wrist pain"},
+    )
+    assert pain_event.status_code == 200
+    safety_events = client.get(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/safety-events",
+        headers=auth_headers(owner_token),
+    )
+    assert safety_events.status_code == 200
+    assert [item["event_type"] for item in safety_events.json()["data"]] == ["device_fit_issue", "pain_report"]
+
+    paused_after_event = client.get(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}",
+        headers=auth_headers(owner_token),
+    )
+    assert paused_after_event.status_code == 200
+    assert paused_after_event.json()["data"]["status"] == "paused"
+    paused_event_progress = client.patch(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/progress",
+        headers=auth_headers(owner_token),
+        json={"completion_rate": 0.6},
+    )
+    assert paused_event_progress.status_code == 409
+    assert paused_event_progress.json()["error"]["code"] == "TRAINING_SESSION_NOT_ACTIVE"
+    resume_after_event = client.post(
+        f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/resume",
+        headers=auth_headers(owner_token),
+        json={"note": "therapist checked pain and fit"},
+    )
+    assert resume_after_event.status_code == 200
+
     unfinished_report = client.post(
         f"/api/rehab-arm/app/v1/training-sessions/{session['id']}/report",
         headers=auth_headers(owner_token),
@@ -810,7 +851,11 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert report["intent_overview"]["predicted_actions"] == ["wrist_flexion"]
     assert report["intent_overview"]["avg_confidence"] == 0.81
     assert report["safety_overview"]["control_boundary"] == "m33_final_safety_authority"
-    assert report["recommendations"] == ["continue_current_plan_with_m33_review_required"]
+    assert report["safety_overview"]["event_count"] == 2
+    assert report["safety_overview"]["critical_event_count"] == 1
+    assert report["safety_overview"]["max_pain_score"] == 8
+    assert "critical_safety_event_review_required_before_next_session" in report["recommendations"]
+    assert "high_in_session_pain_review_with_therapist" in report["recommendations"]
     assert report["latest_review"] is None
 
     repeat_report_response = client.post(
