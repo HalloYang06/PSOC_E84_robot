@@ -1559,6 +1559,8 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     assert failed_offline_guide["failed_item_ids"] == [bad_queue_item["id"]]
     assert failed_offline_guide["actions"][0]["code"] == "VIEW_OFFLINE_QUEUE"
     assert failed_offline_guide["actions"][0]["endpoint"] == "/api/rehab-arm/app/v1/offline-queue?status=failed"
+    assert failed_offline_guide["actions"][1]["code"] == "REVIEW_FAILED_OFFLINE_ITEM"
+    assert failed_offline_guide["actions"][1]["endpoint"] == f"/api/rehab-arm/app/v1/offline-queue/{bad_queue_item['id']}/review"
     failed_queue = client.get(
         "/api/rehab-arm/app/v1/offline-queue",
         headers=auth_headers(owner_token),
@@ -1573,6 +1575,23 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     )
     assert queued_queue.status_code == 200
     assert {item["id"] for item in queued_queue.json()["data"]} == {queue_item["id"], safety_queue_item["id"]}
+    reviewed_failed = client.post(
+        f"/api/rehab-arm/app/v1/offline-queue/{bad_queue_item['id']}/review",
+        headers=auth_headers(owner_token),
+        json={"reviewer_role": "therapist", "review_status": "reviewed", "note": "device id was stale; evidence ignored"},
+    )
+    assert reviewed_failed.status_code == 200
+    reviewed_item = reviewed_failed.json()["data"]
+    assert reviewed_item["replay_status"] == "reviewed"
+    assert reviewed_item["replay_result"]["review"]["reviewer_role"] == "therapist"
+    assert reviewed_item["replay_result"]["control_boundary"] == "offline_queue_evidence_only_not_motion_permission"
+    reviewed_queue = client.get(
+        "/api/rehab-arm/app/v1/offline-queue",
+        headers=auth_headers(owner_token),
+        params={"status": "reviewed"},
+    )
+    assert reviewed_queue.status_code == 200
+    assert [item["id"] for item in reviewed_queue.json()["data"]] == [bad_queue_item["id"]]
 
     replay = client.post(
         "/api/rehab-arm/app/v1/offline-queue/replay",
@@ -1585,8 +1604,8 @@ def test_rehab_arm_app_offline_diagnostics_sync_and_audit_loop(tmp_path, monkeyp
     assert {item["replay_status"] for item in replay_data["items"]} == {"replayed"}
     bootstrap_after_offline_replay = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_after_offline_replay.status_code == 200
-    assert bootstrap_after_offline_replay.json()["data"]["offline_sync_guide"]["status"] == "review_failed_items"
-    assert bootstrap_after_offline_replay.json()["data"]["offline_sync_guide"]["actions"][0]["code"] == "VIEW_OFFLINE_QUEUE"
+    assert bootstrap_after_offline_replay.json()["data"]["offline_sync_guide"]["status"] == "synced"
+    assert bootstrap_after_offline_replay.json()["data"]["offline_sync_guide"]["actions"] == []
 
     latest_emg = client.get("/api/rehab-arm/app/v1/emg/latest", headers=auth_headers(owner_token))
     assert latest_emg.status_code == 200

@@ -19,6 +19,7 @@ from .app_schemas import (
     RehabAppIntentSummaryCreate,
     RehabAppM33StatusUpdate,
     RehabAppOfflineQueueItemCreate,
+    RehabAppOfflineQueueReviewRequest,
     RehabAppOfflineQueueReplayRequest,
     RehabAppPlanConstraintReviewCreate,
     RehabAppPlatformSyncRequest,
@@ -82,6 +83,7 @@ from .app_service import (
     record_intent_summary,
     record_session_safety_event,
     replay_offline_queue,
+    review_failed_offline_item,
     resume_training_session,
     start_training_session,
     sync_platform_records,
@@ -396,7 +398,7 @@ def api_list_offline_queue(
     db: Session = Depends(get_db),
 ):
     normalized_status = status.strip().lower() if status else None
-    if normalized_status and normalized_status not in {"queued", "replayed", "failed"}:
+    if normalized_status and normalized_status not in {"queued", "replayed", "failed", "reviewed"}:
         normalized_status = None
     return ok(list_offline_queue(db, _user_id(db, request), status=normalized_status, limit=limit))
 
@@ -404,6 +406,11 @@ def api_list_offline_queue(
 @router.post("/offline-queue/replay")
 def api_replay_offline_queue(payload: RehabAppOfflineQueueReplayRequest, request: Request, db: Session = Depends(get_db)):
     return ok(replay_offline_queue(db, _user_id(db, request), payload.item_ids))
+
+
+@router.post("/offline-queue/{item_id}/review")
+def api_review_failed_offline_item(item_id: str, payload: RehabAppOfflineQueueReviewRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(review_failed_offline_item(db, _user_id(db, request), item_id, payload))
 
 
 @router.get("/safety-audit")

@@ -200,3 +200,6 @@
 - Added offline evidence handling to rehab arm app `daily_action_guide`; when no active/safety/report-generation action is higher priority, queued evidence surfaces `REPLAY_OFFLINE_EVIDENCE` and failed evidence surfaces `VIEW_OFFLINE_QUEUE` before AI draft review or training start guidance.
 - Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
 - Next step: continue checking `/me` guide priority order against real phone workflows so users are never left to infer the next endpoint.
+- Added evidence-only review closure for failed rehab arm offline queue items: `POST /api/rehab-arm/app/v1/offline-queue/{item_id}/review` marks failed items `reviewed`, preserves review evidence, audits the action, and removes the failed item from `/me.offline_sync_guide` blockers.
+- Validation passed: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`7 passed`, deprecation warnings only).
+- Next step: continue adding explicit review/close paths for any remaining App states that can otherwise persist forever on the home screen.

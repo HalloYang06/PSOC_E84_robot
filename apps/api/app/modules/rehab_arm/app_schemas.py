@@ -355,3 +355,11 @@ class RehabAppOfflineQueueReplayRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     item_ids: list[str] = Field(default_factory=list)
+
+
+class RehabAppOfflineQueueReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reviewer_role: str = Field(default="patient", max_length=40)
+    review_status: str = Field(default="reviewed", max_length=40)
+    note: str = Field(default="", max_length=1000)

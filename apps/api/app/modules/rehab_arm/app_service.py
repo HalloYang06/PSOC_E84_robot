@@ -34,6 +34,7 @@ from .app_schemas import (
     RehabAppDiagnosticUploadRequest,
     RehabAppBleMessageCreate,
     RehabAppOfflineQueueItemCreate,
+    RehabAppOfflineQueueReviewRequest,
     RehabAppPlanConstraintReviewCreate,
     RehabAppPreflightCheckCreate,
     RehabAppProfileUpdate,
@@ -757,6 +758,7 @@ def _app_offline_sync_guide(offline_items: list[dict]) -> dict:
     if failed:
         status = "review_failed_items"
         next_action = "inspect_failed_replay_results"
+        first_failed_id = failed[0]["id"] if len(failed) == 1 else "{item_id}"
         actions.append(
             {
                 "code": "VIEW_OFFLINE_QUEUE",
@@ -764,6 +766,15 @@ def _app_offline_sync_guide(offline_items: list[dict]) -> dict:
                 "endpoint": "/api/rehab-arm/app/v1/offline-queue?status=failed",
                 "method": "GET",
                 "payload_hint": {"status": "failed"},
+            }
+        )
+        actions.append(
+            {
+                "code": "REVIEW_FAILED_OFFLINE_ITEM",
+                "label": "标记失败证据已处理",
+                "endpoint": f"/api/rehab-arm/app/v1/offline-queue/{first_failed_id}/review",
+                "method": "POST",
+                "payload_hint": {"reviewer_role": "patient_or_therapist", "review_status": "reviewed", "note": "required"},
             }
         )
     elif queued:
@@ -3143,6 +3154,53 @@ def list_offline_queue(db: Session, user_id: str, status: str | None = None, lim
         statement = statement.where(RehabAppOfflineQueueItem.replay_status == status)
     items = list(db.scalars(statement.order_by(RehabAppOfflineQueueItem.created_at.asc()).limit(limit)))
     return [_offline_item_dict(item) for item in items]
+
+
+def review_failed_offline_item(db: Session, user_id: str, item_id: str, payload: RehabAppOfflineQueueReviewRequest) -> dict:
+    item = db.get(RehabAppOfflineQueueItem, item_id)
+    if item is None or item.user_id != user_id:
+        raise AppError("OFFLINE_QUEUE_ITEM_NOT_FOUND", "offline queue item not found", status_code=404)
+    if item.replay_status != "failed":
+        raise AppError(
+            "OFFLINE_QUEUE_ITEM_NOT_FAILED",
+            "only failed offline queue items can be marked reviewed",
+            status_code=409,
+            details={
+                "item_id": item.id,
+                "replay_status": item.replay_status,
+                "control_boundary": "offline_queue_evidence_only_not_motion_permission",
+            },
+        )
+    previous_result = item.replay_result or {}
+    item.replay_status = "reviewed"
+    item.replay_result = {
+        **previous_result,
+        "review": {
+            "reviewer_role": payload.reviewer_role,
+            "review_status": payload.review_status,
+            "note": payload.note,
+            "reviewed_at": datetime.now(timezone.utc).isoformat(),
+        },
+        "control_boundary": "offline_queue_evidence_only_not_motion_permission",
+    }
+    item.replayed_at = datetime.now(timezone.utc)
+    db.add(item)
+    create_audit_log(
+        db,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.offline_queue.reviewed",
+        resource_type="rehab_app_offline_queue_item",
+        resource_id=item.id,
+        after={
+            "operation_type": item.operation_type,
+            "review_status": payload.review_status,
+            "control_boundary": "offline_queue_evidence_only_not_motion_permission",
+        },
+    )
+    db.commit()
+    db.refresh(item)
+    return _offline_item_dict(item)
 
 
 def _mark_offline_item(db: Session, item: RehabAppOfflineQueueItem, status: str, result: dict) -> None:
