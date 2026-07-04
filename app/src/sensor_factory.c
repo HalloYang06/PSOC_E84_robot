@@ -24,7 +24,7 @@ typedef struct
     uint16_t last_red;
 } hr_sensor_ctx_t;
 
-static volatile uint16_t s_emg_dma_sample;
+static volatile uint16_t s_emg_dma_samples[SENSOR_FACTORY_ADC_CHANNEL_COUNT];
 static emg_sensor_ctx_t s_emg_ctx;
 static hr_sensor_ctx_t s_hr_ctx;
 static sensor_iface_t s_emg_iface;
@@ -60,7 +60,7 @@ static int32_t emg_start(sensor_iface_t *self)
         return -1;
     }
 
-    if (bsp_muelec_start_dma((uint16_t *)&s_emg_dma_sample, 1U) != 0)
+    if (bsp_muelec_start_dma((uint16_t *)s_emg_dma_samples, SENSOR_FACTORY_ADC_CHANNEL_COUNT) != 0)
     {
         ctx->status.error_count++;
         ctx->status.healthy = 0U;
@@ -88,15 +88,44 @@ static int32_t emg_read(sensor_iface_t *self, uint16_t *sample)
 {
     emg_sensor_ctx_t *ctx = (emg_sensor_ctx_t *)self->ctx;
     uint32_t primask;
+    uint8_t channel;
 
     if ((self == 0) || (ctx == 0) || (sample == 0) || (ctx->started == 0U))
+    {
+        return -1;
+    }
+    if (ctx->cfg.channel_or_addr >= SENSOR_FACTORY_ADC_CHANNEL_COUNT)
     {
         return -1;
     }
 
     primask = __get_PRIMASK();
     __disable_irq();
-    *sample = s_emg_dma_sample;
+    channel = ctx->cfg.channel_or_addr;
+    *sample = s_emg_dma_samples[channel];
+    if ((primask & 0x1U) == 0U)
+    {
+        __enable_irq();
+    }
+    return 0;
+}
+
+int32_t sensor_factory_read_emg_channels(uint16_t samples[SENSOR_FACTORY_ADC_CHANNEL_COUNT])
+{
+    uint32_t primask;
+    uint8_t i;
+
+    if ((samples == 0) || (s_emg_ctx.started == 0U))
+    {
+        return -1;
+    }
+
+    primask = __get_PRIMASK();
+    __disable_irq();
+    for (i = 0U; i < SENSOR_FACTORY_ADC_CHANNEL_COUNT; ++i)
+    {
+        samples[i] = s_emg_dma_samples[i];
+    }
     if ((primask & 0x1U) == 0U)
     {
         __enable_irq();
