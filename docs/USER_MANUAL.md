@@ -160,7 +160,7 @@ The App uses the same server-side model-provider configuration as the platform m
 GET /api/rehab-arm/app/v1/public-config
 ```
 
-Read `data.rehab_app.ai_relay_contract`. Expected values are `client_type=app`, `purpose=training_plan_draft`, `scope=rehab_training_planning`, and `does_not_touch_xiaozhi_l=true`.
+Read `data.rehab_app.ai_relay_contract`. Expected values are `relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, `scope=rehab_training_planning`, and `does_not_touch_xiaozhi_l=true`.
 
 Call flow:
 
@@ -225,7 +225,7 @@ POST /api/rehab-arm/app/v1/devices/{device_id}/m33-status
 POST /api/rehab-arm/app/v1/training-sessions/start
 ```
 
-The response draft contains `context_snapshot.ai_planner`. Use those fields for platform logs: `relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, and `scope=rehab_training_planning`. The same metadata is also mirrored into `rehab_app.ai_training_draft.generated` audit events returned by `GET /safety-audit`, so platform viewers can show XiaoZhi/L and App AI records together while still filtering by client type, purpose, and scope. XiaoZhi/L records remain under model relay / voice relay / L mode logs, so App and XiaoZhi evidence can be displayed together without sharing control authority.
+The response draft contains `context_snapshot.ai_planner`. Use those fields for platform logs: `relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, and `scope=rehab_training_planning`. The same metadata is also mirrored into `rehab_app.ai_training_draft.generated` audit events returned by `GET /safety-audit`, so platform viewers can show XiaoZhi/L and App AI records together while still filtering by client type, purpose, and scope. XiaoZhi/L records remain under model relay / voice relay / L mode logs, so App and XiaoZhi evidence can be displayed together without sharing control authority. The accepted `generated_plan` is sanitized before persistence: dangerous control-shaped keys for CAN, motors, current/torque, raw position/velocity, M33 override, or emergency-stop release are stripped from nested plan dictionaries.
 
 Mobile diagnostic and offline replay:
 

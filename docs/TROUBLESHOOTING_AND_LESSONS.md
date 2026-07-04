@@ -12,6 +12,7 @@
 - Workflow-preflight lesson: `PREFLIGHT_CHECK_REQUIRED` can be App-executable only after the current plan version has real `m33_accepted` evidence. Execute it by reusing the normal preflight service so pain thresholds, checklist completeness, sync id, and plan-version gates stay centralized.
 - Shared AI relay lesson: using one model provider configuration for XiaoZhi/L and App training planning is acceptable only when every record carries channel metadata. XiaoZhi/L uses semantic routing records; App training planning must carry `relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, `scope=rehab_training_planning`, and `does_not_touch_xiaozhi_l=true`. Do not point the App at XiaoZhi WebSocket or treat an App draft as L/A motion permission.
 - App AI audit lesson: do not only store the App relay split inside the draft payload. Mirror `relay_channel`, `client_type`, `purpose`, and `scope` into `rehab_app.ai_training_draft.generated` audit events as well, otherwise a unified platform log can show App and XiaoZhi records but cannot reliably separate their control chains. The report-to-next-plan endpoint must carry the same metadata as direct `/ai-training-drafts/generate`.
+- App AI sanitization lesson: a model prompt saying "do not output motor/CAN fields" is not enough. Recursively remove dangerous key variants from the persisted `generated_plan`, including camelCase or dashed spellings such as `emergencyStopRelease` and `motor-command`, before a draft can be accepted into a normal training plan.
 
 ## 2026-07-03
 

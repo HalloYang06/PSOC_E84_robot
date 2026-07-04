@@ -17,6 +17,8 @@
 - Validation passed with `python -m pytest apps/api/tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`12 passed`). No frontend/Stitch files were changed for this backend contract task.
 - Continued the App AI training-planner closure. `POST /training-reports/{report_id}/draft-next-plan` now uses the same App training-planner relay path and writes the same `context_snapshot.ai_planner` metadata as direct draft generation, while `rehab_app.ai_training_draft.generated` audit events mirror `relay_channel`, `client_type`, `purpose`, and `scope` for unified platform visibility. XiaoZhi/L WebSocket, ASR/TTS, M55 input, and semantic-routing code were not changed.
 - Validation passed again with `python -m pytest apps/api/tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`12 passed`, deprecation warnings only).
+- Closed the QA concerns from the App AI relay audit split. `public-config.rehab_app.ai_relay_contract` now exposes `relay_channel=app_training_planner`, and AI-generated/fallback training plans are recursively stripped of dangerous control-shaped keys before persistence or accept-to-plan. Added regression coverage for dangerous keys inside nested `emg_policy` and `safety_constraints`.
+- Validation passed with `python -m pytest apps/api/tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`13 passed`, deprecation warnings only).
 
 ## 2026-06-17
 

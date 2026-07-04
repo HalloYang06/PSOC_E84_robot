@@ -179,6 +179,7 @@ def api_public_config(request: Request):
                 "m33_legacy_spp_profile_path": "data.m33_legacy_spp_profile",
                 "public_config_endpoint": "/api/rehab-arm/app/v1/public-config",
                 "ai_relay_contract": {
+                    "relay_channel": "app_training_planner",
                     "client_type": "app",
                     "purpose": "training_plan_draft",
                     "scope": "rehab_training_planning",

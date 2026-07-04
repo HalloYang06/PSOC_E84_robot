@@ -36,8 +36,18 @@ from app.db.models.rehab_arm_app import (
 DANGEROUS_AI_PLAN_KEYS = {
     "can_frame",
     "can_frames",
+    "can",
     "motor_command",
     "motor_commands",
+    "motor",
+    "raw_motor",
+    "raw_motor_command",
+    "raw_motor_current",
+    "raw_motor_torque",
+    "raw_motor_position",
+    "raw_motor_velocity",
+    "motor_current",
+    "motor_torque",
     "current",
     "torque",
     "raw_position",
@@ -47,6 +57,26 @@ DANGEROUS_AI_PLAN_KEYS = {
     "release_estop",
     "emergency_stop_release",
 }
+DANGEROUS_AI_PLAN_KEY_SUBSTRINGS = (
+    "can_frame",
+    "canframe",
+    "motor_command",
+    "motorcommand",
+    "raw_motor",
+    "rawmotor",
+    "raw_position",
+    "rawposition",
+    "raw_velocity",
+    "rawvelocity",
+    "m33_override",
+    "m33override",
+    "emergency_stop",
+    "emergencystop",
+    "release_estop",
+    "releaseestop",
+    "estop_release",
+    "estoprelease",
+)
 from app.modules.audit.service import create_audit_log
 
 from .app_schemas import (
@@ -5215,6 +5245,17 @@ def _draft_plan_from_context(input_text: str, context_snapshot: dict) -> dict:
     }
 
 
+def _normalize_ai_plan_key(key: object) -> str:
+    return "".join(ch if ch.isalnum() else "_" for ch in str(key).strip().lower()).strip("_")
+
+
+def _is_dangerous_ai_plan_key(key: object) -> bool:
+    normalized = _normalize_ai_plan_key(key)
+    if normalized in DANGEROUS_AI_PLAN_KEYS:
+        return True
+    return any(token in normalized for token in DANGEROUS_AI_PLAN_KEY_SUBSTRINGS)
+
+
 def _relay_chat_url(base_url: str) -> str:
     cleaned = str(base_url or "").strip().rstrip("/")
     if not cleaned:
@@ -5229,7 +5270,7 @@ def _relay_chat_url(base_url: str) -> str:
 def _contains_dangerous_ai_plan_key(value) -> bool:
     if isinstance(value, dict):
         for key, item in value.items():
-            if str(key).strip().lower() in DANGEROUS_AI_PLAN_KEYS:
+            if _is_dangerous_ai_plan_key(key):
                 return True
             if _contains_dangerous_ai_plan_key(item):
                 return True
@@ -5238,9 +5279,24 @@ def _contains_dangerous_ai_plan_key(value) -> bool:
     return False
 
 
+def _strip_dangerous_ai_plan_keys(value):
+    if isinstance(value, dict):
+        return {key: _strip_dangerous_ai_plan_keys(item) for key, item in value.items() if not _is_dangerous_ai_plan_key(key)}
+    if isinstance(value, list):
+        return [_strip_dangerous_ai_plan_keys(item) for item in value]
+    return value
+
+
+def _sanitize_ai_training_plan(plan: dict) -> dict:
+    cleaned = _strip_dangerous_ai_plan_keys(plan)
+    if isinstance(cleaned, dict):
+        cleaned["control_boundary"] = "ai_draft_only_not_execution_permission"
+    return cleaned
+
+
 def _coerce_ai_generated_plan(raw_plan: dict, fallback: dict) -> dict:
     if not isinstance(raw_plan, dict) or _contains_dangerous_ai_plan_key(raw_plan):
-        return dict(fallback)
+        return _sanitize_ai_training_plan(dict(fallback))
     allowed = {
         "title",
         "source",
@@ -5266,11 +5322,11 @@ def _coerce_ai_generated_plan(raw_plan: dict, fallback: dict) -> dict:
         normalized = _normalize_training_plan_data(candidate)
         plan = RehabAppTrainingPlanCreate(**normalized).model_dump()
     except Exception:
-        return dict(fallback)
+        return _sanitize_ai_training_plan(dict(fallback))
     plan["source"] = "ai_generated"
     plan["status"] = "draft"
     plan["control_boundary"] = "ai_draft_only_not_execution_permission"
-    return plan
+    return _sanitize_ai_training_plan(plan)
 
 
 def _call_external_ai_training_planner(input_text: str, context_snapshot: dict, fallback: dict) -> tuple[dict, dict]:
@@ -5392,7 +5448,7 @@ def _persist_ai_training_draft(db: Session, user_id: str, input_text: str, conte
 
 
 def generate_ai_training_draft(db: Session, user_id: str, input_text: str, context_snapshot: dict) -> dict:
-    fallback_plan = _draft_plan_from_context(input_text, context_snapshot)
+    fallback_plan = _sanitize_ai_training_plan(_draft_plan_from_context(input_text, context_snapshot))
     generated_plan, ai_evidence = _call_external_ai_training_planner(input_text, context_snapshot, fallback_plan)
     merged_context = {
         **(context_snapshot or {}),
@@ -5469,6 +5525,7 @@ def draft_next_plan_from_report(db: Session, user_id: str, report_id: str) -> di
         "status": "draft",
         "control_boundary": "ai_draft_only_not_execution_permission",
     }
+    fallback_plan = _sanitize_ai_training_plan(fallback_plan)
     context_snapshot = {
         "source": "training_report_review",
         "report_id": report.id,

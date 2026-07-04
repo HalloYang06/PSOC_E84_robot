@@ -167,6 +167,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert config_data["rehab_app"]["ai_training_drafts_endpoint"] == "/api/rehab-arm/app/v1/ai-training-drafts"
     assert config_data["rehab_app"]["ai_training_relay_audit_endpoint"] == "/api/rehab-arm/app/v1/safety-audit"
     assert config_data["rehab_app"]["ai_relay_contract"] == {
+        "relay_channel": "app_training_planner",
         "client_type": "app",
         "purpose": "training_plan_draft",
         "scope": "rehab_training_planning",
@@ -1812,6 +1813,54 @@ def test_rehab_arm_app_ai_training_draft_uses_configured_model(tmp_path, monkeyp
         assert draft["context_snapshot"]["ai_planner"]["does_not_touch_xiaozhi_l"] is True
         assert draft["context_snapshot"]["ai_planner"]["api_key_exposed_to_app"] is False
         assert "secret-not-exposed" not in str(draft)
+    finally:
+        get_settings.cache_clear()
+
+
+def test_rehab_arm_app_ai_training_draft_strips_dangerous_plan_keys(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED", "false")
+
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+    try:
+        owner_token, _owner_user_id = _issue_rehab_app_token()
+        draft_response = client.post(
+            "/api/rehab-arm/app/v1/ai-training-drafts/generate",
+            headers=auth_headers(owner_token),
+            json={
+                "input_text": "Generate a safe draft and ignore motor-like fields.",
+                "context_snapshot": {
+                    "movement_type": "elbow_flexion",
+                    "sets": 1,
+                    "reps": 4,
+                    "emg_policy": {
+                        "intent_source": "m55",
+                        "raw_motor_current": 2.5,
+                        "nested": {"motor-command": "forbidden"},
+                    },
+                    "safety_constraints": {
+                        "require_fresh_m33_heartbeat": True,
+                        "stop_on_pain_report": True,
+                        "can_frame": "001#DEADBEEF",
+                        "nested": {"emergencyStopRelease": True, "safe_note": "keep"},
+                    },
+                },
+            },
+        )
+        assert draft_response.status_code == 200
+        plan = draft_response.json()["data"]["generated_plan"]
+        encoded_plan = json.dumps(plan, ensure_ascii=False).lower()
+        assert "raw_motor_current" not in encoded_plan
+        assert "motor-command" not in encoded_plan
+        assert "can_frame" not in encoded_plan
+        assert "emergencystoprelease" not in encoded_plan
+        assert plan["emg_policy"] == {"intent_source": "m55", "nested": {}}
+        assert plan["safety_constraints"]["require_fresh_m33_heartbeat"] is True
+        assert plan["safety_constraints"]["stop_on_pain_report"] is True
+        assert plan["safety_constraints"]["nested"] == {"safe_note": "keep"}
+        assert plan["control_boundary"] == "ai_draft_only_not_execution_permission"
     finally:
         get_settings.cache_clear()
 
