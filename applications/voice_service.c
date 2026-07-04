@@ -2,6 +2,7 @@
 
 #include "baidu_asr.h"
 #include "baidu_tts.h"
+#include "emg_intent_bridge.h"
 #include "m33_m55_comm.h"
 #include "model_result_publisher.h"
 #include "official_voice_service.h"
@@ -4055,6 +4056,11 @@ void voice_service_handle_ipc_message(const m33_m55_message_t *msg)
     case MSG_TYPE_SENSOR_SNAPSHOT:
         break;
     case MSG_TYPE_SENSOR_STREAM:
+        if (msg->payload.sensor_stream.source == MODEL_INPUT_SRC_EMG)
+        {
+            (void)emg_intent_bridge_handle_stream(&msg->payload.sensor_stream);
+            break;
+        }
         if (msg->payload.sensor_stream.source == MODEL_INPUT_SRC_AUDIO_PCM)
         {
             rt_bool_t accept_probe_pcm;

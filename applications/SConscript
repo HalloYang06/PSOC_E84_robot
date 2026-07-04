@@ -38,7 +38,7 @@ if lvgl_enabled:
         os.path.abspath(os.path.join(cwd, '..', 'libraries', 'components', 'lvgl_9.2.0', 'env_support', 'rt-thread')),
         os.path.abspath(os.path.join(cwd, '..', 'libraries', 'Common', 'board', 'ports', 'lvgl')),
     ]
-src  = Glob('*.c') + Glob('*.cpp')
+src  = Glob('*.c') + Glob('*.cpp') + Glob('*.cc')
 src  = [f for f in src if os.path.basename(str(f)) not in [
     'model_deployment.c',
     'model_input_bridge.c',
