@@ -27,6 +27,7 @@ export type DashboardDevice = {
   safety_status?: AnyRecord;
   voice_relay?: AnyRecord;
   vla_plan_candidate?: AnyRecord;
+  ik_candidate?: AnyRecord;
   simulation_readiness?: AnyRecord;
   estop_ack?: AnyRecord;
   motor_state?: AnyRecord;
@@ -156,6 +157,7 @@ type RehabWorkspaceModule =
   | "ai_model"
   | "mode_router"
   | "training"
+  | "data_hub"
   | "action_planner"
   | "diagnostics"
   | "logs";
@@ -173,6 +175,7 @@ const REHAB_WORKSPACE_MODULES: Array<{
   { key: "ai_model", short: "AI", label: "AI模型中转", description: "高层建议 / 模型配置 / 受限调用令牌" },
   { key: "mode_router", short: "L", label: "模式调度", description: "小智语义分类 / 资源路由" },
   { key: "training", short: "TRN", label: "模型训练场", description: "数据标注 / 训练计划 / APP / M33 BLE 预留" },
+  { key: "data_hub", short: "DATA", label: "数据资产", description: "采集批次 / 标注入口 / 训练回流" },
   { key: "action_planner", short: "A", label: "动作规划", description: "dry-run / 闭环逼近 / 安全门" },
   { key: "diagnostics", short: "IO", label: "设备诊断", description: "NanoPi / CAN / M33 / 模型中转" },
   { key: "logs", short: "LOG", label: "日志回放", description: "语音 / 视觉 / 规划 / 审计证据" },
@@ -1086,6 +1089,15 @@ function clamp01(value: number) {
 
 function firstFiniteNumber(...values: unknown[]) {
   for (const value of values) {
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
+}
+
+function firstPresentFiniteNumber(...values: unknown[]) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === "") continue;
     const number = Number(value);
     if (Number.isFinite(number)) return number;
   }
@@ -2450,6 +2462,20 @@ function Arm3DOverview({
         });
       }
 
+      function frameMetricRobot(object: AnyRecord) {
+        const box = new THREE.Box3().setFromObject(object as any);
+        if (box.isEmpty()) return;
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+        const maxDim = Math.max(size.x, size.y, size.z, 0.25);
+        controls.target.copy(center);
+        const distance = Math.min(4.2, Math.max(1.05, maxDim * 2.2));
+        camera.position.set(center.x + distance * 0.72, center.y - distance * 0.92, center.z + distance * 0.58);
+        camera.lookAt(center);
+        camera.updateProjectionMatrix();
+        controls.update();
+      }
+
       async function addUrdfOrPlaceholder() {
         if (!urdfText) {
           addDemoArmModel();
@@ -2505,14 +2531,11 @@ function Arm3DOverview({
               meshIndex += 1;
             }
           });
-          const box = new THREE.Box3().setFromObject(robot as any);
-          const size = box.getSize(new THREE.Vector3());
-          const center = box.getCenter(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-          robot.position.sub(center);
-          robot.scale.setScalar(1.1 / maxDim);
+          robot.position.set(0, 0, 0);
+          robot.scale.setScalar(1);
           applyJointValues(robot);
           scene.add(robot as any);
+          frameMetricRobot(robot);
           setUrdfState("loaded");
         } catch {
           addDemoArmModel();
@@ -2579,7 +2602,7 @@ function Arm3DOverview({
 
   const modelStateText =
     urdfState === "loaded"
-      ? `已导入 ${urdfName || "URDF"}`
+      ? `已导入 ${urdfName || "URDF"} · MuJoCo shadow 米制坐标`
       : urdfState === "loading"
         ? "正在导入 URDF"
       : urdfState === "failed"
@@ -2690,7 +2713,7 @@ function Arm3DOverview({
             onChange={(event) => handleUrdfFile(event.target.files?.[0] ?? null)}
           />
         </label>
-        <p>支持 URDF zip 包或单个 URDF。页面优先用 robot_render_state_v1 的 joint_names/positions 驱动同名关节，只读预览，不下发任何运动控制。</p>
+        <p>支持 URDF zip 包或单个 URDF。页面保持导入模型的米制根坐标和比例，相机自动取景；优先用 robot_render_state_v1 的 joint_names/positions 驱动同名关节，只读预览，不下发任何运动控制。</p>
       </details>
       {urdfJoints.length ? (
         <details className={styles.poseMappingPanel}>
@@ -3316,6 +3339,19 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const [demoLanguageInput, setDemoLanguageInput] = useState("");
   const [activeModule, setActiveModule] = useState<RehabWorkspaceModule>("overview");
   const [twinRuntimeHost, setTwinRuntimeHost] = useState<HTMLElement | null>(null);
+  const [ikTargetInput, setIkTargetInput] = useState({ x_m: "0.32", y_m: "-0.08", z_m: "0.24" });
+  const [ikApproachInput, setIkApproachInput] = useState("0,0,-1");
+  const [ikOrientationInput, setIkOrientationInput] = useState("roll=0,pitch=90,yaw=0");
+  const [ikSourceInput, setIkSourceInput] = useState<"vision_calibrated" | "manual_platform" | "simulation_test">("manual_platform");
+  const ikDraftRef = useRef({
+    target: { x_m: "0.32", y_m: "-0.08", z_m: "0.24" },
+    approach: "0,0,-1",
+    orientation: "roll=0,pitch=90,yaw=0",
+    source: "manual_platform" as "vision_calibrated" | "manual_platform" | "simulation_test",
+  });
+  const [ikCandidateState, setIkCandidateState] = useState<"idle" | "generating" | "ready" | "error">("idle");
+  const [ikCandidateError, setIkCandidateError] = useState("");
+  const [lastIkCandidate, setLastIkCandidate] = useState<AnyRecord | null>(null);
   const devices = useMemo(
     () => [...liveDashboard.devices].sort((a, b) => Number(b.last_upload_ts_unix ?? 0) - Number(a.last_upload_ts_unix ?? 0)),
     [liveDashboard.devices],
@@ -3329,6 +3365,15 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     () => devices.find((device) => device.device_id === selectedDeviceId) ?? devices[0] ?? null,
     [devices, selectedDeviceId],
   );
+
+  useEffect(() => {
+    ikDraftRef.current = {
+      target: ikTargetInput,
+      approach: ikApproachInput,
+      orientation: ikOrientationInput,
+      source: ikSourceInput,
+    };
+  }, [ikApproachInput, ikOrientationInput, ikSourceInput, ikTargetInput]);
 
   useEffect(() => {
     setLiveDashboard(filterDashboardForProject(dashboard, projectId));
@@ -3446,7 +3491,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const stereoObservation = record(stereoTarget.stereo_observation);
   const stereoVisualLock = record(stereoPayload.visual_lock_stability);
   const stereoTargetQualityGate = record(stereoPayload.target_quality_gate);
-  const stereoDepth = firstFiniteNumber(stereoPayload.estimated_depth_m, record(stereoPayload.target_3d_camera_frame).z_m, record(stereoPayload.target_3d_camera_frame).z);
+  const stereoDepth = firstPresentFiniteNumber(stereoPayload.estimated_depth_m, record(stereoPayload.target_3d_camera_frame).z_m, record(stereoPayload.target_3d_camera_frame).z);
   const stereoHasContext = Object.keys(stereoPayload).length > 0;
   const stereoTargetLabel = text(stereoTarget.label, "");
   const stereoEndEffectorLabel = text(stereoEndEffector.label, "");
@@ -3526,6 +3571,9 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       return ["model_relay_request", "model_relay_response"].includes(text(event.record_type, ""));
     })
     .slice(0, 6);
+  const selectedIkCandidateRecord = record(selected?.ik_candidate);
+  const dashboardIkCandidate = record(payloadOf(selectedIkCandidateRecord).candidate_response);
+  const ikCandidate = Object.keys(lastIkCandidate ?? {}).length ? (lastIkCandidate as AnyRecord) : dashboardIkCandidate;
   const poseSamples = useMemo(
     () => [
       ...poseSamplesFromRenderState(robotRenderState, timestampUnix(selected?.command_center_snapshot)),
@@ -3598,16 +3646,18 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     }
   }
 
-  function updateRelayProvider(providerId: string) {
+  const updateRelayProvider = useCallback((providerId: string) => {
     const preset = relayConfig.presets.find((item) => item.id === providerId);
     setRelayConfig((current) => ({
       ...current,
       provider: providerId,
       base_url: preset?.base_url || current.base_url,
     }));
-  }
+  }, [relayConfig.presets]);
 
-  async function saveRelayConfig() {
+  const saveRelayConfig = useCallback(async (overrides?: Partial<RelayConfig> & { api_key?: string }) => {
+    const nextConfig = { ...relayConfig, ...overrides };
+    const nextApiKey = text(overrides?.api_key, relayConfigKey).trim();
     setRelayConfigState("saving");
     setRelayConfigError("");
     try {
@@ -3615,11 +3665,11 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         method: "PUT",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          provider: relayConfig.provider,
-          base_url: relayConfig.base_url,
-          model: relayConfig.model,
-          api_key: relayConfigKey.trim() || undefined,
-          external_enabled: relayConfig.external_enabled,
+          provider: nextConfig.provider,
+          base_url: nextConfig.base_url,
+          model: nextConfig.model,
+          api_key: nextApiKey || undefined,
+          external_enabled: nextConfig.external_enabled,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -3640,9 +3690,9 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       setRelayConfigState("error");
       setRelayConfigError(error instanceof Error ? error.message : "保存模型厂商失败");
     }
-  }
+  }, [projectId, relayConfig, relayConfigKey]);
 
-  async function createRelayInvokeToken() {
+  const createRelayInvokeToken = useCallback(async () => {
     if (!selected?.device_id || relayExportState === "creating") return;
     setRelayExportState("creating");
     setRelayExportError("");
@@ -3668,7 +3718,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       setRelayExportState("error");
       setRelayExportError(error instanceof Error ? error.message : "生成调用令牌失败");
     }
-  }
+  }, [projectId, relayExportState, relayTokenTtlSeconds, selected]);
 
   async function copyRelayInvokeToken() {
     if (!relayExportToken) return;
@@ -3680,12 +3730,13 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     }
   }
 
-  async function requestModelRelay() {
+  async function requestModelRelay(promptOverride?: string) {
     if (!selected?.device_id || relayState === "sending") return;
     setRelayState("sending");
     setRelayError("");
     try {
-      const prompt = relayPrompt.trim() || "请基于当前机械臂只读遥测、安全状态、接线状态、语音/视觉/肌电摘要，生成高层康复建议和 dry-run 候选说明。";
+      const prompt = text(promptOverride, relayPrompt).trim() || "请基于当前机械臂只读遥测、安全状态、接线状态、语音/视觉/肌电摘要，生成高层康复建议和 dry-run 候选说明。";
+      if (promptOverride !== undefined) setRelayPrompt(prompt);
       const response = await fetch(
         `/api/proxy/rehab-arm/v1/projects/${encodeURIComponent(projectId)}/devices/${encodeURIComponent(selected.device_id)}/model/relay`,
         {
@@ -4240,6 +4291,94 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     backendModeMaturity.active_mode,
     text(modelRelaySemantic.mode, routeModeFallback[routeClass] || ""),
   );
+  const generateIkCandidate = useCallback(async () => {
+    if (!selected) return;
+    const draft = ikDraftRef.current;
+    const target = {
+      x_m: Number(draft.target.x_m),
+      y_m: Number(draft.target.y_m),
+      z_m: Number(draft.target.z_m),
+    };
+    if (!Number.isFinite(target.x_m) || !Number.isFinite(target.y_m) || !Number.isFinite(target.z_m)) {
+      setIkCandidateState("error");
+      setIkCandidateError("robot_frame 坐标必须是米制数字");
+      return;
+    }
+    setIkCandidateState("generating");
+    setIkCandidateError("");
+    const approachParts = draft.approach.split(/[,\s]+/).map((item) => Number(item)).filter((item) => Number.isFinite(item));
+    try {
+      const response = await fetch(
+        `/api/proxy/rehab-arm/v1/projects/${encodeURIComponent(projectId)}/devices/${encodeURIComponent(selected.device_id)}/ik-candidates`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            schema_version: "rehab_arm_ik_candidate_request_v1",
+            robot_id: selected.robot_id || "rehab-arm-alpha",
+            device_id: selected.device_id,
+            project_id: projectId,
+            target_robot_frame: target,
+            approach_vector: approachParts.length >= 3 ? { x: approachParts[0], y: approachParts[1], z: approachParts[2] } : null,
+            gripper_orientation: draft.orientation,
+            source: draft.source,
+            semantic_mode: currentSemanticMode || "fetch_object",
+            context_refs: {
+              vision_context: "latest_stereo_vision_context",
+              robot_render_state: "latest_robot_render_state",
+              simulation_readiness: "latest_simulation_readiness",
+            },
+            control_boundary: "ik_candidate_request_evidence_only_not_motion_permission",
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(text(payload.detail, "IK candidate request failed"));
+      const data = record(payload.data ?? payload);
+      setLastIkCandidate(data);
+      setIkCandidateState("ready");
+      void refreshLiveDashboard(true);
+    } catch (error) {
+      setIkCandidateState("error");
+      setIkCandidateError(error instanceof Error ? error.message : "IK candidate request failed");
+    }
+  }, [currentSemanticMode, projectId, refreshLiveDashboard, selected]);
+  const exportIkCandidateEvidence = useCallback(() => {
+    const draft = ikDraftRef.current;
+    const snapshot = {
+      exported_at: new Date().toISOString(),
+      project_id: projectId,
+      selected_device: {
+        device_id: selected?.device_id ?? null,
+        robot_id: selected?.robot_id ?? null,
+      },
+      request: {
+        target_robot_frame: {
+          x_m: Number(draft.target.x_m),
+          y_m: Number(draft.target.y_m),
+          z_m: Number(draft.target.z_m),
+        },
+        approach_vector: draft.approach,
+        gripper_orientation: draft.orientation,
+        source: draft.source,
+      },
+      ik_candidate: ikCandidate,
+      safety: {
+        m33_final_authority: Boolean(liveDashboard.safety_boundary.m33_final_authority),
+        note: "IK 结果只是 dry-run 候选证据；真实运动仍需 L -> V -> A -> MuJoCo/URDF -> M33 安全裁决 -> NanoPi/M33 真机链路。",
+      },
+      control_boundary: "ik_candidate_evidence_only_not_motion_permission",
+    };
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rehab-arm-ik-candidate-${projectId}-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [ikCandidate, liveDashboard.safety_boundary.m33_final_authority, projectId, selected]);
   const fallbackModeOverviewRows = [
     {
       mode: "fetch_object",
@@ -4499,13 +4638,99 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     vision: "/rehab-stitch/vision.html",
     digital_twin: "/rehab-stitch/twin.html",
     muscle_assist: "/rehab-stitch/muscle.html",
-    ai_model: "/rehab-stitch/diagnostics.html",
+    ai_model: "/rehab-stitch/model-lab.html",
     mode_router: "/rehab-stitch/router.html",
     training: "/rehab-stitch/training.html",
+    data_hub: "/rehab-stitch/data.html",
     action_planner: "/rehab-stitch/planner.html",
     diagnostics: "/rehab-stitch/diagnostics.html",
     logs: "/rehab-stitch/logs.html",
   };
+  const downloadDiagnosticsSnapshot = useCallback(() => {
+    const snapshot = {
+      exported_at: new Date().toISOString(),
+      project_id: projectId,
+      boundary: "read_only_browser_export_not_motion_permission",
+      selected_device: {
+        device_id: selected?.device_id ?? null,
+        device_code: publicDeviceCode(selected, selectedIndex),
+        robot_id: selected?.robot_id ?? null,
+        online_state: selected?.online_state ?? "unknown",
+        last_upload: formatTime(selected?.last_upload_ts_unix),
+      },
+      vla: {
+        language_summary: effectiveLanguageSummary || "waiting",
+        semantic_mode: currentSemanticMode || "waiting",
+        semantic_mode_label: currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待 L",
+        vision: {
+          target: stereoTargetLabel || "waiting_target",
+          end_effector: stereoEndEffectorLabel || "waiting_end_effector",
+          state: visualServoStateText,
+          distance: visualServoDistanceText,
+          depth_m: stereoDepth ?? null,
+        },
+        action: {
+          dry_run_gate: dryRunGateLabel(dryRunGateState),
+          dry_run_reason: dryRunGateReason,
+          motion_allowed_candidate: motionAllowed,
+        },
+      },
+      simulation: {
+        ready: simulationReady,
+        plan_state: simulationPlanState,
+      },
+      safety: {
+        m33_final_authority: liveDashboard.safety_boundary.m33_final_authority,
+        current_state: stateText(currentSafetyState),
+        motion_allowed_candidate: motionAllowed,
+        note: "M33 remains final authority; this export is evidence only.",
+      },
+      can_and_wiring: {
+        motor_count: motors.length,
+        abnormal_count: wiringBadCount,
+        overall: wiringHealth.overall || "unknown",
+      },
+      recent_events: liveDashboard.recent_events.slice(0, 20).map((event) => ({
+        record_type: event.record_type,
+        title: eventTitle(event),
+        device_id: event.device_id,
+        ts_unix: event.ts_unix,
+        time: formatTime(event.ts_unix),
+        payload: payloadOf(event),
+      })),
+    };
+    const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `rehab-arm-diagnostics-${projectId}-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, [
+    currentSafetyState,
+    currentSemanticMode,
+    dryRunGateReason,
+    dryRunGateState,
+    effectiveLanguageSummary,
+    liveDashboard.recent_events,
+    liveDashboard.safety_boundary.m33_final_authority,
+    motionAllowed,
+    motors.length,
+    projectId,
+    selected,
+    selectedIndex,
+    simulationPlanState,
+    simulationReady,
+    stereoDepth,
+    stereoEndEffectorLabel,
+    stereoTargetLabel,
+    visualServoDistanceText,
+    visualServoStateText,
+    wiringBadCount,
+    wiringHealth.overall,
+  ]);
   const updateStitchFrame = useCallback(() => {
     const doc = stitchFrameRef.current?.contentDocument;
     if (!doc?.body || !doc.head) {
@@ -4516,6 +4741,10 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     const setText = (selector: string, value: string) => {
       const node = doc.querySelector<HTMLElement>(selector);
       if (node) node.textContent = value;
+    };
+    const setHtml = (selector: string, value: string) => {
+      const node = doc.querySelector<HTMLElement>(selector);
+      if (node) node.innerHTML = value;
     };
     const setAllText = (selector: string, values: string[]) => {
       doc.querySelectorAll<HTMLElement>(selector).forEach((node, index) => {
@@ -4629,12 +4858,12 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           <button data-codex-route="ai_model" class="${routeClass("ai_model")}" title="AI模型"><strong class="block font-telemetry-data text-[13px] leading-none">AI</strong><span class="block font-telemetry-label text-[8px] mt-1">模型</span></button>
           <button data-codex-route="mode_router" class="${routeClass("mode_router")}" title="模式"><strong class="block font-telemetry-data text-[13px] leading-none">L</strong><span class="block font-telemetry-label text-[8px] mt-1">模式</span></button>
           <button data-codex-route="training" class="${routeClass("training")}" title="训练"><strong class="block font-telemetry-data text-[13px] leading-none">TRN</strong><span class="block font-telemetry-label text-[8px] mt-1">训练</span></button>
+          <button data-codex-route="data_hub" class="${routeClass("data_hub")}" title="数据"><strong class="block font-telemetry-data text-[12px] leading-none">DATA</strong><span class="block font-telemetry-label text-[8px] mt-1">数据</span></button>
           <button data-codex-route="action_planner" class="${routeClass("action_planner")}" title="动作"><strong class="block font-telemetry-data text-[13px] leading-none">A</strong><span class="block font-telemetry-label text-[8px] mt-1">动作</span></button>
           <button data-codex-route="diagnostics" class="${routeClass("diagnostics")}" title="诊断"><strong class="block font-telemetry-data text-[13px] leading-none">IO</strong><span class="block font-telemetry-label text-[8px] mt-1">诊断</span></button>
           <button data-codex-route="logs" class="${routeClass("logs")}" title="日志"><strong class="block font-telemetry-data text-[13px] leading-none">LOG</strong><span class="block font-telemetry-label text-[8px] mt-1">日志</span></button>
         </div>
         <div class="mt-auto flex flex-col gap-2 items-center w-full">
-          <button data-codex-jump="robotics" class="w-full py-2 text-on-surface-variant hover:text-secondary-fixed-dim" title="设备数据"><strong class="block font-telemetry-data text-[11px] leading-none">DATA</strong><span class="block font-telemetry-label text-[8px] mt-1">数据</span></button>
           <button data-codex-estop="true" class="mx-2 mb-1 bg-error text-on-error font-bold p-1 text-[10px] leading-tight text-center uppercase">STOP</button>
         </div>
       `;
@@ -4696,6 +4925,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       ai_model: { short: "AI", label: "模型" },
       mode_router: { short: "L", label: "模式" },
       training: { short: "TRN", label: "训练" },
+      data_hub: { short: "DATA", label: "数据" },
       action_planner: { short: "A", label: "动作" },
       diagnostics: { short: "IO", label: "诊断" },
       logs: { short: "LOG", label: "日志" },
@@ -4736,6 +4966,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       ["ai_model", ["ai model", "ai模型", "模型中转", "模型练习场", "model relay"]],
       ["mode_router", ["orchestration", "router", "模式", "alt_route"]],
       ["training", ["training", "train", "训练", "model_training"]],
+      ["data_hub", ["data", "dataset", "数据", "数据集", "database"]],
       ["action_planner", ["planner", "action", "动作", "settings_remote"]],
       ["diagnostics", ["diagnostics", "diag", "诊断", "biotech"]],
       ["logs", ["logs", "日志", "list_alt", "terminal"]],
@@ -4760,6 +4991,178 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
 
     const leftImage = leftStereoImageSrc || absoluteImageUrl || "";
     const rightImage = rightStereoImageSrc || "";
+    if (activeModule === "overview") {
+      const modeLabel = currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待 L 分类";
+      const targetLabel = semanticTargetLabel || stereoTargetLabel || text(recentTargetMemory?.label, "等待目标");
+      const endEffectorLabel = stereoEndEffectorLabel || text(recentEndEffectorMemory?.label, "等待末端");
+      const muscleRows = muscleRowsFromSensor(sensorPayload).slice(0, 4);
+      const predictionRows = motionPredictionRowsFromSensor(sensorPayload);
+      const firstPrediction = predictionRows[0];
+      const assistConfidence = Number.isFinite(firstPrediction?.confidence) ? Math.round((firstPrediction?.confidence ?? 0) * 100) : 0;
+      const actionPreview = {
+        mode: currentSemanticMode || "waiting",
+        mode_label: modeLabel,
+        l_summary: effectiveLanguageSummary || "等待小智/L 输入",
+        target: targetLabel,
+        end_effector: endEffectorLabel,
+        v_state: visualServoStateText,
+        a_gate: dryRunGateLabel(dryRunGateState),
+        next_step: pixelServo.nextStep,
+        safety: motionAllowed ? "M33 candidate; still requires hardware authority" : "read_only_locked",
+      };
+      const overviewSnapshot = () => ({
+        exported_at: new Date().toISOString(),
+        project_id: projectId,
+        boundary: "command_center_overview_evidence_only_not_motion_permission",
+        selected_device: {
+          device_id: selected?.device_id ?? null,
+          device_code: publicDeviceCode(selected, selectedIndex),
+          robot_id: selected?.robot_id ?? null,
+          online_state: selected?.online_state ?? "unknown",
+          last_upload: formatTime(selected?.last_upload_ts_unix),
+        },
+        l_semantic: {
+          summary: effectiveLanguageSummary || "等待小智/L 输入",
+          mode: currentSemanticMode || "waiting",
+          mode_label: modeLabel,
+          route_source: routeSourceText,
+          route_confidence: routeConfidenceText,
+        },
+        v_vision: {
+          left_frame_available: Boolean(leftImage),
+          right_frame_available: Boolean(rightImage),
+          image_source: visualEvidenceImageSource,
+          target: targetLabel,
+          end_effector: endEffectorLabel,
+          state: visualServoStateText,
+          distance: visualServoDistanceText,
+          visual_lock: {
+            observed_frames: visualLockObservedFrames,
+            required_frames: visualLockRequiredFrames,
+            confidence: visualLockConfidenceText,
+          },
+          depth_m: stereoDepth ?? null,
+          camera_to_robot_ready: Boolean(cameraToRobotReady),
+        },
+        a_planner: {
+          candidate: actionPreview,
+          dry_run_gate: dryRunGateLabel(dryRunGateState),
+          reason: dryRunGateReason,
+          dry_run_candidate_allowed: Boolean(dryRunCandidateAllowed),
+        },
+        digital_twin: {
+          simulation_ready: simulationReady,
+          plan_state: simulationPlanState,
+          report_boundary: simulationReportBoundary,
+          joint_count: renderRows.length,
+          stale_joint_count: staleRenderCount,
+          clamped_joint_count: clampedRenderCount,
+        },
+        emg_training: {
+          assist_requested: currentSemanticMode === "assistive_emg",
+          training_requested: currentSemanticMode === "training",
+          predictions: predictionRows.slice(0, 3),
+          channels: muscleRows,
+          app_training_library: "reserved_app_ble_m33_chain",
+        },
+        safety: {
+          m33_final_authority: Boolean(liveDashboard.safety_boundary.m33_final_authority),
+          motion_allowed_candidate: Boolean(motionAllowed),
+          current_state: stateText(currentSafetyState),
+          note: "浏览器总控只做证据汇总、模式跳转和只读导出，不发送 CAN/M33/电机控制。",
+        },
+        recent_events: liveDashboard.recent_events.slice(0, 12).map((event) => ({
+          record_type: event.record_type,
+          title: eventTitle(event),
+          device_id: event.device_id,
+          ts_unix: event.ts_unix,
+          time: formatTime(event.ts_unix),
+        })),
+      });
+      setText("title", "总控首页 - VLA 控制台");
+      setText('[data-role="overview-left-camera"]', `左摄像头视角：${leftImage ? "有帧" : "等待"} / ${visualEvidenceImageSource}`);
+      setText('[data-role="overview-right-camera"]', `右摄像头视角：${rightImage ? "有帧" : "等待"} / ${rightImage ? "stereo_right" : "辅助帧待上传"}`);
+      setText('[data-role="overview-vision-latency"]', `V耗时: ${stereoHasFrameTiming ? compactNumberText(stereoFrameProcessMs, " ms") : "等待"}`);
+      setText('[data-role="overview-vision-loop"]', `循环: ${stereoLoopProgressText}`);
+      setText('[data-role="overview-target-vector"]', `目标: ${targetLabel}`);
+      setText('[data-role="overview-target-distance"]', `末端差: ${visualServoDistanceText}`);
+      setText('[data-role="overview-target-confidence"]', `锁定: ${visualLockObservedFrames}/${visualLockRequiredFrames} · ${visualLockConfidenceText}`);
+      setText('[data-role="overview-joint-1"]', poseValueText(poseSamples[0] ? record(poseSamples[0]) : undefined));
+      setText('[data-role="overview-joint-2"]', poseValueText(poseSamples[1] ? record(poseSamples[1]) : undefined));
+      setText('[data-role="overview-sim-state"]', simulationReady ? "已回传" : "等待");
+      setText('[data-role="overview-can-state"]', wiringBadCount ? `${wiringBadCount} 异常` : motors.length ? `${motors.length} 电机` : "只读/等待");
+      setText('[data-role="overview-action-gate"]', dryRunGateLabel(dryRunGateState));
+      setText('[data-role="overview-urdf-name"]', `URDF 模型: ${text(record(selected?.device_model).file_name, "等待模型")}`);
+      setText('[data-role="overview-urdf-sync"]', simulationReady ? `仿真同步：${simulationPlanState}` : "等待 MuJoCo shadow 回传");
+      setText('[data-role="overview-mujoco-state"]', simulationReady ? "已回传" : "等待");
+      setText('[data-role="overview-assist-direction"]', firstPrediction?.label || firstPrediction?.value || (currentSemanticMode === "assistive_emg" ? "助力候选监听" : "等待助力意图"));
+      setText('[data-role="overview-assist-confidence"]', assistConfidence ? `${assistConfidence}%` : "等待");
+      const confidenceBar = doc.querySelector<HTMLElement>('[data-role="overview-assist-confidence-bar"]');
+      if (confidenceBar) confidenceBar.style.width = `${Math.max(8, assistConfidence)}%`;
+      muscleRows.forEach((row, index) => {
+        setText(`[data-role="overview-emg-ch${index + 1}"]`, text(row.value ?? row.label ?? row.status, "等待"));
+      });
+      setText('[data-role="overview-emg-status"]', muscleRows.length ? "传感器: 已有通道摘要" : "传感器: 等待真实 EMG");
+      setText('[data-role="overview-emg-intent"]', `动作意图: ${firstPrediction?.value || firstPrediction?.label || "预留"}`);
+      setText('[data-role="overview-emg-boundary"]', "边界: 只读证据 / M33 裁决");
+      setText('[data-role="overview-language"]', effectiveLanguageSummary ? `“${effectiveLanguageSummary}”` : "等待小智/L 输入");
+      setText('[data-role="overview-route-target"]', `目标: ${targetLabel}`);
+      setText('[data-role="overview-route-action"]', `动作: ${modeLabel} / ${dryRunGateLabel(dryRunGateState)}`);
+      const setModeIcon = (role: string, active: boolean) => {
+        const node = doc.querySelector<HTMLElement>(`[data-role="${role}"]`);
+        if (!node) return;
+        node.textContent = active ? "toggle_on" : "toggle_off";
+        node.style.fontVariationSettings = active ? "'FILL' 1" : "'FILL' 0";
+      };
+      setModeIcon("overview-mode-assist", currentSemanticMode === "assistive_emg");
+      setModeIcon("overview-mode-fetch", currentSemanticMode === "fetch_object" || currentSemanticMode === "vision_servo");
+      setModeIcon("overview-mode-training", currentSemanticMode === "training");
+      setModeIcon("overview-mode-safety", !motionAllowed || currentSemanticMode === "safety_review" || currentSemanticMode === "diagnostics");
+      setText('[data-role="overview-resource-vision"]', `视觉管线: ${visualServoReady ? "目标+末端闭环" : stereoHasContext ? "观察中" : "等待"}`);
+      setText('[data-role="overview-resource-sim"]', `仿真主机: ${simulationReady ? simulationPlanState : "等待 shadow"}`);
+      setText('[data-role="overview-resource-safety"]', `安全边界: ${motionAllowed ? "M33 候选" : "M33 锁定"} / final authority`);
+      const logRows = doc.querySelectorAll<HTMLElement>('[data-role="overview-log-stream"] .flex.gap-4');
+      liveDashboard.recent_events.slice(0, logRows.length).forEach((event, index) => {
+        const spans = logRows[index]?.querySelectorAll<HTMLElement>("span");
+        if (!spans?.length) return;
+        if (spans[0]) spans[0].textContent = `[${formatTime(event.ts_unix)}]`;
+        if (spans[1]) spans[1].textContent = `${text(event.record_type, "event")}: ${eventTitle(event)}`;
+      });
+      const refreshButton = doc.querySelector<HTMLButtonElement>('[data-role="overview-refresh"]');
+      if (refreshButton) {
+        refreshButton.onclick = (event) => {
+          event.preventDefault();
+          const original = refreshButton.textContent || "刷新总控";
+          refreshButton.textContent = "刷新中";
+          void refreshLiveDashboard(false).finally(() => {
+            refreshButton.textContent = "已刷新";
+            window.setTimeout(() => {
+              refreshButton.textContent = original;
+            }, 1200);
+          });
+        };
+      }
+      const exportButton = doc.querySelector<HTMLButtonElement>('[data-role="overview-export"]');
+      if (exportButton) {
+        exportButton.onclick = (event) => {
+          event.preventDefault();
+          const blob = new Blob([JSON.stringify(overviewSnapshot(), null, 2)], { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `rehab-arm-overview-evidence-${projectId}-${Date.now()}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          const original = exportButton.textContent || "导出总览";
+          exportButton.textContent = "已导出";
+          window.setTimeout(() => {
+            exportButton.textContent = original;
+          }, 1200);
+        };
+      }
+    }
     if (activeModule === "vision") {
       setText("title", "VLA 视觉 - VLA 控制台");
       setText("h1", "VLA 控制台");
@@ -4788,12 +5191,141 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       wireImage("left-camera-image", leftImage, "等待左摄像头标注帧");
       wireImage("right-camera-image", rightImage, "等待右摄像头辅助帧");
       doc.getElementById("codex-vision-live-bridge")?.remove();
-      setValueNearLabel(/目标语义/, effectiveLanguageSummary || "等待小智/L 输入");
-      setValueNearLabel(/目标类别/, recentTargetMemory?.label ?? stereoTargetLabel ?? "等待目标");
-      setValueNearLabel(/末端|末端坐标/, recentEndEffectorMemory?.label ?? stereoEndEffectorLabel ?? "等待末端");
-      setValueNearLabel(/像素距离|左右差/, visualServoDistanceText);
-      setValueNearLabel(/标定状态/, cameraToRobotReady ? "相机到机械臂 ready" : "等待手眼/双目标定");
-      setValueNearLabel(/视觉锁定|锁定帧/, `${visualLockObservedFrames}/${visualLockRequiredFrames}`);
+      const stereoFrameSizeText = stereoFrameSize
+        ? `${Math.round(stereoFrameSize.width)}x${Math.round(stereoFrameSize.height)}`
+        : "640x480";
+      const stereoTargetConfidence = firstFiniteNumber(stereoTarget.confidence, stereoTarget.score, stereoTarget.probability);
+      const stereoEndEffectorConfidence = firstFiniteNumber(stereoEndEffector.confidence, stereoEndEffector.score, stereoEndEffector.probability);
+      const targetStatusText = stereoTargetLabel
+        ? `${stereoTargetLabel}${stereoTargetConfidence !== null ? ` ${compactNumberText(stereoTargetConfidence * 100, "%")}` : ""}`
+        : targetQualityGateTitle === "未接受目标"
+          ? text(stereoTargetQualityGateState, "no_yolo_cup_or_bottle")
+          : "等待目标";
+      const endEffectorStateHtml = stereoEndEffectorLabel
+        ? [
+          `<span>${escapeHtml(stereoEndEffectorLabel)}</span>`,
+          `<span>${escapeHtml(stereoEndEffectorConfidence !== null ? compactNumberText(stereoEndEffectorConfidence * 100, "%") : endEffectorEvidenceText)}</span>`,
+          `<span>${escapeHtml(cameraToRobotReady ? "robot_frame ready" : "robot_frame waiting")}</span>`,
+        ].join("")
+        : [
+          "<span>waiting</span>",
+          "<span>end_effector</span>",
+          `<span>${escapeHtml(cameraToRobotReady ? "robot_frame ready" : "no robot_frame")}</span>`,
+        ].join("");
+      const disparityDepthText = [
+        stereoHasDisparity ? `Δpx ${compactNumberText(stereoDisparity, "")}` : "无左右匹配",
+        stereoDepth !== null ? `depth ${compactNumberText(stereoDepth, " m")}` : "depth waiting",
+      ].join(" / ");
+      const calibrationText = cameraToRobotReady
+        ? "camera_to_robot ready"
+        : stereoDepth !== null
+          ? "stereo depth ready / hand-eye waiting"
+          : "waiting_calibration";
+      setText('[data-role="vision-left-frame-status"]', leftImage ? `真实左帧 | ${stereoFrameSizeText}` : `等待左帧 | ${stereoFrameSizeText}`);
+      setText('[data-role="vision-right-frame-status"]', rightImage ? `真实右帧 | ${stereoDepth !== null ? "depth evidence" : "深度 waiting"}` : "等待右帧 | 深度 waiting");
+      setText('[data-role="vision-target-semantics"]', effectiveLanguageSummary || "等待小智/L 输入");
+      setText('[data-role="vision-target-class"]', targetStatusText);
+      setHtml('[data-role="vision-end-effector-state"]', endEffectorStateHtml);
+      setText('[data-role="vision-lock-frames"]', `${visualLockObservedFrames}/${visualLockRequiredFrames} · ${visualLockConfidenceText}`);
+      setText('[data-role="vision-disparity-depth"]', disparityDepthText);
+      setHtml(
+        '[data-role="vision-calibration-state"]',
+        `<span class="w-1.5 h-1.5 rounded-full ${cameraToRobotReady ? "bg-primary shadow-[0_0_5px_#4cd7f6]" : "bg-outline shadow-none"}"></span>${escapeHtml(calibrationText)}`,
+      );
+      const visionSnapshot = () => ({
+        exported_at: new Date().toISOString(),
+        project_id: projectId,
+        boundary: "vision_evidence_only_not_motion_permission",
+        selected_device: {
+          device_id: selected?.device_id ?? null,
+          device_code: publicDeviceCode(selected, selectedIndex),
+          robot_id: selected?.robot_id ?? null,
+        },
+        frames: {
+          left_available: Boolean(leftImage),
+          right_available: Boolean(rightImage),
+          left_src: leftImage || null,
+          right_src: rightImage || null,
+        },
+        language: {
+          summary: effectiveLanguageSummary || "等待 XiaoZhi / L 输入",
+          semantic_mode: currentSemanticMode || "waiting",
+        },
+        detections: {
+          target: stereoTargetLabel || text(recentTargetMemory?.label, "等待目标"),
+          end_effector: stereoEndEffectorLabel || text(recentEndEffectorMemory?.label, "等待末端"),
+          visual_state: visualServoStateText,
+          distance: visualServoDistanceText,
+          pixel_error: {
+            du_px: visualServoDelta ? Number(visualServoDelta[0].toFixed(2)) : null,
+            dv_px: visualServoDelta ? Number(visualServoDelta[1].toFixed(2)) : null,
+            distance_px: visualServoDistancePx !== null ? Number(visualServoDistancePx.toFixed(2)) : null,
+          },
+          visual_lock: {
+            observed_frames: visualLockObservedFrames,
+            required_frames: visualLockRequiredFrames,
+            confidence: visualLockConfidenceText,
+          },
+          target_quality: targetQualityGateTitle,
+          camera_to_robot_ready: Boolean(cameraToRobotReady),
+        },
+        action_gate: {
+          dry_run_gate: dryRunGateLabel(dryRunGateState),
+          dry_run_reason: dryRunGateReason,
+          next_step: pixelServo.nextStep,
+        },
+        safety: {
+          m33_final_authority: Boolean(liveDashboard.safety_boundary.m33_final_authority),
+          motion_allowed_candidate: Boolean(motionAllowed),
+          note: "视觉页只展示后端图像证据和候选坐标，不绘制假框，不发送 M33/CAN 控制。",
+        },
+      });
+      const visionRefreshButton = doc.querySelector<HTMLButtonElement>('[data-role="vision-refresh"]');
+      if (visionRefreshButton) {
+        visionRefreshButton.onclick = (event) => {
+          event.preventDefault();
+          const original = visionRefreshButton.textContent || "刷新视觉";
+          visionRefreshButton.textContent = "刷新中";
+          void refreshLiveDashboard(false).finally(() => {
+            visionRefreshButton.textContent = "已刷新";
+            window.setTimeout(() => {
+              visionRefreshButton.textContent = original;
+            }, 1200);
+          });
+        };
+      }
+      const visionExportButton = doc.querySelector<HTMLButtonElement>('[data-role="vision-export"]');
+      if (visionExportButton) {
+        visionExportButton.onclick = (event) => {
+          event.preventDefault();
+          const blob = new Blob([JSON.stringify(visionSnapshot(), null, 2)], { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `rehab-arm-vision-evidence-${projectId}-${Date.now()}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          const original = visionExportButton.textContent || "导出证据";
+          visionExportButton.textContent = "已导出";
+          window.setTimeout(() => {
+            visionExportButton.textContent = original;
+          }, 1200);
+        };
+      }
+      doc.querySelectorAll<HTMLButtonElement>('[data-role="vision-open-action"]').forEach((button) => {
+        button.onclick = (event) => {
+          event.preventDefault();
+          setActiveModule("action_planner");
+        };
+      });
+      doc.querySelectorAll<HTMLButtonElement>('[data-role="vision-open-logs"]').forEach((button) => {
+        button.onclick = (event) => {
+          event.preventDefault();
+          setActiveModule("logs");
+        };
+      });
     }
 
     if (activeModule === "digital_twin") {
@@ -4813,6 +5345,201 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       setValueNearLabel(/MuJoCo Latency|MuJoCo/, simulationReady ? simulationPlanState : "等待 shadow report");
       setValueNearLabel(/Target Pose|目标位姿/, dryRunGateLabel(dryRunGateState));
       setValueNearLabel(/End-Effector Pose|末端位姿/, recentEndEffectorMemory?.label ?? "等待末端识别");
+      const twinSnapshot = () => ({
+        exported_at: new Date().toISOString(),
+        project_id: projectId,
+        boundary: "digital_twin_evidence_only_not_motion_permission",
+        selected_device: {
+          device_id: selected?.device_id ?? null,
+          device_code: publicDeviceCode(selected, selectedIndex),
+          robot_id: selected?.robot_id ?? null,
+        },
+        render_state: {
+          source: renderRows.length ? "robot_render_state_v1" : "waiting",
+          joint_count: renderRows.length,
+          fresh_joint_count: Math.max(0, renderRows.length - staleRenderCount),
+          stale_joint_count: staleRenderCount,
+          clamped_joint_count: clampedRenderCount,
+          joints: renderRows.slice(0, 12),
+          pose_samples: poseSamples.slice(0, 12),
+        },
+        simulation: {
+          ready: simulationReady,
+          plan_state: simulationPlanState,
+          report_boundary: simulationReportBoundary,
+        },
+        vla_context: {
+          dry_run_gate: dryRunGateLabel(dryRunGateState),
+          target: stereoTargetLabel || text(recentTargetMemory?.label, "等待目标"),
+          end_effector: stereoEndEffectorLabel || text(recentEndEffectorMemory?.label, "等待末端"),
+        },
+        model_package: {
+          file_name: text(record(selected?.device_model).file_name, ""),
+          package_name: text(record(selected?.device_model).package_name, ""),
+          urdf_path: text(record(selected?.device_model).urdf_path, ""),
+          joint_count: record(selected?.device_model).joint_count ?? null,
+          mesh_count: record(selected?.device_model).mesh_count ?? null,
+        },
+        safety: {
+          m33_final_authority: Boolean(liveDashboard.safety_boundary.m33_final_authority),
+          motion_allowed_candidate: Boolean(motionAllowed),
+          note: "数字孪生页只展示 URDF/MuJoCo/关节证据，不发送 CAN、M33 或电机控制。",
+        },
+      });
+      const existingIkPanel = doc.getElementById("codex-ik-dry-run-panel");
+      const displayedIkTargetInput = {
+        x_m: existingIkPanel?.querySelector<HTMLInputElement>('[data-role="ik-x"]')?.value ?? ikDraftRef.current.target.x_m,
+        y_m: existingIkPanel?.querySelector<HTMLInputElement>('[data-role="ik-y"]')?.value ?? ikDraftRef.current.target.y_m,
+        z_m: existingIkPanel?.querySelector<HTMLInputElement>('[data-role="ik-z"]')?.value ?? ikDraftRef.current.target.z_m,
+      };
+      const displayedIkApproachInput =
+        existingIkPanel?.querySelector<HTMLInputElement>('[data-role="ik-approach"]')?.value ?? ikDraftRef.current.approach;
+      const displayedIkOrientationInput =
+        existingIkPanel?.querySelector<HTMLInputElement>('[data-role="ik-orientation"]')?.value ?? ikDraftRef.current.orientation;
+      const displayedIkSourceInput =
+        (existingIkPanel?.querySelector<HTMLSelectElement>('[data-role="ik-source"]')?.value as typeof ikSourceInput | undefined)
+        ?? ikDraftRef.current.source;
+      const ikPanel = ensureStitchPanel("codex-ik-dry-run-panel", `
+        <div class="p-4 border border-secondary-fixed-dim/40 bg-surface-container-low/80 backdrop-blur-xl rounded-lg shadow-[0_0_24px_rgba(255,185,95,0.12)]">
+          <div class="flex items-start justify-between gap-3 border-b border-outline-variant/30 pb-3">
+            <div>
+              <p class="font-label-caps text-secondary-fixed-dim">IK DRY-RUN EVIDENCE</p>
+              <h2 class="font-headline-md text-[18px] text-on-surface">逆解算候选坐标</h2>
+              <p class="text-[12px] text-on-surface-variant mt-1">robot_frame 坐标 -> IK candidate -> URDF/MuJoCo shadow；不授予真机运动。</p>
+            </div>
+            <span class="font-label-caps text-error border border-error/40 px-2 py-1 rounded">EVIDENCE ONLY</span>
+          </div>
+          <div class="grid grid-cols-3 gap-2 mt-3">
+            <label class="text-[10px] font-label-caps text-on-surface-variant">X_m<input data-role="ik-x" class="mt-1 w-full bg-background border border-outline-variant rounded px-2 py-1 font-data-tabular text-primary" value="${escapeHtml(displayedIkTargetInput.x_m)}"/></label>
+            <label class="text-[10px] font-label-caps text-on-surface-variant">Y_m<input data-role="ik-y" class="mt-1 w-full bg-background border border-outline-variant rounded px-2 py-1 font-data-tabular text-primary" value="${escapeHtml(displayedIkTargetInput.y_m)}"/></label>
+            <label class="text-[10px] font-label-caps text-on-surface-variant">Z_m<input data-role="ik-z" class="mt-1 w-full bg-background border border-outline-variant rounded px-2 py-1 font-data-tabular text-primary" value="${escapeHtml(displayedIkTargetInput.z_m)}"/></label>
+          </div>
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <label class="text-[10px] font-label-caps text-on-surface-variant">Approach<input data-role="ik-approach" class="mt-1 w-full bg-background border border-outline-variant rounded px-2 py-1 font-data-tabular text-primary" value="${escapeHtml(displayedIkApproachInput)}"/></label>
+            <label class="text-[10px] font-label-caps text-on-surface-variant">Gripper<input data-role="ik-orientation" class="mt-1 w-full bg-background border border-outline-variant rounded px-2 py-1 font-data-tabular text-primary" value="${escapeHtml(displayedIkOrientationInput)}"/></label>
+          </div>
+          <div class="grid grid-cols-[1fr_auto_auto] gap-2 mt-3 items-end">
+            <label class="text-[10px] font-label-caps text-on-surface-variant">Source<select data-role="ik-source" class="mt-1 w-full bg-background border border-outline-variant rounded px-2 py-1 font-data-tabular text-primary">
+              <option value="manual_platform">manual_platform</option>
+              <option value="vision_calibrated">vision_calibrated</option>
+              <option value="simulation_test">simulation_test</option>
+            </select></label>
+            <button data-role="ik-generate" class="px-3 py-2 bg-primary-container text-on-primary-container rounded font-label-caps">${ikCandidateState === "generating" ? "生成中" : "生成 IK 候选"}</button>
+            <button data-role="ik-export" class="px-3 py-2 border border-secondary-fixed-dim/50 text-secondary-fixed-dim rounded font-label-caps">导出 JSON</button>
+          </div>
+          <div class="mt-3 grid grid-cols-2 gap-2 text-[11px] font-data-tabular">
+            <div class="border border-outline-variant/25 rounded p-2"><span class="text-on-surface-variant">IK</span><strong class="block text-primary" data-role="ik-status">${escapeHtml(text(ikCandidate.ik_status, ikCandidateState === "error" ? "error" : "waiting"))}</strong></div>
+            <div class="border border-outline-variant/25 rounded p-2"><span class="text-on-surface-variant">Limit</span><strong class="block text-primary" data-role="ik-limit">${record(ikCandidate.joint_limit_check).ok === true ? "pass" : "waiting"}</strong></div>
+            <div class="border border-outline-variant/25 rounded p-2"><span class="text-on-surface-variant">Workspace</span><strong class="block text-primary" data-role="ik-workspace">${record(ikCandidate.collision_or_workspace_check).workspace_reachable === true ? "reachable" : "waiting"}</strong></div>
+            <div class="border border-outline-variant/25 rounded p-2"><span class="text-on-surface-variant">Shadow</span><strong class="block text-primary" data-role="ik-sim">${text(record(ikCandidate.simulation_result).readiness, simulationPlanState || "waiting")}</strong></div>
+            <div class="border border-outline-variant/25 rounded p-2"><span class="text-on-surface-variant">Solver</span><strong class="block text-primary" data-role="ik-solver">${escapeHtml(text(record(ikCandidate.ik_solver_report).quality, "waiting"))}</strong></div>
+            <div class="border border-outline-variant/25 rounded p-2"><span class="text-on-surface-variant">Error</span><strong class="block text-primary" data-role="ik-error">${escapeHtml(text(record(ikCandidate.ik_solver_report).position_error_m, "n/a"))} m</strong></div>
+            <div class="border border-outline-variant/25 rounded p-2"><span class="text-on-surface-variant">Seeds</span><strong class="block text-primary" data-role="ik-seeds">${escapeHtml(text(record(ikCandidate.ik_solver_report).seed_count, "n/a"))}</strong></div>
+            <div class="border border-outline-variant/25 rounded p-2"><span class="text-on-surface-variant">Near limit</span><strong class="block text-primary" data-role="ik-near-limit">${escapeHtml(text(record(record(ikCandidate.ik_solver_report).joint_boundary_summary).near_limit_joint_count, "0"))}</strong></div>
+          </div>
+          <div class="mt-2 border border-outline-variant/25 rounded p-2 text-[10px] font-data-tabular text-on-surface-variant">
+            <span class="block text-secondary-fixed-dim">solver reason: ${escapeHtml(text(record(ikCandidate.ik_solver_report).status_reason, "waiting_for_target"))}</span>
+            <span class="block text-secondary-fixed-dim">shadow target: ${escapeHtml(text(record(ikCandidate.mujoco_shadow_validation_plan).target_topic, "/sim/medical_arm/joint_trajectory"))}</span>
+            <span class="block">scope: ${escapeHtml(text(record(ikCandidate.mujoco_shadow_validation_plan).publish_scope, "sim_only_shadow_topic_not_hardware_chain"))}</span>
+          </div>
+          ${ikCandidateError ? `<p class="mt-2 text-[11px] text-error">${escapeHtml(ikCandidateError)}</p>` : ""}
+          <p class="mt-3 text-[11px] text-error">control_boundary: ik_candidate_evidence_only_not_motion_permission</p>
+        </div>
+      `);
+      ikPanel.style.position = "absolute";
+      ikPanel.style.top = "72px";
+      ikPanel.style.right = "24px";
+      ikPanel.style.width = "380px";
+      ikPanel.style.zIndex = "30";
+      const ikSource = ikPanel.querySelector<HTMLSelectElement>('[data-role="ik-source"]');
+      if (ikSource) ikSource.value = displayedIkSourceInput;
+      const syncIkInputs = () => {
+        const nextTarget = {
+          x_m: ikPanel.querySelector<HTMLInputElement>('[data-role="ik-x"]')?.value ?? ikTargetInput.x_m,
+          y_m: ikPanel.querySelector<HTMLInputElement>('[data-role="ik-y"]')?.value ?? ikTargetInput.y_m,
+          z_m: ikPanel.querySelector<HTMLInputElement>('[data-role="ik-z"]')?.value ?? ikTargetInput.z_m,
+        };
+        const nextApproach = ikPanel.querySelector<HTMLInputElement>('[data-role="ik-approach"]')?.value ?? ikApproachInput;
+        const nextOrientation = ikPanel.querySelector<HTMLInputElement>('[data-role="ik-orientation"]')?.value ?? ikOrientationInput;
+        const nextSource = (ikPanel.querySelector<HTMLSelectElement>('[data-role="ik-source"]')?.value as typeof ikSourceInput) || ikSourceInput;
+        ikDraftRef.current = {
+          target: nextTarget,
+          approach: nextApproach,
+          orientation: nextOrientation,
+          source: nextSource,
+        };
+        setIkTargetInput(nextTarget);
+        setIkApproachInput(nextApproach);
+        setIkOrientationInput(nextOrientation);
+        setIkSourceInput(nextSource);
+      };
+      ikPanel.querySelectorAll<HTMLInputElement>('[data-role="ik-x"], [data-role="ik-y"], [data-role="ik-z"], [data-role="ik-approach"], [data-role="ik-orientation"]').forEach((input) => {
+        input.oninput = syncIkInputs;
+        input.onchange = syncIkInputs;
+      });
+      if (ikSource) ikSource.onchange = syncIkInputs;
+      const ikGenerateButton = ikPanel.querySelector<HTMLButtonElement>('[data-role="ik-generate"]');
+      if (ikGenerateButton) {
+        ikGenerateButton.onclick = (event) => {
+          event.preventDefault();
+          syncIkInputs();
+          window.setTimeout(() => void generateIkCandidate(), 0);
+        };
+      }
+      const ikExportButton = ikPanel.querySelector<HTMLButtonElement>('[data-role="ik-export"]');
+      if (ikExportButton) {
+        ikExportButton.onclick = (event) => {
+          event.preventDefault();
+          syncIkInputs();
+          window.setTimeout(() => exportIkCandidateEvidence(), 0);
+        };
+      }
+      const twinRefreshButton = doc.querySelector<HTMLButtonElement>('[data-role="twin-refresh"]');
+      if (twinRefreshButton) {
+        twinRefreshButton.onclick = (event) => {
+          event.preventDefault();
+          const original = twinRefreshButton.textContent || "RELOAD";
+          twinRefreshButton.textContent = "刷新中";
+          void refreshLiveDashboard(false).finally(() => {
+            twinRefreshButton.textContent = "已刷新";
+            window.setTimeout(() => {
+              twinRefreshButton.textContent = original;
+            }, 1200);
+          });
+        };
+      }
+      const twinExportButton = doc.querySelector<HTMLButtonElement>('[data-role="twin-export"]');
+      if (twinExportButton) {
+        twinExportButton.onclick = (event) => {
+          event.preventDefault();
+          const blob = new Blob([JSON.stringify(twinSnapshot(), null, 2)], { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `rehab-arm-digital-twin-${projectId}-${Date.now()}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          const original = twinExportButton.textContent || "导出证据";
+          twinExportButton.textContent = "已导出";
+          window.setTimeout(() => {
+            twinExportButton.textContent = original;
+          }, 1200);
+        };
+      }
+      doc.querySelectorAll<HTMLButtonElement>('[data-role="twin-open-action"]').forEach((button) => {
+        button.onclick = (event) => {
+          event.preventDefault();
+          setActiveModule("action_planner");
+        };
+      });
+      doc.querySelectorAll<HTMLButtonElement>('[data-role="twin-open-logs"]').forEach((button) => {
+        button.onclick = (event) => {
+          event.preventDefault();
+          setActiveModule("logs");
+        };
+      });
       doc.getElementById("codex-twin-real-bridge")?.remove();
       const stageRoot = doc.getElementById("urdf-runtime-stage");
       let host = doc.getElementById("codex-twin-runtime-stage") as HTMLElement | null;
@@ -4908,16 +5635,362 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       const muscleRows = muscleRowsFromSensor(sensorPayload).slice(0, 4);
       const predictionRows = motionPredictionRowsFromSensor(sensorPayload);
       const firstPrediction = predictionRows[0];
+      const assistActive = currentSemanticMode === "assistive_emg";
+      const confidenceText = firstPrediction?.detail.match(/\d+%/)?.[0]?.replace("%", "") || (assistActive ? "85" : "0");
+      const intentText = firstPrediction?.value || (assistActive ? "助力意图监听" : "等待动作意图");
       setText("h1", "VLA 控制台");
-      setText("h2", firstPrediction?.value || "等待动作意图");
-      setNthText(".font-telemetry-data.text-display-lg", 0, firstPrediction?.detail.match(/\d+%/)?.[0]?.replace("%", "") || "0");
+      setText("h2", intentText);
+      setNthText(".font-telemetry-data.text-display-lg", 0, confidenceText);
       setAllText(".grid.grid-cols-4 .font-telemetry-label.text-\\[9px\\]", muscleRows.map((row, index) => `CH${index + 1}: ${row.label}`));
       setAllText(".grid.grid-cols-2 .font-telemetry-data", [
-        currentSemanticMode === "assistive_emg" ? "助力模式" : "监听中",
+        assistActive ? "助力模式" : "监听中",
         "4-CH EMG",
         "M33 门控",
         liveDashboard.safety_boundary.m33_final_authority ? "最终裁决" : "等待声明",
       ]);
+      replaceExactText([
+        ["REAL-TIME PREDICTION (监控)", "实时意图预测（只读）"],
+        ["FLEXION", assistActive ? "ASSIST" : "WAIT"],
+        ["98%", `${confidenceText}%`],
+        ["屈曲动作识别成功", assistActive ? "检测到助力意图候选" : "等待 M55 肌电意图"],
+        ["ACTIVE", assistActive ? "ACTIVE" : "STANDBY"],
+        ["助力方向: 屈曲上升沿", assistActive ? "助力方向: 等待 M55 确认" : "助力方向: 未触发"],
+        ["前臂肌电: 高阈值", assistActive ? "前臂肌电: 候选监听" : "前臂肌电: 等待输入"],
+        ["峰值信号: 142µV", "峰值信号: 等待遥测"],
+        ["频率中值: 82Hz", "频率中值: 等待遥测"],
+        ["目标预测: 肘关节屈曲", assistActive ? "目标预测: 助力候选" : "目标预测: 未触发"],
+        ["动作流同步", "动作流监听"],
+        ["等待动作预测模型接入", "M55 模型输出接入后实时更新"],
+        ["APP同步", "APP/训练库"],
+        ["流式传输", currentSemanticMode === "training" ? "训练计划" : "预留"],
+        ["CH2: 肱三头肌 (Triceps) [活跃]", "CH2: 肱三头肌 (Triceps)"],
+        ["CH2: 肱三头肌 (主发力)", "CH2: 肱三头肌"],
+        ["活跃 142µV", "等待遥测"],
+        ["HIGH", "WAIT"],
+        ["© 2024 Industrial Robotics. Safety Protocol v4.2 Active.", "VLA Rehab Arm · M55 肌电证据 / M33 最终安全裁决"],
+      ]);
+      const muscleSnapshot = () => ({
+        exported_at: new Date().toISOString(),
+        project_id: projectId,
+        boundary: "emg_assist_evidence_only_not_motion_permission",
+        selected_device: {
+          device_id: selected?.device_id ?? null,
+          device_code: publicDeviceCode(selected, selectedIndex),
+          robot_id: selected?.robot_id ?? null,
+        },
+        semantic: {
+          mode: currentSemanticMode || "waiting",
+          l_summary: effectiveLanguageSummary || "等待小智/L 输入",
+          assist_requested: assistActive,
+        },
+        m55_inference: {
+          intent: intentText,
+          confidence_percent: Number(confidenceText) || 0,
+          predictions: predictionRows,
+        },
+        emg_channels: muscleRows,
+        training_link: {
+          app_training_library: currentSemanticMode === "training" ? "training_requested" : "available_as_shared_resource",
+          m33_ble_fetch: "reserved_for_training_targets_and_constraints",
+        },
+        safety: {
+          m33_final_authority: Boolean(liveDashboard.safety_boundary.m33_final_authority),
+          motion_allowed_candidate: Boolean(motionAllowed),
+          note: "浏览器只展示肌电和助力意图证据，不发送助力、电机、CAN 或 M33 控制。",
+        },
+      });
+      const refreshButton = doc.querySelector<HTMLButtonElement>('[data-role="muscle-refresh"]');
+      if (refreshButton) {
+        refreshButton.onclick = (event) => {
+          event.preventDefault();
+          const original = refreshButton.textContent || "刷新";
+          refreshButton.textContent = "刷新中";
+          void refreshLiveDashboard(false).finally(() => {
+            refreshButton.textContent = "已刷新";
+            window.setTimeout(() => {
+              refreshButton.textContent = original;
+            }, 1200);
+          });
+        };
+      }
+      const exportButton = doc.querySelector<HTMLButtonElement>('[data-role="muscle-export"]');
+      if (exportButton) {
+        exportButton.onclick = (event) => {
+          event.preventDefault();
+          const blob = new Blob([JSON.stringify(muscleSnapshot(), null, 2)], { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `rehab-arm-emg-assist-${projectId}-${Date.now()}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          const original = exportButton.textContent || "导出";
+          exportButton.textContent = "已导出";
+          window.setTimeout(() => {
+            exportButton.textContent = original;
+          }, 1200);
+        };
+      }
+      const trainingButton = doc.querySelector<HTMLButtonElement>('[data-role="muscle-open-training"]');
+      if (trainingButton) {
+        trainingButton.onclick = (event) => {
+          event.preventDefault();
+          setActiveModule("training");
+        };
+      }
+      const logsButton = doc.querySelector<HTMLButtonElement>('[data-role="muscle-open-logs"]');
+      if (logsButton) {
+        logsButton.onclick = (event) => {
+          event.preventDefault();
+          setActiveModule("logs");
+        };
+      }
+    }
+
+    if (activeModule === "ai_model") {
+      const providerLabel = relayProviderPreset?.label || relayConfig.provider || "等待 provider";
+      const modelLabel = relayConfig.model || "未选择模型";
+      const externalState = relayConfig.external_enabled && relayConfig.api_key_configured ? "外部模型启用" : "安全降级 / 本地预留";
+      const tokenState = relayExportToken ? `已生成 · ${relayExportExpiresAt ? formatTime(relayExportExpiresAt) : "过期时间未知"}` : "未生成受限令牌";
+      const prompt = relayPrompt.trim() || effectiveLanguageSummary || "等待小智/L 输入或手动测试指令";
+      const summary = text(modelRelaySuggestion.detail, text(modelRelayResponse.summary, "模型中转尚无新响应；页面只展示建议，不下发真机运动。"));
+      const safetyLine = `${relayBoundaryText} · ${motionAllowed ? "M33 候选开放仍需硬件裁决" : "M33 保持锁定"}`;
+      const quickPrompts = [
+        "请判断这句话是日常聊天、取物、训练、助力、仿真还是诊断模式，只输出模式和原因。",
+        "请基于当前 VLA 视觉、目标、末端和安全状态，生成取物 dry-run 候选 A 字段摘要。",
+        "请总结当前训练/肌电/视觉/仿真状态，给出下一步演示建议。",
+      ];
+      setText('[data-role="model-provider-value"]', providerLabel);
+      setText('[data-role="model-base-url-value"]', relayConfig.base_url || "等待服务器配置");
+      setText('[data-role="model-id-value"]', modelLabel);
+      setText('[data-role="model-secret-state"]', relayConfig.api_key_configured ? "服务端已保存密钥" : "未配置 API key");
+      setText('[data-role="model-external-state"]', externalState);
+      setText('[data-role="model-token-state"]', tokenState);
+      setText('[data-role="model-ws-endpoint"]', xiaozhiWsUrl || "选择设备后生成 WebSocket endpoint");
+      setText('[data-role="model-http-endpoint"]', relayInvokeUrl || "选择设备后生成 HTTP endpoint");
+      const snippet = doc.querySelector<HTMLElement>('[data-role="model-xiaozhi-ws"] pre');
+      if (snippet) {
+        snippet.textContent = [
+          "// NanoPi / M55 Client Snippet",
+          `const ws = new WebSocket("${xiaozhiWsUrl || "等待生成 WebSocket endpoint"}");`,
+          `const token = "${relayExportToken ? "已生成，点击复制获取" : "点击导出生成 scoped token"}";`,
+          "ws.onmessage = (event) => {",
+          "  const msg = JSON.parse(event.data);",
+          "  // 只接受 high_level_task / semantic_summary / mode / dry_run",
+          "  // 禁止 raw_motor_control / torque / current / position override",
+          "};",
+          `// HTTP: ${relayInvokeUrl || "选择设备后生成 HTTP endpoint"}`,
+        ].join("\n");
+      }
+      setText('[data-role="model-current-prompt"]', prompt);
+      setText('[data-role="model-relay-summary"]', summary);
+      setText('[data-role="model-safety-line"]', safetyLine);
+      setText('[data-role="model-llm-latency"]', modelRelayProvider.external_call_ok === true ? "已通过" : "等待");
+      setText('[data-role="model-filter-state"]', motionAllowed ? "候选 / PASS" : "锁定 / PASS");
+      setText('[data-role="model-mode-state"]', semanticModeLabel || "等待模式");
+      setText('[data-role="model-target-state"]', semanticTargetLabel || "等待目标");
+      setText('[data-role="model-export-state"]', relayExportState === "creating" ? "令牌生成中" : relayExportState === "created" ? "令牌已生成" : relayExportState === "copied" ? "令牌已复制" : relayExportState === "error" ? relayExportError || "令牌生成失败" : "只读/WS权限");
+      const providerInput = doc.querySelector<HTMLSelectElement>('[data-role="model-provider-input"]');
+      if (providerInput) {
+        if (providerInput.dataset.codexOptionsHydrated !== "true" && relayConfig.presets.length) {
+          providerInput.innerHTML = relayConfig.presets
+            .map((preset) => `<option value="${escapeHtml(preset.id)}">${escapeHtml(preset.label)}</option>`)
+            .join("");
+          providerInput.dataset.codexOptionsHydrated = "true";
+        }
+        providerInput.value = relayConfig.provider;
+        if (!providerInput.value && relayConfig.presets[0]?.id) providerInput.value = relayConfig.presets[0].id;
+        if (providerInput.dataset.codexRelayBound !== "true") {
+          providerInput.dataset.codexRelayBound = "true";
+          providerInput.addEventListener("change", () => {
+            updateRelayProvider(providerInput.value);
+          });
+        }
+      }
+      const baseUrlInput = doc.querySelector<HTMLInputElement>('[data-role="model-base-url-input"]');
+      if (baseUrlInput && doc.activeElement !== baseUrlInput) baseUrlInput.value = relayConfig.base_url;
+      const modelInput = doc.querySelector<HTMLInputElement>('[data-role="model-id-input"]');
+      if (modelInput && doc.activeElement !== modelInput) modelInput.value = relayConfig.model;
+      const chatOutput = doc.querySelector<HTMLElement>('[data-role="model-chat-output"]');
+      if (chatOutput) {
+        const eventHtml = modelRelayEvents.slice(0, 4).map((event) => {
+          const eventPayload = payloadOf(event);
+          const response = record(eventPayload.relay_response);
+          const title = eventTitle(event);
+          const detail = text(response.summary ?? eventPayload.prompt ?? response.control_boundary, "model relay event");
+          const gate = text(response.control_boundary ?? eventPayload.control_boundary, relayBoundaryText);
+          return `
+            <div class="text-on-surface-variant border-t border-outline-variant/20 pt-2">
+              <span class="text-secondary">[${escapeHtml(formatTime(event.ts_unix))}]</span> ${escapeHtml(title)}<br/>
+              <span class="text-primary">${escapeHtml(detail)}</span><br/>
+              <span class="text-error text-[10px]">${escapeHtml(gate)}</span>
+            </div>
+          `;
+        }).join("");
+        chatOutput.innerHTML = `
+          <div class="text-on-surface-variant">
+            <span class="text-secondary">[SYS]</span> Relay boundary: ${escapeHtml(relayBoundaryText)}<br/>
+            <span class="text-secondary">[SYS]</span> Provider: ${escapeHtml(providerLabel)} / ${escapeHtml(modelLabel)}
+          </div>
+          <div class="flex flex-col gap-1 items-end">
+            <span class="text-primary text-[10px] opacity-70">L / USER</span>
+            <div class="bg-primary/10 border border-primary/30 rounded p-2 text-primary max-w-[80%] break-words">${escapeHtml(prompt)}</div>
+          </div>
+          <div class="flex flex-col gap-1 items-start">
+            <span class="text-secondary text-[10px] opacity-70">LLM (Filtered via Relay)</span>
+            <div class="bg-surface-container border border-outline-variant/30 rounded p-2 text-on-surface max-w-[90%] break-words">${escapeHtml(summary)}</div>
+            <span class="text-[10px] text-error bg-error/10 border border-error/20 px-1 mt-1 rounded inline-block">${escapeHtml(safetyLine)}</span>
+          </div>
+          ${eventHtml}
+        `;
+      }
+      const promptInput = doc.querySelector<HTMLInputElement>('[data-role="model-prompt"] input');
+      if (promptInput) promptInput.value = prompt;
+      doc.querySelectorAll<HTMLButtonElement>('[data-role="model-quick-prompts"] button').forEach((button, index) => {
+        if (button.dataset.codexRelayBound === "true") return;
+        button.dataset.codexRelayBound = "true";
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          const nextPrompt = quickPrompts[index] || quickPrompts[0];
+          const latestInput = doc.querySelector<HTMLInputElement>('[data-role="model-prompt"] input');
+          if (latestInput) latestInput.value = nextPrompt;
+          setRelayPrompt(nextPrompt);
+          setText('[data-role="model-current-prompt"]', nextPrompt);
+        });
+      });
+      const requestButton = doc.querySelector<HTMLElement>('[data-role="model-request-button"]');
+      if (requestButton) requestButton.textContent = relayState === "sending" ? "请求中" : "测试";
+      if (requestButton && requestButton.dataset.codexRelayBound !== "true") {
+        requestButton.dataset.codexRelayBound = "true";
+        requestButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          const latestPrompt = doc.querySelector<HTMLInputElement>('[data-role="model-prompt"] input')?.value ?? "";
+          setRelayPrompt(latestPrompt);
+          setText('[data-role="model-current-prompt"]', latestPrompt || "使用默认 VLA 上下文提示");
+          void requestModelRelay(latestPrompt);
+        });
+      }
+      const exportButton = doc.querySelector<HTMLElement>('[data-role="model-export-token"]');
+      if (exportButton) exportButton.innerHTML = `<span class="material-symbols-outlined text-[14px]">download</span> ${relayExportState === "creating" ? "生成中" : relayExportToken ? "重新导出" : "导出"}`;
+      if (exportButton && exportButton.dataset.codexRelayBound !== "true") {
+        exportButton.dataset.codexRelayBound = "true";
+        exportButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          void createRelayInvokeToken();
+        });
+      }
+      doc.querySelectorAll<HTMLElement>('[data-role="model-copy-ws"], [data-role="model-copy-token"]').forEach((button) => {
+        button.dataset.copyValue = button.getAttribute("data-role") === "model-copy-token"
+          ? relayExportToken
+          : xiaozhiWsUrl || relayInvokeUrl || "";
+        if (button.dataset.codexRelayBound === "true") return;
+        button.dataset.codexRelayBound = "true";
+        button.addEventListener("click", async (event) => {
+          event.preventDefault();
+          const value = button.dataset.copyValue || "";
+          if (!value) return;
+          try {
+            await navigator.clipboard.writeText(value);
+            button.textContent = "已复制";
+            setText('[data-role="model-export-state"]', "已复制到剪贴板");
+            window.setTimeout(() => {
+              button.innerHTML = '<span class="material-symbols-outlined text-[12px]">content_copy</span> 复制';
+            }, 1200);
+          } catch {
+            button.textContent = "复制失败";
+          }
+        });
+      });
+      const configButton = doc.querySelector<HTMLElement>('[data-role="model-save-config"]');
+      if (configButton) configButton.textContent = relayConfigState === "saving" ? "保存中" : relayConfigState === "saved" ? "已保存" : "配置";
+      if (configButton && configButton.dataset.codexRelayBound !== "true") {
+        configButton.dataset.codexRelayBound = "true";
+        configButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          const latestProvider = doc.querySelector<HTMLSelectElement>('[data-role="model-provider-input"]')?.value || relayConfig.provider;
+          const latestBaseUrl = doc.querySelector<HTMLInputElement>('[data-role="model-base-url-input"]')?.value || relayConfig.base_url;
+          const latestModel = doc.querySelector<HTMLInputElement>('[data-role="model-id-input"]')?.value || relayConfig.model;
+          const latestApiKey = doc.querySelector<HTMLInputElement>('[data-role="model-api-key-input"]')?.value || "";
+          setRelayConfig((current) => ({
+            ...current,
+            provider: latestProvider,
+            base_url: latestBaseUrl,
+            model: latestModel,
+          }));
+          setRelayConfigKey(latestApiKey);
+          void saveRelayConfig({
+            provider: latestProvider,
+            base_url: latestBaseUrl,
+            model: latestModel,
+            api_key: latestApiKey,
+          });
+        });
+      }
+      const evidenceButton = doc.querySelector<HTMLElement>('[data-role="model-export-evidence"]');
+      if (evidenceButton && evidenceButton.dataset.codexRelayBound !== "true") {
+        evidenceButton.dataset.codexRelayBound = "true";
+        evidenceButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          const evidence = {
+            exported_at: new Date().toISOString(),
+            project_id: projectId,
+            boundary: "model_relay_evidence_only_not_motion_permission",
+            selected_device: {
+              device_id: selected?.device_id ?? null,
+              device_code: publicDeviceCode(selected, selectedIndex),
+              robot_id: selected?.robot_id ?? null,
+            },
+            provider: {
+              label: providerLabel,
+              provider: relayConfig.provider,
+              base_url: relayConfig.base_url,
+              model: relayConfig.model,
+              external_enabled: relayConfig.external_enabled,
+              api_key_configured: relayConfig.api_key_configured,
+            },
+            semantic: {
+              mode: semanticModeLabel || currentSemanticMode || "waiting",
+              target: semanticTargetLabel || stereoTargetLabel || "",
+              l_summary: effectiveLanguageSummary || "",
+              prompt: doc.querySelector<HTMLInputElement>('[data-role="model-prompt"] input')?.value || prompt,
+            },
+            relay: {
+              summary,
+              safety_line: safetyLine,
+              control_boundary: relayBoundaryText,
+              response: modelRelayResponse,
+              recent_events: modelRelayEvents.slice(0, 6),
+            },
+            endpoints: {
+              http: relayInvokeUrl,
+              websocket: xiaozhiWsUrl,
+              token_generated: Boolean(relayExportToken),
+              token_expires_at_unix: relayExportExpiresAt,
+            },
+            safety: {
+              m33_final_authority: Boolean(liveDashboard.safety_boundary.m33_final_authority),
+              motion_allowed_candidate: Boolean(motionAllowed),
+              note: "浏览器只导出模型中转证据，不发送 CAN、电机、M33 或真实运动控制。",
+            },
+          };
+          const blob = new Blob([JSON.stringify(evidence, null, 2)], { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `rehab-arm-ai-model-evidence-${projectId}-${Date.now()}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          const original = evidenceButton.textContent || "导出证据";
+          evidenceButton.textContent = "已导出";
+          window.setTimeout(() => {
+            evidenceButton.textContent = original;
+          }, 1200);
+        });
+      }
     }
 
     if (activeModule === "mode_router") {
@@ -4937,6 +6010,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           },
           resources: {
             vision: visualServoStateText,
+            data_hub: currentSemanticMode === "data_collection" ? "capture_annotation_training_feedback" : "available",
             mujoco: simulationReady ? "shadow_ready" : "shadow_waiting",
             emg: currentSemanticMode === "assistive_emg" ? "intent_required" : "standby",
             app_training_library: currentSemanticMode === "training" ? "plan_required" : "reserved",
@@ -4960,8 +6034,73 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       setText('[data-role="resource-vision"]', visualServoReady ? "已就绪" : stereoHasContext ? "观察中" : "等待");
       setText('[data-role="resource-sim"]', simulationReady ? "已回传" : "预留");
       setText('[data-role="resource-emg"]', currentSemanticMode === "assistive_emg" ? "监听中" : "待触发");
-      setText('[data-role="resource-app"]', currentSemanticMode === "training" ? "需计划" : "预留");
+      setText('[data-role="resource-app"]', currentSemanticMode === "training" ? "需计划" : currentSemanticMode === "data_collection" ? "DATA 接管" : "预留");
       setText('[data-role="resource-m33"]', motionAllowed ? "候选" : "只读");
+      const routedModuleByMode: Record<string, RehabWorkspaceModule> = {
+        fetch_object: "action_planner",
+        vision_servo: "action_planner",
+        training: "training",
+        assistive_emg: "muscle_assist",
+        diagnostics: "diagnostics",
+        safety_review: "diagnostics",
+        data_collection: "data_hub",
+        chat: "logs",
+      };
+      const routedModule = routedModuleByMode[aMode] || "logs";
+      const modeButton = doc.querySelector<HTMLButtonElement>('[data-role="router-open-mode"]');
+      if (modeButton) {
+        modeButton.textContent = routedModule === "logs" ? "查看证据" : "进入模式";
+        modeButton.onclick = (event) => {
+          event.preventDefault();
+          setActiveModule(routedModule);
+        };
+      }
+      const exportButton = doc.querySelector<HTMLButtonElement>('[data-role="router-export"]');
+      if (exportButton) {
+        exportButton.onclick = (event) => {
+          event.preventDefault();
+          const snapshot = {
+            exported_at: new Date().toISOString(),
+            project_id: projectId,
+            boundary: "semantic_route_evidence_only_not_motion_permission",
+            selected_device: {
+              device_id: selected?.device_id ?? null,
+              device_code: publicDeviceCode(selected, selectedIndex),
+              robot_id: selected?.robot_id ?? null,
+            },
+            route: JSON.parse(actionPreview),
+            routed_module: routedModule,
+          };
+          const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `rehab-arm-semantic-route-${projectId}-${Date.now()}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          const original = exportButton.textContent || "导出路由";
+          exportButton.textContent = "已导出";
+          window.setTimeout(() => {
+            exportButton.textContent = original;
+          }, 1200);
+        };
+      }
+      const refreshButton = doc.querySelector<HTMLButtonElement>('[data-role="router-refresh"]');
+      if (refreshButton) {
+        refreshButton.onclick = (event) => {
+          event.preventDefault();
+          const original = refreshButton.textContent || "刷新";
+          refreshButton.textContent = "刷新中";
+          void refreshLiveDashboard(false).finally(() => {
+            refreshButton.textContent = "已刷新";
+            window.setTimeout(() => {
+              refreshButton.textContent = original;
+            }, 1200);
+          });
+        };
+      }
     }
 
     if (activeModule === "action_planner") {
@@ -4994,6 +6133,17 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           reason: dryRunGateReason,
           next_step: pixelServo.nextStep,
           loop_policy: "continuous_visual_servo_approach",
+        },
+        ik_candidate: {
+          status: text(ikCandidate.ik_status, "waiting_for_robot_frame_target"),
+          target_robot_frame: record(ikCandidate.target_robot_frame),
+          candidate_joint_trajectory: record(ikCandidate.candidate_joint_trajectory),
+          ik_solver_report: record(ikCandidate.ik_solver_report),
+          joint_limit_check: record(ikCandidate.joint_limit_check),
+          collision_or_workspace_check: record(ikCandidate.collision_or_workspace_check),
+          simulation_result: record(ikCandidate.simulation_result),
+          mujoco_shadow_validation_plan: record(ikCandidate.mujoco_shadow_validation_plan),
+          control_boundary: text(ikCandidate.control_boundary, "ik_candidate_evidence_only_not_motion_permission"),
         },
         simulation: {
           mujoco_shadow: simulationReady ? "ready" : "waiting",
@@ -5029,6 +6179,71 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       loopValues.forEach((value, index) => {
         if (loopLabels[index]) loopLabels[index].textContent = value;
       });
+      const exportButton = doc.querySelector<HTMLButtonElement>('[data-role="planner-export"]');
+      if (exportButton) {
+        exportButton.onclick = (event) => {
+          event.preventDefault();
+          const snapshot = {
+            exported_at: new Date().toISOString(),
+            project_id: projectId,
+            boundary: "a_field_candidate_export_only_not_motion_permission",
+            selected_device: {
+              device_id: selected?.device_id ?? null,
+              device_code: publicDeviceCode(selected, selectedIndex),
+              robot_id: selected?.robot_id ?? null,
+            },
+            candidate: plannerCandidate,
+          };
+          const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `rehab-arm-a-candidate-${projectId}-${Date.now()}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          const original = exportButton.textContent || "导出候选";
+          exportButton.textContent = "已导出";
+          window.setTimeout(() => {
+            exportButton.textContent = original;
+          }, 1200);
+        };
+        if ((exportButton.textContent || "").includes("日志")) exportButton.textContent = "导出候选";
+      }
+      const evidenceButton = doc.querySelector<HTMLButtonElement>('[data-role="planner-open-evidence"]');
+      if (evidenceButton) {
+        evidenceButton.onclick = (event) => {
+          event.preventDefault();
+          setActiveModule("logs");
+        };
+      }
+      const holdButton = doc.querySelector<HTMLButtonElement>('[data-role="planner-hold-dry-run"]');
+      if (holdButton) {
+        holdButton.onclick = (event) => {
+          event.preventDefault();
+          const original = holdButton.textContent || "保持 Dry-run";
+          holdButton.textContent = "已保持只读";
+          setText('[data-role="planner-dry-run-label"]', `保持 dry-run：${dryRunGateLabel(dryRunGateState)}`);
+          window.setTimeout(() => {
+            holdButton.textContent = original;
+          }, 1200);
+        };
+      }
+      const refreshButton = doc.querySelector<HTMLButtonElement>('[data-role="planner-refresh"]');
+      if (refreshButton) {
+        refreshButton.onclick = (event) => {
+          event.preventDefault();
+          const original = refreshButton.textContent || "刷新候选";
+          refreshButton.textContent = "刷新中...";
+          void refreshLiveDashboard(false).finally(() => {
+            refreshButton.textContent = "已刷新";
+            window.setTimeout(() => {
+              refreshButton.textContent = original;
+            }, 1200);
+          });
+        };
+      }
     }
 
     if (activeModule === "training") {
@@ -5112,6 +6327,66 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       ]);
       const previewNode = doc.querySelector<HTMLElement>('[data-role="training-action-preview"]');
       if (previewNode) previewNode.dataset.preview = trainingPreview;
+      const refreshButton = doc.querySelector<HTMLButtonElement>('[data-role="training-refresh"]');
+      if (refreshButton) {
+        refreshButton.onclick = (event) => {
+          event.preventDefault();
+          const original = refreshButton.textContent || "刷新训练库";
+          refreshButton.textContent = "刷新中";
+          void refreshLiveDashboard(false).finally(() => {
+            refreshButton.textContent = "已刷新";
+            window.setTimeout(() => {
+              refreshButton.textContent = original;
+            }, 1200);
+          });
+        };
+      }
+      const aiButton = doc.querySelector<HTMLButtonElement>('[data-role="training-open-ai"]');
+      if (aiButton) {
+        aiButton.onclick = (event) => {
+          event.preventDefault();
+          setActiveModule("ai_model");
+        };
+      }
+      const exportButton = doc.querySelector<HTMLButtonElement>('[data-role="training-export"]');
+      if (exportButton) {
+        exportButton.onclick = (event) => {
+          event.preventDefault();
+          const snapshot = {
+            exported_at: new Date().toISOString(),
+            project_id: projectId,
+            boundary: "training_orchestration_evidence_only_not_motion_permission",
+            selected_device: {
+              device_id: selected?.device_id ?? null,
+              device_code: publicDeviceCode(selected, selectedIndex),
+              robot_id: selected?.robot_id ?? null,
+            },
+            training_chain: JSON.parse(trainingPreview),
+          };
+          const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `rehab-arm-training-chain-${projectId}-${Date.now()}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          const original = exportButton.textContent || "导出训练日志";
+          exportButton.textContent = "已导出";
+          window.setTimeout(() => {
+            exportButton.textContent = original;
+          }, 1200);
+        };
+      }
+      const appButton = doc.querySelector<HTMLButtonElement>('[data-role="training-open-app"]');
+      if (appButton) {
+        appButton.innerHTML = '<span class="material-symbols-outlined text-[18px]" data-icon="apps">apps</span> 查看 APP 训练库';
+        appButton.onclick = (event) => {
+          event.preventDefault();
+          window.open("/rehab-arm-mobile/index.html#training-library", "_blank", "noopener,noreferrer");
+        };
+      }
     }
 
     setText("#orchestration .text-\\[18px\\].text-primary-container", effectiveLanguageSummary || "等待 XiaoZhi / L 输入");
@@ -5128,6 +6403,159 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       dryRunGateLabel(dryRunGateState).toUpperCase(),
       motionAllowed ? "M33 CANDIDATE" : "M33 LOCKED",
     ]);
+
+    if (activeModule === "data_hub") {
+      const batchLabel = publicBatchLabel(selected?.current_session, "暂无批次");
+      const frameCount = Number(Boolean(leftImage)) + Number(Boolean(rightImage));
+      const labelSummary = [
+        stereoTargetLabel || recentTargetMemory?.label || "water_bottle:等待",
+        stereoEndEffectorLabel || recentEndEffectorMemory?.label || "end_effector/gripper_tip:等待",
+      ];
+      const dataPacket = () => ({
+        schema_version: "rehab_arm_dataset_evidence_v1",
+        exported_at: new Date().toISOString(),
+        project_id: projectId,
+        selected_device_id: selectedDeviceId || selected?.device_id || "unknown",
+        boundary: "dataset_evidence_only_not_motion_permission",
+        note: "数据页只负责采集/标注/训练回流证据与入口，不发送 CAN/M33/电机控制。",
+        current_batch: batchLabel,
+        sources: {
+          stereo_left_frame_available: Boolean(leftImage),
+          stereo_right_frame_available: Boolean(rightImage),
+          language_summary: effectiveLanguageSummary || "waiting",
+          semantic_mode: currentSemanticMode || "waiting",
+          emg_payload_source: publicSourceLabel(sensorPayload.source, "waiting"),
+          simulation_ready: simulationReady,
+          diagnostics_events: liveDashboard.recent_events.length,
+        },
+        labels: {
+          target: stereoTargetLabel || recentTargetMemory?.label || "waiting",
+          end_effector: stereoEndEffectorLabel || recentEndEffectorMemory?.label || "waiting",
+          expected_classes: ["water_bottle", "end_effector", "gripper_tip"],
+        },
+        training_feedback: {
+          quality_ready: qualityReady,
+          data_collection_mode_active: currentSemanticMode === "data_collection",
+          model_relay_available: relayConfig.external_enabled,
+          app_training_library_reserved: true,
+        },
+        workbench_routes: {
+          capture: `/projects/${projectId}/robotics?tab=camera&device=${encodeURIComponent(selected?.device_id ?? "")}`,
+          annotation: `/projects/${projectId}/robotics?tab=dataset&device=${encodeURIComponent(selected?.device_id ?? "")}`,
+          training: `/projects/${projectId}/robotics?tab=model&device=${encodeURIComponent(selected?.device_id ?? "")}`,
+          evaluation: `/projects/${projectId}/robotics?tab=chart&device=${encodeURIComponent(selected?.device_id ?? "")}`,
+        },
+        safety_boundary: {
+          m33_final_authority: liveDashboard.safety_boundary.m33_final_authority,
+          browser_can_send_motion: false,
+          forbidden_outputs: ["can_frame", "motor_current", "motor_torque", "raw_motor_position", "raw_motor_velocity", "m33_safety_override", "direct_motor_command"],
+        },
+      });
+      const sourceRows = [
+        { title: "双目视觉", value: frameCount ? `${frameCount}/2 帧可用` : "等待帧", detail: `${visualEvidenceImageSource} · ${visualServoStateText}`, tone: frameCount ? "text-primary" : "text-on-surface-variant" },
+        { title: "L 指令", value: currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待小智", detail: effectiveLanguageSummary || "暂无语义输入", tone: currentSemanticMode ? "text-primary" : "text-on-surface-variant" },
+        { title: "EMG/M55", value: publicSourceLabel(sensorPayload.source, "等待数据"), detail: currentSemanticMode === "assistive_emg" ? "助力样本可回流" : "非实时数据资产预留", tone: currentSemanticMode === "assistive_emg" ? "text-secondary-fixed-dim" : "text-on-surface-variant" },
+        { title: "仿真/诊断", value: simulationReady ? "MuJoCo 已回传" : "等待 shadow", detail: `${liveDashboard.recent_events.length} 条审计事件`, tone: simulationReady ? "text-primary" : "text-on-surface-variant" },
+      ];
+      const sources = doc.querySelector<HTMLElement>('[data-role="data-sources"]');
+      if (sources) {
+        sources.innerHTML = sourceRows.map((row) => `
+          <div class="border border-outline-variant/20 bg-surface-container p-3">
+            <p class="font-label-caps ${row.tone}">${escapeHtml(row.title)}</p>
+            <strong class="block font-data-tabular text-on-surface mt-1">${escapeHtml(row.value)}</strong>
+            <p class="text-sm text-on-surface-variant mt-1">${escapeHtml(row.detail)}</p>
+          </div>
+        `).join("");
+      }
+      const keyframes = doc.querySelector<HTMLElement>('[data-role="data-keyframes"]');
+      if (keyframes) {
+        const frames = [
+          { label: "左目样本", src: leftImage, note: stereoTargetLabel || "等待目标标签" },
+          { label: "右目样本", src: rightImage, note: stereoEndEffectorLabel || "等待末端标签" },
+        ];
+        keyframes.innerHTML = frames.map((frame) => `
+          <div class="relative bg-surface-container border border-outline-variant/20 overflow-hidden">
+            ${frame.src
+              ? `<img src="${escapeHtml(frame.src)}" alt="${escapeHtml(frame.label)}" class="w-full h-full object-cover opacity-80"/>`
+              : `<div class="h-full min-h-[180px] grid place-items-center text-on-surface-variant">${escapeHtml(frame.note)}</div>`}
+            <div class="absolute left-0 right-0 bottom-0 bg-black/60 px-2 py-1 font-data-tabular text-[11px] text-on-surface">${escapeHtml(frame.label)} · ${escapeHtml(frame.note)}</div>
+          </div>
+        `).join("");
+      }
+      setText('[data-role="data-quality"]', qualityReady ? "质量可用" : "等待质量门");
+      setText('[data-role="data-batch"]', batchLabel);
+      setText('[data-role="data-frames"]', `${frameCount}/2`);
+      setText('[data-role="data-labels"]', labelSummary.join(" / "));
+      setText('[data-role="data-feedback"]', qualityReady ? "可训练/评估" : currentSemanticMode === "data_collection" ? "采集中" : "待补样本");
+      const packet = doc.querySelector<HTMLElement>('[data-role="data-packet"]');
+      if (packet) packet.textContent = JSON.stringify(dataPacket(), null, 2);
+      const bindDataButton = (selector: string, handler: (button: HTMLButtonElement) => void) => {
+        const button = doc.querySelector<HTMLButtonElement>(selector);
+        if (!button || button.dataset.codexBound === "true") return;
+        button.dataset.codexBound = "true";
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          handler(button);
+        });
+      };
+      bindDataButton('[data-role="data-refresh"]', (button) => {
+        const original = button.textContent || "刷新";
+        button.textContent = "刷新中...";
+        void refreshLiveDashboard(false).finally(() => {
+          button.textContent = "已刷新";
+          window.setTimeout(() => {
+            button.textContent = original;
+          }, 1200);
+        });
+      });
+      bindDataButton('[data-role="data-export"]', (button) => {
+        const blob = new Blob([JSON.stringify(dataPacket(), null, 2)], { type: "application/json;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = doc.createElement("a");
+        link.href = url;
+        link.download = `rehab-arm-dataset-evidence-${projectId}-${Date.now()}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        const original = button.textContent || "导出证据";
+        button.textContent = "已导出";
+        window.setTimeout(() => {
+          button.textContent = original;
+        }, 1200);
+      });
+      bindDataButton('[data-role="data-copy-packet"]', (button) => {
+        void navigator.clipboard.writeText(packet?.textContent || JSON.stringify(dataPacket(), null, 2)).then(() => {
+          const original = button.innerHTML;
+          button.innerHTML = '<span class="material-symbols-outlined text-[18px]">done</span>';
+          window.setTimeout(() => {
+            button.innerHTML = original;
+          }, 1200);
+        }).catch(() => undefined);
+      });
+      bindDataButton('[data-role="data-open-workbench"]', () => {
+        window.location.href = `/projects/${projectId}/robotics?tab=dataset&device=${encodeURIComponent(selected?.device_id ?? "")}`;
+      });
+      bindDataButton('[data-role="data-open-capture"]', () => {
+        window.location.href = `/projects/${projectId}/robotics?tab=camera&device=${encodeURIComponent(selected?.device_id ?? "")}`;
+      });
+      bindDataButton('[data-role="data-open-annotation"]', () => {
+        window.location.href = `/projects/${projectId}/robotics?tab=dataset&device=${encodeURIComponent(selected?.device_id ?? "")}`;
+      });
+      bindDataButton('[data-role="data-open-training"]', () => {
+        window.location.href = `/projects/${projectId}/robotics?tab=model&device=${encodeURIComponent(selected?.device_id ?? "")}`;
+      });
+      bindDataButton('[data-role="data-open-evaluation"]', () => {
+        window.location.href = `/projects/${projectId}/robotics?tab=chart&device=${encodeURIComponent(selected?.device_id ?? "")}`;
+      });
+      bindDataButton('[data-role="data-open-vision"]', () => {
+        setActiveModule("vision");
+      });
+      bindDataButton('[data-role="data-open-ai"]', () => {
+        setActiveModule("ai_model");
+      });
+      bindDataButton('[data-role="data-open-logs"]', () => {
+        setActiveModule("logs");
+      });
+    }
 
     if (activeModule === "diagnostics") {
       const rows = Array.from(doc.querySelectorAll<HTMLTableRowElement>("tbody tr"));
@@ -5208,6 +6636,312 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         if (!row) return;
         row.textContent = line;
       });
+      const bindDiagnosticsButton = (selector: string, handler: (button: HTMLButtonElement) => void) => {
+        const button = doc.querySelector<HTMLButtonElement>(selector);
+        if (!button || button.dataset.codexBound === "true") return;
+        button.dataset.codexBound = "true";
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          handler(button);
+        });
+      };
+      bindDiagnosticsButton('[data-role="diagnostics-refresh"]', (button) => {
+        const original = button.textContent || "刷新状态";
+        button.textContent = "刷新中...";
+        void refreshLiveDashboard(false).finally(() => {
+          button.textContent = "已刷新";
+          window.setTimeout(() => {
+            button.textContent = original;
+          }, 1200);
+        });
+      });
+      bindDiagnosticsButton('[data-role="diagnostics-export"]', (button) => {
+        downloadDiagnosticsSnapshot();
+        const original = button.textContent || "导出诊断";
+        button.textContent = "已导出";
+        window.setTimeout(() => {
+          button.textContent = original;
+        }, 1200);
+      });
+      bindDiagnosticsButton('[data-role="diagnostics-open-logs"]', () => {
+        setActiveModule("logs");
+      });
+    }
+
+    if (activeModule === "logs") {
+      const stream = doc.querySelector<HTMLElement>('[data-role="logs-stream"]');
+      const keyframes = doc.querySelector<HTMLElement>('[data-role="logs-keyframes"]');
+      const packet = doc.querySelector<HTMLElement>('[data-role="logs-packet"]');
+      const fallbackLogEvents = [
+        {
+          record_type: "vla_language",
+          ts_unix: Date.now() / 1000,
+          payload: { summary: effectiveLanguageSummary || "等待小智/L 输入", mode: currentSemanticMode || "waiting" },
+        },
+        {
+          record_type: "vla_vision",
+          ts_unix: Date.now() / 1000,
+          payload: { summary: `${visualServoStateText} · ${visualServoDistanceText}`, target: stereoTargetLabel || "等待目标", end_effector: stereoEndEffectorLabel || "等待末端" },
+        },
+        {
+          record_type: "vla_action",
+          ts_unix: Date.now() / 1000,
+          payload: { summary: `${dryRunGateLabel(dryRunGateState)} · ${dryRunGateReason}`, m33_final_authority: liveDashboard.safety_boundary.m33_final_authority },
+        },
+      ];
+      const eventsForLogs = liveDashboard.recent_events.length ? liveDashboard.recent_events : fallbackLogEvents;
+      const logIcon = (kind: string) => {
+        const value = kind.toLowerCase();
+        if (value.includes("safety") || value.includes("estop") || value.includes("error")) return { icon: "warning", tone: "text-error", bg: "bg-error-container" };
+        if (value.includes("vision") || value.includes("camera")) return { icon: "visibility", tone: "text-primary", bg: "bg-surface-variant" };
+        if (value.includes("voice") || value.includes("language") || value.includes("xiaozhi")) return { icon: "mic", tone: "text-primary", bg: "bg-surface-variant" };
+        if (value.includes("plan") || value.includes("action")) return { icon: "route", tone: "text-secondary-fixed-dim", bg: "bg-secondary-container/20" };
+        if (value.includes("model")) return { icon: "psychology", tone: "text-secondary-fixed-dim", bg: "bg-secondary-container/20" };
+        return { icon: "terminal", tone: "text-primary", bg: "bg-surface-variant" };
+      };
+      const logCategory = (kind: string) => {
+        const value = kind.toLowerCase();
+        if (value.includes("error") || value.includes("fault") || value.includes("estop") || value.includes("safety")) return value.includes("safety") ? "safety" : "errors";
+        if (value.includes("command") || value.includes("action") || value.includes("plan") || value.includes("model")) return "commands";
+        return "all";
+      };
+      const packetForEvent = (event: unknown) => {
+        const eventRecord = record(event);
+        return JSON.stringify({
+          selected_event: Object.keys(eventRecord).length ? {
+            record_type: eventRecord.record_type,
+            ts_unix: eventRecord.ts_unix,
+            title: eventTitle(eventRecord),
+            payload: payloadOf(eventRecord),
+          } : null,
+          current_context: {
+            l_summary: effectiveLanguageSummary || "waiting",
+            mode: currentSemanticMode || "waiting",
+            vision: {
+              target: stereoTargetLabel || "waiting",
+              end_effector: stereoEndEffectorLabel || "waiting",
+              state: visualServoStateText,
+              distance: visualServoDistanceText,
+            },
+            action: {
+              dry_run_gate: dryRunGateLabel(dryRunGateState),
+              reason: dryRunGateReason,
+            },
+            safety: {
+              motion_allowed_candidate: motionAllowed,
+              m33_final_authority: liveDashboard.safety_boundary.m33_final_authority,
+            },
+          },
+        }, null, 2);
+      };
+      const logsEvidenceSnapshot = () => ({
+        schema_version: "rehab_arm_logs_evidence_v1",
+        exported_at: new Date().toISOString(),
+        project_id: projectId,
+        selected_device_id: selectedDeviceId || selected?.device_id || "unknown",
+        boundary: "logs_evidence_export_only_not_motion_permission",
+        note: "Browser log exports are local evidence snapshots only; they cannot grant motion permission or bypass M33.",
+        safety_boundary: {
+          browser_can_send_motion: false,
+          forbidden_outputs: [
+            "can_frame",
+            "motor_current",
+            "motor_torque",
+            "raw_motor_position",
+            "raw_motor_velocity",
+            "m33_safety_override",
+            "direct_motor_command",
+          ],
+          m33_final_authority: liveDashboard.safety_boundary.m33_final_authority,
+          current_safety_state: stateText(currentSafetyState),
+          motion_allowed_candidate: motionAllowed,
+        },
+        current_context: {
+          semantic_mode: currentSemanticMode || "waiting",
+          language_summary: effectiveLanguageSummary || "waiting",
+          vision: {
+            target: stereoTargetLabel || "waiting",
+            end_effector: stereoEndEffectorLabel || "waiting",
+            visual_servo_state: visualServoStateText,
+            distance: visualServoDistanceText,
+            left_frame_available: Boolean(leftStereoImageSrc || absoluteImageUrl),
+            right_frame_available: Boolean(rightStereoImageSrc),
+          },
+          action: {
+            dry_run_gate: dryRunGateLabel(dryRunGateState),
+            dry_run_candidate_allowed: dryRunCandidateAllowed,
+            reason: dryRunGateReason,
+          },
+        },
+        recent_events: eventsForLogs.slice(0, 32).map((event, index) => {
+          const eventRecord = record(event);
+          return {
+            index,
+            record_type: text(eventRecord.record_type, `event_${index + 1}`),
+            ts_unix: eventRecord.ts_unix,
+            title: eventTitle(eventRecord),
+            category: logCategory(text(eventRecord.record_type, "")),
+            payload: payloadOf(eventRecord),
+          };
+        }),
+      });
+      const bindLogsButton = (selector: string, handler: (button: HTMLButtonElement) => void) => {
+        const button = doc.querySelector<HTMLButtonElement>(selector);
+        if (!button || button.dataset.codexBound === "true") return;
+        button.dataset.codexBound = "true";
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          handler(button);
+        });
+      };
+      if (stream) {
+        stream.innerHTML = eventsForLogs.slice(0, 12).map((event, index) => {
+          const eventRecord = record(event);
+          const kind = text(eventRecord.record_type, `event_${index + 1}`);
+          const payload = payloadOf(event);
+          const response = record(payload.relay_response);
+          const detail = text(
+            response.summary
+              ?? payload.summary
+              ?? payload.prompt
+              ?? payload.scene_summary
+              ?? payload.status
+              ?? payload.control_boundary,
+            eventTitle(event),
+          );
+          const meta = logIcon(kind);
+          const lineClass = index < Math.min(eventsForLogs.length, 12) - 1
+            ? "relative pl-8 before:content-[''] before:absolute before:left-[11px] before:top-6 before:bottom-[-24px] before:w-[2px] before:bg-outline-variant/20"
+            : "relative pl-8";
+          return `
+            <div class="${lineClass} cursor-pointer hover:bg-surface-variant/20 rounded-sm transition-colors" data-codex-log-index="${index}" data-codex-log-category="${logCategory(kind)}">
+              <div class="absolute left-0 top-0 w-6 h-6 rounded-full ${meta.bg} flex items-center justify-center">
+                <span class="material-symbols-outlined text-[14px] ${meta.tone}">${meta.icon}</span>
+              </div>
+              <div class="flex flex-col gap-1">
+                <div class="flex justify-between items-baseline gap-3">
+                  <span class="font-telemetry-label text-telemetry-label ${meta.tone} uppercase">${escapeHtml(eventTitle(event))}</span>
+                  <span class="font-telemetry-data text-telemetry-data text-on-surface-variant opacity-50">${escapeHtml(formatTime(eventRecord.ts_unix))}</span>
+                </div>
+                <p class="text-body-md text-on-surface-variant text-sm">${escapeHtml(detail)}</p>
+                <div class="mt-2 p-2 bg-surface-container-lowest rounded font-telemetry-data text-[12px] text-on-surface-variant/70 border border-outline-variant/10">
+                  source: ${escapeHtml(kind)} | device: ${escapeHtml(publicDeviceCode(devices.find((device) => device.device_id === eventRecord.device_id), index))} | safety: ${escapeHtml(motionAllowed ? "M33 candidate" : "read-only")}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+        stream.querySelectorAll<HTMLElement>("[data-codex-log-index]").forEach((row) => {
+          row.addEventListener("click", (event) => {
+            event.preventDefault();
+            const index = Number(row.dataset.codexLogIndex || 0);
+            if (packet) packet.textContent = packetForEvent(eventsForLogs[index]);
+            stream.querySelectorAll<HTMLElement>("[data-codex-log-index]").forEach((item) => item.classList.remove("bg-surface-variant/20"));
+            row.classList.add("bg-surface-variant/20");
+          });
+        });
+      }
+      const activeFilterClass = "px-3 py-1 text-label-sm font-label-sm bg-secondary-container/20 text-secondary-fixed-dim border border-secondary-fixed-dim/30 rounded-full";
+      const idleFilterClass = "px-3 py-1 text-label-sm font-label-sm hover:bg-surface-variant text-on-surface-variant rounded-full";
+      doc.querySelectorAll<HTMLButtonElement>('[data-role="logs-filter"]').forEach((button) => {
+        if (button.dataset.codexBound !== "true") {
+          button.dataset.codexBound = "true";
+          button.addEventListener("click", (event) => {
+            event.preventDefault();
+            const filter = button.dataset.filter || "all";
+            doc.querySelectorAll<HTMLButtonElement>('[data-role="logs-filter"]').forEach((item) => {
+              item.className = item === button ? activeFilterClass : idleFilterClass;
+            });
+            stream?.querySelectorAll<HTMLElement>("[data-codex-log-index]").forEach((row) => {
+              const category = row.dataset.codexLogCategory || "all";
+              row.style.display = filter === "all" || category === filter ? "" : "none";
+            });
+          });
+        }
+      });
+      if (keyframes) {
+        const frames = [
+          { label: "左目视觉", src: leftStereoImageSrc || absoluteImageUrl, time: formatTime(selected?.last_upload_ts_unix), note: stereoTargetLabel || "等待目标" },
+          { label: "右目视觉", src: rightStereoImageSrc, time: formatTime(selected?.last_upload_ts_unix), note: stereoEndEffectorLabel || "等待末端" },
+          { label: "动作规划", src: "", time: dryRunGateLabel(dryRunGateState), note: visualServoDistanceText },
+          { label: "安全审计", src: "", time: stateText(currentSafetyState), note: motionAllowed ? "M33 候选" : "只读锁定" },
+        ];
+        keyframes.innerHTML = frames.map((frame, index) => `
+          <div class="group relative cursor-pointer border border-outline-variant/20 hover:border-secondary-fixed-dim/50 transition-all bg-surface-container-lowest min-h-[108px] overflow-hidden">
+            ${frame.src
+              ? `<img class="aspect-video object-cover w-full opacity-70 group-hover:opacity-100" src="${escapeHtml(frame.src)}" alt="${escapeHtml(frame.label)}"/>`
+              : `<div class="aspect-video w-full grid place-items-center bg-surface-container-low text-center px-3"><span class="font-telemetry-label text-[11px] text-on-surface-variant">${escapeHtml(frame.note)}</span></div>`}
+            <div class="absolute bottom-0 left-0 right-0 bg-black/60 p-1">
+              <span class="font-telemetry-data text-[10px] text-on-surface">${escapeHtml(frame.label)} · ${escapeHtml(frame.time || `T-${index}`)}</span>
+            </div>
+          </div>
+        `).join("");
+      }
+      if (packet) {
+        packet.textContent = packetForEvent(eventsForLogs[0]);
+      }
+      bindLogsButton('[data-role="logs-refresh"]', (button) => {
+        const original = button.textContent || "刷新";
+        button.textContent = "刷新中...";
+        void refreshLiveDashboard(false).finally(() => {
+          button.textContent = "已刷新";
+          window.setTimeout(() => {
+            button.textContent = original;
+          }, 1200);
+        });
+      });
+      bindLogsButton('[data-role="logs-export"]', (button) => {
+        const blob = new Blob([JSON.stringify(logsEvidenceSnapshot(), null, 2)], { type: "application/json;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const link = doc.createElement("a");
+        link.href = url;
+        link.download = `rehab-arm-logs-evidence-${projectId}-${Date.now()}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        const original = button.textContent || "导出";
+        button.textContent = "已导出";
+        window.setTimeout(() => {
+          button.textContent = original;
+        }, 1200);
+      });
+      bindLogsButton('[data-role="logs-copy-packet"]', (button) => {
+        const value = packet?.textContent || JSON.stringify(logsEvidenceSnapshot(), null, 2);
+        void navigator.clipboard.writeText(value).then(() => {
+          const original = button.innerHTML;
+          button.innerHTML = '<span class="material-symbols-outlined text-[18px]">done</span>';
+          window.setTimeout(() => {
+            button.innerHTML = original;
+          }, 1200);
+        }).catch(() => undefined);
+      });
+      bindLogsButton('[data-role="logs-open-vision"]', () => {
+        setActiveModule("vision");
+      });
+      bindLogsButton('[data-role="logs-open-ai"]', () => {
+        setActiveModule("ai_model");
+      });
+      bindLogsButton('[data-role="logs-open-diagnostics"]', () => {
+        setActiveModule("diagnostics");
+      });
+      replaceExactText([
+        ["Event Audit Stream", "证据审计流"],
+        ["Key Frame Replay", "关键帧回放"],
+        ["Raw Packet Details", "原始数据包"],
+        ["Control Console", "VLA 控制台"],
+        ["Manual Mode", "只读总控"],
+        ["Safety: Secured", "安全：M33 锁定"],
+        ["Dry Run", "Dry-run"],
+        ["Emergency Stop", "急停"],
+        ["All", "全部"],
+        ["Errors", "异常"],
+        ["Safety", "安全"],
+        ["Commands", "指令"],
+        ["Refresh", "刷新"],
+        ["Export", "导出"],
+        ["© 2024 Industrial Robotics. Safety Protocol v4.2 Active.", "VLA Rehab Arm · 证据审计 / 只读回放 / M33 最终裁决"],
+        ["Safety Manual", "安全手册"],
+        ["System Status", "系统状态"],
+      ]);
     }
 
     const logRows = doc.querySelectorAll<HTMLElement>("#logs .flex.gap-4");
@@ -5223,18 +6957,34 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     absoluteImageUrl,
     activeModule,
     cameraToRobotReady,
+    clampedRenderCount,
     currentSafetyState,
     currentSemanticMode,
     devices,
+    downloadDiagnosticsSnapshot,
     dryRunGateReason,
     dryRunGateState,
     dryRunCandidateAllowed,
     effectiveLanguageSummary,
     hasLanguageTask,
     hasStereoTargetForGate,
+    ikApproachInput,
+    ikCandidate,
+    ikCandidateError,
+    ikCandidateState,
+    ikOrientationInput,
+    ikSourceInput,
+    ikTargetInput,
     leftStereoImageSrc,
     liveDashboard.safety_boundary.m33_final_authority,
     liveDashboard.recent_events,
+    exportIkCandidateEvidence,
+    generateIkCandidate,
+    createRelayInvokeToken,
+    modelRelayProvider.external_call_ok,
+    modelRelayEvents,
+    modelRelayResponse,
+    modelRelaySuggestion.detail,
     motionAllowed,
     motors,
     operationMode,
@@ -5242,35 +6992,77 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     pollState,
     poseSamples,
     projectId,
+    qualityReady,
     recentEndEffectorMemory?.label,
     recentTargetMemory?.label,
+    routeConfidenceText,
+    routeSourceText,
+    relayBoundaryText,
+    relayConfig.api_key_configured,
+    relayConfig.base_url,
+    relayConfig.external_enabled,
+    relayConfig.model,
+    relayConfig.provider,
+    relayConfig.presets,
+    relayConfigState,
+    relayExportError,
+    relayExportExpiresAt,
+    relayExportState,
+    relayExportToken,
+    relayInvokeUrl,
+    relayPrompt,
+    relayProviderPreset?.label,
+    relayState,
+    requestModelRelay,
+    refreshLiveDashboard,
+    renderRows,
     rightStereoImageSrc,
+    saveRelayConfig,
     selected,
     selectedIndex,
     selectedDeviceId,
+    semanticModeLabel,
     semanticTargetLabel,
     sensorPayload,
     simulationReady,
     simulationPlanState,
+    simulationReportBoundary,
+    staleRenderCount,
     stereoEndEffectorLabel,
+    stereoEndEffector.confidence,
+    stereoEndEffector.probability,
+    stereoEndEffector.score,
+    stereoFrameSize,
+    stereoFrameProcessMs,
+    stereoHasFrameTiming,
+    stereoHasDisparity,
     stereoHasContext,
     stereoLoopProgressText,
+    stereoDisparity,
     stereoDepth,
+    stereoTarget.confidence,
+    stereoTarget.probability,
+    stereoTarget.score,
     stereoTargetLabel,
+    stereoTargetQualityGateState,
     targetQualityGateTitle,
     twinRuntimeHost,
+    endEffectorEvidenceText,
     visualLockConfidenceText,
     visualServoDelta,
     visualServoDistancePx,
     visualLockObservedFrames,
     visualLockRequiredFrames,
+    visualEvidenceImageSource,
     visualServoStateText,
     visualServoDistanceText,
     visualServoReady,
     wiringBadCount,
     wiringHealth.overall,
+    xiaozhiWsUrl,
     xiaozhiSession.session_id,
     xiaozhiSession.ui_state,
+    updateRelayProvider,
   ]);
 
   useEffect(() => {
@@ -5357,6 +7149,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     ai_model: { eyebrow: "AI模型中转", title: "模型中转内联控制台", detail: "高层康复建议、供应商配置、受限调用令牌和安全审计。" },
     mode_router: { eyebrow: "模式编排", title: "小智语义模式路由", detail: "聊天、取物、训练、助力、仿真、诊断和安全停止。" },
     training: { eyebrow: "模型训练场", title: "数据、标注、训练计划预备区", detail: "数据集、标注、训练、评估、部署和训练计划。" },
+    data_hub: { eyebrow: "数据资产", title: "采集、标注与训练回流", detail: "双目关键帧、L 指令、末端/目标标签、EMG 和仿真日志的数据资产入口。" },
     action_planner: { eyebrow: "动作规划", title: "VLA-A 闭环动作规划", detail: "目标、末端、差值、逼近策略、dry-run 和安全门。" },
     diagnostics: { eyebrow: "设备诊断", title: "NanoPi / CAN / M33 / M55 诊断", detail: "硬件在线状态、总线、电机、服务和模型中转。" },
     logs: { eyebrow: "日志回放", title: "证据时间线与回放", detail: "语音、视觉、规划、训练、部署和安全审计日志。" },
@@ -5407,7 +7200,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             placeholder="输入语音/视觉/肌电摘要后的高层问题；服务端只返回建议和 dry-run 候选。"
             aria-label="模型中转提示"
           />
-          <button type="button" disabled={!selected || relayState === "sending"} onClick={requestModelRelay}>
+          <button type="button" disabled={!selected || relayState === "sending"} onClick={() => void requestModelRelay()}>
             {relayState === "sending" ? "生成中" : "生成高层建议"}
           </button>
           {relayError ? <small className={styles.inlineError}>{relayError}</small> : null}
@@ -5462,7 +7255,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             />
             <span>启用外部模型调用</span>
           </label>
-          <button type="button" disabled={relayConfigState === "saving"} onClick={saveRelayConfig}>
+          <button type="button" disabled={relayConfigState === "saving"} onClick={() => void saveRelayConfig()}>
             {relayConfigState === "saving" ? "保存中" : "保存厂商配置"}
           </button>
           {relayConfigState === "saved" ? <small className={styles.relayResult}>已保存到服务器环境配置；API key 不会返回给网页或设备。</small> : null}
@@ -5497,7 +7290,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               <option value={30 * 24 * 60 * 60}>30 天</option>
             </select>
           </label>
-          <button type="button" disabled={!selected || relayExportState === "creating"} onClick={createRelayInvokeToken}>
+          <button type="button" disabled={!selected || relayExportState === "creating"} onClick={() => void createRelayInvokeToken()}>
             {relayExportState === "creating" ? "生成中" : "一键生成调用令牌"}
           </button>
           {relayExportToken ? (
@@ -6888,7 +8681,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                     placeholder="输入语音/视觉/肌电摘要后的高层问题；服务端只返回建议和 dry-run 候选。"
                     aria-label="模型中转提示"
                   />
-                  <button type="button" disabled={!selected || relayState === "sending"} onClick={requestModelRelay}>
+                  <button type="button" disabled={!selected || relayState === "sending"} onClick={() => void requestModelRelay()}>
                     生成高层建议
                   </button>
                   {relayError ? <small className={styles.inlineError}>{relayError}</small> : null}
@@ -6964,7 +8757,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                     />
                     <span>启用外部模型调用</span>
                   </label>
-                  <button type="button" disabled={relayConfigState === "saving"} onClick={saveRelayConfig}>
+                  <button type="button" disabled={relayConfigState === "saving"} onClick={() => void saveRelayConfig()}>
                     {relayConfigState === "saving" ? "保存中" : "保存厂商配置"}
                   </button>
                   {relayConfigState === "saved" ? <small className={styles.relayResult}>已保存到服务器环境配置；API key 不会返回给网页或设备。</small> : null}
@@ -6985,7 +8778,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                       <option value={30 * 24 * 60 * 60}>30 天</option>
                     </select>
                   </label>
-                  <button type="button" disabled={!selected || relayExportState === "creating"} onClick={createRelayInvokeToken}>
+                  <button type="button" disabled={!selected || relayExportState === "creating"} onClick={() => void createRelayInvokeToken()}>
                     {relayExportState === "creating" ? "生成中" : "一键生成调用令牌"}
                   </button>
                   {relayExportToken ? (

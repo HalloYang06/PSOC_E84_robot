@@ -5,6 +5,7 @@ import io
 import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import time
@@ -34,6 +35,7 @@ DANGEROUS_VLA_OUTPUTS = {
     "motion_permission_granted",
     "direct_motor_command",
 }
+IK_CONTROL_BOUNDARY = "ik_candidate_evidence_only_not_motion_permission"
 MODEL_RELAY_SAFE_OUTPUTS = {
     "high_level_task",
     "dry_run_joint_trajectory_candidate",
@@ -66,6 +68,26 @@ MODEL_RELAY_TOKEN_PREFIX = "rehab-relay.v1"
 MODEL_RELAY_TOKEN_SCOPES = ["rehab_arm.model_relay.invoke", "rehab_arm.xiaozhi.websocket", "rehab_arm.vla_task.invoke"]
 XIAOZHI_V3_AUDIO_FRAME_TYPE_PCM = 0
 XIAOZHI_MIN_AUDIBLE_TTS_PCM_BYTES = 1600
+VLA_ACTION_MODES = {
+    "chat",
+    "fetch_object",
+    "training",
+    "assistive_emg",
+    "vision_servo",
+    "safety_review",
+    "diagnostics",
+    "data_collection",
+}
+MODE_MATURITY_ORDER = [
+    "fetch_object",
+    "training",
+    "assistive_emg",
+    "vision_servo",
+    "safety_review",
+    "diagnostics",
+    "data_collection",
+    "chat",
+]
 ARM_JOINT_MAP = [
     {
         "motor_id": "3",
@@ -92,6 +114,28 @@ ARM_JOINT_MAP = [
     {"motor_id": "1", "motor": "4015", "logical_joint": "wrist_pending_1", "urdf_joint": "wanbu_zongxiang_joint", "wired": False},
     {"motor_id": "2", "motor": "4015", "logical_joint": "wrist_pending_2", "urdf_joint": "wanbu_hengxiang_joint", "wired": False},
 ]
+MEDICAL_ARM_6DOF_JOINT_LIMITS = {
+    "jian_hengxiang_joint": (-0.7854, 1.5708),
+    "jian_zongxiang_joint": (-0.5236, 1.7453),
+    "jian_xuanzhuan_joint": (-1.0472, 1.0472),
+    "zhou_zongxiang_joint": (0.0, 2.3562),
+    "wanbu_zongxiang_joint": (-0.7854, 0.7854),
+    "wanbu_hengxiang_joint": (-0.3491, 0.5236),
+}
+MEDICAL_ARM_6DOF_JOINT_SPECS = [
+    {"name": "jian_hengxiang_joint", "axis": (0.0, 0.0, 1.0), "offset_m": (0.24, 0.0, 0.0)},
+    {"name": "jian_zongxiang_joint", "axis": (0.0, 1.0, 0.0), "offset_m": (0.18, 0.0, 0.0)},
+    {"name": "jian_xuanzhuan_joint", "axis": (1.0, 0.0, 0.0), "offset_m": (0.28, 0.0, 0.0)},
+    {"name": "zhou_zongxiang_joint", "axis": (0.0, 1.0, 0.0), "offset_m": (0.12, 0.0, 0.0)},
+    {"name": "wanbu_zongxiang_joint", "axis": (0.0, 1.0, 0.0), "offset_m": (0.10, 0.0, 0.0)},
+    {"name": "wanbu_hengxiang_joint", "axis": (0.0, 0.0, 1.0), "offset_m": (0.10, 0.0, 0.0)},
+]
+MEDICAL_ARM_6DOF_SHADOW_TOPICS = {
+    "joint_state_topic": "/sim/medical_arm/joint_states",
+    "trajectory_topic": "/sim/medical_arm/joint_trajectory",
+    "safety_state_topic": "/sim/medical_arm/safety_state",
+    "sensor_state_topic": "/sim/medical_arm/sensor_state",
+}
 
 
 def safe_part(value: str | None, fallback: str = "unknown") -> str:
@@ -286,10 +330,7 @@ def read_json(path: Path) -> dict[str, Any] | None:
 def read_recent_events(limit: int = 24, project_id: str | None = None) -> list[dict[str, Any]]:
     path = storage_root() / "events.jsonl"
     project_filter = (project_id or "").strip()
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return []
+    lines = _read_jsonl_tail_lines(path, max_lines=max(200, max(1, limit) * 80))
     if not project_filter:
         events: list[dict[str, Any]] = []
         for line in lines[-max(1, limit) :]:
@@ -312,6 +353,27 @@ def read_recent_events(limit: int = 24, project_id: str | None = None) -> list[d
         if len(events) >= max(1, limit):
             break
     return events
+
+
+def _read_jsonl_tail_lines(path: Path, max_lines: int, chunk_size: int = 64 * 1024) -> list[str]:
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            position = handle.tell()
+            chunks: list[bytes] = []
+            line_count = 0
+            while position > 0 and line_count <= max_lines:
+                read_size = min(chunk_size, position)
+                position -= read_size
+                handle.seek(position)
+                chunk = handle.read(read_size)
+                chunks.append(chunk)
+                line_count += chunk.count(b"\n")
+            data = b"".join(reversed(chunks))
+    except OSError:
+        return []
+    lines = data.decode("utf-8", errors="ignore").splitlines()
+    return lines[-max(1, max_lines) :]
 
 
 def device_dir(device_id: str) -> Path:
@@ -778,7 +840,9 @@ def build_robot_render_state(device_id: str) -> dict[str, Any]:
     fresh: list[bool] = []
     limit_clamped: list[bool] = []
     now = time.time()
-    for row in ARM_JOINT_MAP:
+    joint_map_by_urdf = {str(row["urdf_joint"]): row for row in ARM_JOINT_MAP}
+    for spec in MEDICAL_ARM_6DOF_JOINT_SPECS:
+        row = joint_map_by_urdf.get(str(spec["name"]), {"urdf_joint": str(spec["name"]), "logical_joint": str(spec["name"]), "motor_id": "", "wired": False})
         joint_names.append(row["urdf_joint"])
         source = by_joint.get(row["logical_joint"]) or by_joint.get(row["urdf_joint"]) or motor_by_id.get(row["motor_id"]) or {}
         ts_unix = float(source.get("ts_unix") or motor_payload.get("ts_unix") or 0)
@@ -1004,6 +1068,83 @@ def _visual_lock_summary(value: Any) -> dict[str, Any]:
     }
 
 
+def _object_bbox_xywh(value: Any) -> list[Any]:
+    if not isinstance(value, dict):
+        return []
+    bbox = value.get("bbox_xywh") or value.get("bbox") or value.get("left_bbox_xywh")
+    return bbox if isinstance(bbox, list) else []
+
+
+def _object_center_px(value: Any) -> list[Any]:
+    if not isinstance(value, dict):
+        return []
+    center = value.get("center_px") or value.get("left_center_px") or value.get("center")
+    if isinstance(center, list):
+        return center
+    bbox = _object_bbox_xywh(value)
+    if len(bbox) >= 4:
+        try:
+            return [float(bbox[0]) + float(bbox[2]) / 2, float(bbox[1]) + float(bbox[3]) / 2]
+        except (TypeError, ValueError):
+            return []
+    return []
+
+
+def _vision_object_summary(value: Any, role: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {
+            "schema_version": "vision_object_summary_v1",
+            "role": role,
+            "visible": False,
+            "control_boundary": "vision_object_summary_only_not_motion_permission",
+        }
+    label = _target_label(value)
+    return {
+        "schema_version": "vision_object_summary_v1",
+        "role": role,
+        "visible": bool(label),
+        "label": label,
+        "confidence": value.get("confidence"),
+        "center_px": _object_center_px(value),
+        "bbox_xywh": _object_bbox_xywh(value),
+        "source": _safe_text(value.get("source") or "", 120),
+        "control_boundary": "vision_object_summary_only_not_motion_permission",
+    }
+
+
+def _visual_servo_context(camera_payload: dict[str, Any]) -> dict[str, Any]:
+    target = camera_payload.get("target_object")
+    end_effector = camera_payload.get("end_effector_object")
+    target_summary = _vision_object_summary(target, "target")
+    effector_summary = _vision_object_summary(end_effector, "end_effector")
+    target_center = target_summary.get("center_px") if isinstance(target_summary.get("center_px"), list) else []
+    effector_center = effector_summary.get("center_px") if isinstance(effector_summary.get("center_px"), list) else []
+    pixel_delta = []
+    distance_px = None
+    if len(target_center) >= 2 and len(effector_center) >= 2:
+        try:
+            dx = float(target_center[0]) - float(effector_center[0])
+            dy = float(target_center[1]) - float(effector_center[1])
+            pixel_delta = [dx, dy]
+            distance_px = (dx * dx + dy * dy) ** 0.5
+        except (TypeError, ValueError):
+            pixel_delta = []
+            distance_px = None
+    both_visible = target_summary.get("visible") is True and effector_summary.get("visible") is True
+    return {
+        "schema_version": "visual_servo_context_v1",
+        "target_visible": target_summary.get("visible") is True,
+        "end_effector_visible": effector_summary.get("visible") is True,
+        "both_visible": both_visible,
+        "target": target_summary,
+        "end_effector": effector_summary,
+        "pixel_delta_target_minus_effector": pixel_delta,
+        "pixel_distance_px": distance_px,
+        "ready_for_closed_loop_dry_run": both_visible and distance_px is not None,
+        "control_boundary": "visual_servo_context_only_not_motion_permission",
+    }
+
+
 def record_stereo_vision_context(payload: dict[str, Any]) -> dict[str, Any]:
     if payload.get("control_boundary") != "stereo_vision_context_only_not_motion_permission":
         raise ValueError("stereo vision context must stay perception-only")
@@ -1024,6 +1165,7 @@ def record_stereo_vision_context(payload: dict[str, Any]) -> dict[str, Any]:
         "left_camera_id": payload.get("left_camera_id"),
         "right_camera_id": payload.get("right_camera_id"),
         "target_label": _target_label(payload.get("target_object")),
+        "end_effector_label": _target_label(payload.get("end_effector_object")),
         "detection_count": _detection_count(payload.get("detections")),
         "estimated_depth_m": payload.get("estimated_depth_m"),
         "control_boundary": "stereo_vision_context_only_not_motion_permission",
@@ -1127,6 +1269,402 @@ def record_vla_task_request(payload: dict[str, Any]) -> dict[str, Any]:
     }
     record = telemetry_record("vla_plan_candidate", {**payload, "candidate_response": response})
     write_device_latest(record["device_id"], "vla_plan_candidate", record)
+    return response
+
+
+def _float_field(source: dict[str, Any], key: str) -> float | None:
+    value = source.get(key)
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if abs(number) < 1000 else None
+
+
+def _joint_limit_rows(joint_names: list[str], candidate_positions: list[float]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, name in enumerate(joint_names):
+        position = candidate_positions[index] if index < len(candidate_positions) else 0.0
+        lower, upper = MEDICAL_ARM_6DOF_JOINT_LIMITS.get(name, (-1.57, 1.57))
+        margin = min(position - lower, upper - position)
+        rows.append(
+            {
+                "joint_name": name,
+                "candidate_rad": round(position, 4),
+                "lower_rad": lower,
+                "upper_rad": upper,
+                "within_limit": lower <= position <= upper,
+                "margin_rad": round(margin, 4),
+                "control_boundary": IK_CONTROL_BOUNDARY,
+            }
+        )
+    return rows
+
+
+def _ik_candidate_positions(target: dict[str, Any], joint_count: int) -> list[float]:
+    x = _float_field(target, "x_m") or 0.0
+    y = _float_field(target, "y_m") or 0.0
+    z = _float_field(target, "z_m") or 0.0
+    base = max(-1.2, min(1.2, y * 1.4))
+    shoulder = max(-1.1, min(1.1, z * 1.2 - 0.2))
+    elbow = max(-1.1, min(1.1, x * 1.1))
+    wrist = max(-0.8, min(0.8, -(shoulder + elbow) * 0.35))
+    seed = [base, shoulder, elbow, wrist, 0.0, 0.0]
+    return seed[: max(1, joint_count)]
+
+
+def _mat3_identity() -> list[list[float]]:
+    return [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]
+
+
+def _mat3_mul(a: list[list[float]], b: list[list[float]]) -> list[list[float]]:
+    return [[sum(a[row][col_i] * b[col_i][col] for col_i in range(3)) for col in range(3)] for row in range(3)]
+
+
+def _mat3_vec_mul(a: list[list[float]], v: tuple[float, float, float] | list[float]) -> list[float]:
+    return [sum(a[row][col] * float(v[col]) for col in range(3)) for row in range(3)]
+
+
+def _rotation_matrix(axis: tuple[float, float, float], angle: float) -> list[list[float]]:
+    ax, ay, az = axis
+    norm = math.sqrt(ax * ax + ay * ay + az * az) or 1.0
+    x, y, z = ax / norm, ay / norm, az / norm
+    c = math.cos(angle)
+    s = math.sin(angle)
+    one_c = 1.0 - c
+    return [
+        [c + x * x * one_c, x * y * one_c - z * s, x * z * one_c + y * s],
+        [y * x * one_c + z * s, c + y * y * one_c, y * z * one_c - x * s],
+        [z * x * one_c - y * s, z * y * one_c + x * s, c + z * z * one_c],
+    ]
+
+
+def _medical_arm_fk_position(joint_names: list[str], positions: list[float]) -> list[float]:
+    positions_by_name = {name: float(positions[index]) for index, name in enumerate(joint_names) if index < len(positions)}
+    rotation = _mat3_identity()
+    point = [0.0, 0.0, 0.0]
+    for spec in MEDICAL_ARM_6DOF_JOINT_SPECS:
+        name = str(spec["name"])
+        if name not in positions_by_name:
+            continue
+        angle = positions_by_name.get(name, 0.0)
+        joint_rotation = _rotation_matrix(spec["axis"], angle)
+        rotation = _mat3_mul(rotation, joint_rotation)
+        offset = _mat3_vec_mul(rotation, spec["offset_m"])
+        point = [point[axis] + offset[axis] for axis in range(3)]
+    return point
+
+
+def _solve_3x3(a: list[list[float]], b: list[float]) -> list[float] | None:
+    matrix = [[float(a[row][col]) for col in range(3)] + [float(b[row])] for row in range(3)]
+    for pivot_index in range(3):
+        pivot_row = max(range(pivot_index, 3), key=lambda row: abs(matrix[row][pivot_index]))
+        if abs(matrix[pivot_row][pivot_index]) < 1e-10:
+            return None
+        if pivot_row != pivot_index:
+            matrix[pivot_index], matrix[pivot_row] = matrix[pivot_row], matrix[pivot_index]
+        pivot = matrix[pivot_index][pivot_index]
+        matrix[pivot_index] = [value / pivot for value in matrix[pivot_index]]
+        for row in range(3):
+            if row == pivot_index:
+                continue
+            factor = matrix[row][pivot_index]
+            matrix[row] = [matrix[row][col] - factor * matrix[pivot_index][col] for col in range(4)]
+    return [matrix[row][3] for row in range(3)]
+
+
+def _position_error(a: list[float], b: list[float]) -> float:
+    return math.sqrt(sum((float(a[index]) - float(b[index])) ** 2 for index in range(3)))
+
+
+def _numeric_position_jacobian(joint_names: list[str], positions: list[float]) -> list[list[float]]:
+    epsilon = 1e-4
+    base_position = _medical_arm_fk_position(joint_names, positions)
+    columns: list[list[float]] = []
+    for index in range(len(joint_names)):
+        shifted = list(positions)
+        shifted[index] += epsilon
+        shifted_position = _medical_arm_fk_position(joint_names, shifted)
+        columns.append([(shifted_position[axis] - base_position[axis]) / epsilon for axis in range(3)])
+    return columns
+
+
+def _joint_boundary_summary(joint_names: list[str], positions: list[float]) -> dict[str, Any]:
+    margins: list[tuple[str, float]] = []
+    for index, name in enumerate(joint_names):
+        position = float(positions[index]) if index < len(positions) else 0.0
+        lower, upper = MEDICAL_ARM_6DOF_JOINT_LIMITS.get(name, (-1.57, 1.57))
+        margins.append((name, min(position - lower, upper - position)))
+    min_name, min_margin = min(margins, key=lambda item: item[1]) if margins else ("", 0.0)
+    near_limit = [
+        {"joint_name": name, "margin_rad": round(margin, 4)}
+        for name, margin in margins
+        if margin <= 0.02
+    ]
+    return {
+        "nearest_limit_joint": min_name,
+        "min_margin_rad": round(min_margin, 4),
+        "near_limit_joint_count": len(near_limit),
+        "near_limit_joints": near_limit,
+        "control_boundary": IK_CONTROL_BOUNDARY,
+    }
+
+
+def _ik_seed_positions(target: dict[str, Any], joint_names: list[str]) -> list[list[float]]:
+    def limits(name: str) -> tuple[float, float]:
+        return MEDICAL_ARM_6DOF_JOINT_LIMITS.get(name, (-1.57, 1.57))
+
+    def midpoint(name: str) -> float:
+        lower, upper = limits(name)
+        return (lower + upper) / 2.0
+
+    x = _float_field(target, "x_m") or 0.0
+    y = _float_field(target, "y_m") or 0.0
+    base_hint = max(limits("jian_hengxiang_joint")[0], min(limits("jian_hengxiang_joint")[1], math.atan2(y, max(0.08, x))))
+    by_name_seeds: list[dict[str, float]] = [
+        {name: 0.0 for name in joint_names},
+        {name: midpoint(name) for name in joint_names},
+        dict(zip(joint_names, _ik_candidate_positions(target, len(joint_names)))),
+        {
+            "jian_hengxiang_joint": base_hint,
+            "jian_zongxiang_joint": 0.4,
+            "jian_xuanzhuan_joint": 0.0,
+            "zhou_zongxiang_joint": 0.8,
+            "wanbu_zongxiang_joint": 0.0,
+            "wanbu_hengxiang_joint": 0.0,
+        },
+    ]
+    for shoulder in [limits("jian_zongxiang_joint")[0], midpoint("jian_zongxiang_joint"), limits("jian_zongxiang_joint")[1]]:
+        for elbow in [limits("zhou_zongxiang_joint")[0], midpoint("zhou_zongxiang_joint"), limits("zhou_zongxiang_joint")[1]]:
+            by_name_seeds.append(
+                {
+                    "jian_hengxiang_joint": base_hint,
+                    "jian_zongxiang_joint": shoulder,
+                    "jian_xuanzhuan_joint": 0.0,
+                    "zhou_zongxiang_joint": elbow,
+                    "wanbu_zongxiang_joint": 0.0,
+                    "wanbu_hengxiang_joint": 0.0,
+                }
+            )
+    seeds: list[list[float]] = []
+    seen: set[tuple[float, ...]] = set()
+    for by_name in by_name_seeds:
+        seed = _clamp_candidate_positions(joint_names, [float(by_name.get(name, 0.0)) for name in joint_names])
+        key = tuple(round(value, 3) for value in seed)
+        if key in seen:
+            continue
+        seen.add(key)
+        seeds.append(seed)
+    return seeds
+
+
+def _solve_medical_arm_6dof_ik(target: dict[str, Any], joint_names: list[str]) -> tuple[list[float], dict[str, Any]]:
+    target_position = [
+        _float_field(target, "x_m") or 0.0,
+        _float_field(target, "y_m") or 0.0,
+        _float_field(target, "z_m") or 0.0,
+    ]
+    seeds = _ik_seed_positions(target, joint_names)
+    best_positions = seeds[0] if seeds else _clamp_candidate_positions(joint_names, [0.0 for _ in joint_names])
+    best_error = _position_error(_medical_arm_fk_position(joint_names, best_positions), target_position)
+    best_iterations = 0
+    best_converged = False
+    max_iterations = 120
+    damping = 0.08
+    step_scale = 0.7
+
+    for seed in seeds:
+        positions = _clamp_candidate_positions(joint_names, seed)
+        converged = False
+        iteration = 0
+        for iteration in range(1, max_iterations + 1):
+            current = _medical_arm_fk_position(joint_names, positions)
+            error_vector = [target_position[axis] - current[axis] for axis in range(3)]
+            error_norm = math.sqrt(sum(value * value for value in error_vector))
+            if error_norm <= 0.025:
+                converged = True
+                break
+            jacobian_columns = _numeric_position_jacobian(joint_names, positions)
+            normal = [[0.0 for _ in range(3)] for _ in range(3)]
+            for column in jacobian_columns:
+                for row in range(3):
+                    for col in range(3):
+                        normal[row][col] += column[row] * column[col]
+            for axis in range(3):
+                normal[axis][axis] += damping * damping
+            task_step = _solve_3x3(normal, error_vector)
+            if task_step is None:
+                break
+            joint_step = [sum(column[axis] * task_step[axis] for axis in range(3)) for column in jacobian_columns]
+            positions = _clamp_candidate_positions(joint_names, [positions[index] + step_scale * joint_step[index] for index in range(len(joint_names))])
+        final_position = _medical_arm_fk_position(joint_names, positions)
+        final_error = _position_error(final_position, target_position)
+        if final_error < best_error:
+            best_positions = positions
+            best_error = final_error
+            best_iterations = iteration
+            best_converged = converged or final_error <= 0.025
+
+    end_effector_position = _medical_arm_fk_position(joint_names, best_positions)
+    if best_error <= 0.03:
+        quality = "precise"
+    elif best_error <= 0.30:
+        quality = "approximate"
+    else:
+        quality = "blocked"
+    residual_vector = [target_position[axis] - end_effector_position[axis] for axis in range(3)]
+    boundary_summary = _joint_boundary_summary(joint_names, best_positions)
+    if quality == "precise":
+        status_reason = "position_residual_within_precise_threshold"
+    elif quality == "approximate":
+        status_reason = "best_bounded_candidate_has_nontrivial_position_residual"
+    else:
+        status_reason = "position_residual_exceeds_approximate_threshold"
+    report = {
+        "schema_version": "rehab_arm_ik_solver_report_v1",
+        "method": "damped_least_squares_fk_numeric_jacobian_mujoco_6dof_v1",
+        "model_source": "medical_arm_6dof_mujoco_shadow_joint_axes_and_limits",
+        "target_position_m": {
+            "x_m": round(target_position[0], 4),
+            "y_m": round(target_position[1], 4),
+            "z_m": round(target_position[2], 4),
+        },
+        "position_error_m": round(best_error, 4),
+        "residual_vector_m": {
+            "x_m": round(residual_vector[0], 4),
+            "y_m": round(residual_vector[1], 4),
+            "z_m": round(residual_vector[2], 4),
+        },
+        "end_effector_position_m": {
+            "x_m": round(end_effector_position[0], 4),
+            "y_m": round(end_effector_position[1], 4),
+            "z_m": round(end_effector_position[2], 4),
+        },
+        "iterations": best_iterations,
+        "seed_count": len(seeds),
+        "max_iterations_per_seed": max_iterations,
+        "thresholds_m": {"precise": 0.03, "approximate": 0.30},
+        "converged": best_converged,
+        "quality": quality,
+        "status_reason": status_reason,
+        "joint_boundary_summary": boundary_summary,
+        "control_boundary": IK_CONTROL_BOUNDARY,
+    }
+    return best_positions, report
+
+
+def _clamp_candidate_positions(joint_names: list[str], positions: list[float]) -> list[float]:
+    clamped: list[float] = []
+    for index, name in enumerate(joint_names):
+        value = positions[index] if index < len(positions) else 0.0
+        lower, upper = MEDICAL_ARM_6DOF_JOINT_LIMITS.get(name, (-1.57, 1.57))
+        clamped.append(max(lower, min(upper, float(value))))
+    return clamped
+
+
+def _mujoco_shadow_validation_plan(joint_names: list[str], candidate_positions: list[float]) -> dict[str, Any]:
+    return {
+        "schema_version": "mujoco_shadow_validation_plan_v1",
+        "sim_host": "192.168.3.34",
+        "ros_domain_id": 42,
+        "ros_setup": [
+            "source /home/cal/.rehab_arm_ros2_network",
+            "source /opt/ros/jazzy/setup.bash",
+            "source /home/cal/桌面/Medical-Rehabilitation-Manipulator/rehab_arm_ros2_ws/install/setup.bash",
+        ],
+        "target_node": "/medical_arm_6dof_shadow_sim",
+        "target_topic": MEDICAL_ARM_6DOF_SHADOW_TOPICS["trajectory_topic"],
+        "observe_topic": MEDICAL_ARM_6DOF_SHADOW_TOPICS["joint_state_topic"],
+        "message_type": "trajectory_msgs/msg/JointTrajectory",
+        "candidate_message": {
+            "joint_names": joint_names,
+            "points": [
+                {"time_from_start": {"sec": 0, "nanosec": 0}, "positions": [0.0 for _ in joint_names]},
+                {
+                    "time_from_start": {"sec": 2, "nanosec": 0},
+                    "positions": [round(value, 4) for value in candidate_positions],
+                },
+            ],
+        },
+        "publish_scope": "sim_only_shadow_topic_not_hardware_chain",
+        "must_not_publish": ["/arm_controller/joint_trajectory", "/joint_states", "can0", "motor_bus"],
+        "control_boundary": "mujoco_shadow_dry_run_only_not_motion_permission",
+    }
+
+
+def record_ik_candidate_request(payload: dict[str, Any]) -> dict[str, Any]:
+    target = payload.get("target_robot_frame") if isinstance(payload.get("target_robot_frame"), dict) else {}
+    x = _float_field(target, "x_m")
+    y = _float_field(target, "y_m")
+    z = _float_field(target, "z_m")
+    if x is None or y is None or z is None:
+        raise ValueError("target_robot_frame.x_m, y_m, and z_m must be numeric meters")
+    if str(payload.get("control_boundary") or "") not in {"", "ik_candidate_request_evidence_only_not_motion_permission", IK_CONTROL_BOUNDARY}:
+        raise ValueError("IK candidate requests must remain evidence-only")
+    device_id = safe_part(str(payload.get("device_id") or "unknown"))
+    render_state = build_robot_render_state(device_id)
+    joint_names = list(render_state.get("joint_names") or [row["urdf_joint"] for row in ARM_JOINT_MAP])
+    candidate_positions, solver_report = _solve_medical_arm_6dof_ik(target, joint_names)
+    distance = (x * x + y * y + z * z) ** 0.5
+    workspace_ok = 0.08 <= distance <= 0.85 and z >= -0.05
+    joint_limit_rows = _joint_limit_rows(joint_names, candidate_positions)
+    joint_ok = all(row["within_limit"] for row in joint_limit_rows)
+    solver_quality = str(solver_report.get("quality") or "blocked")
+    solver_ok = solver_quality in {"precise", "approximate"}
+    collision_ok = bool(workspace_ok and joint_ok and solver_ok)
+    ik_status = "candidate_blocked"
+    if workspace_ok and joint_ok and solver_quality == "precise":
+        ik_status = "candidate_ready"
+    elif workspace_ok and joint_ok and solver_quality == "approximate":
+        ik_status = "candidate_approximate"
+    simulation = _device_latest(device_id, "simulation_readiness") or {}
+    simulation_payload = simulation.get("payload") if isinstance(simulation.get("payload"), dict) else {}
+    simulation_report = simulation_payload.get("report") if isinstance(simulation_payload.get("report"), dict) else {}
+    response = {
+        "schema_version": "rehab_arm_ik_candidate_evidence_v1",
+        "ik_status": ik_status,
+        "source": payload.get("source") or "manual_platform",
+        "semantic_mode": payload.get("semantic_mode") or "fetch_object",
+        "target_robot_frame": {"x_m": x, "y_m": y, "z_m": z},
+        "approach_vector": payload.get("approach_vector"),
+        "gripper_orientation": payload.get("gripper_orientation"),
+        "candidate_joint_trajectory": {
+            "schema_version": "dry_run_joint_trajectory_candidate_v1",
+            "joint_names": joint_names,
+            "points": [
+                {"time_from_start_s": 0.0, "positions_rad": [0.0 for _ in joint_names]},
+                {"time_from_start_s": 2.0, "positions_rad": [round(value, 4) for value in candidate_positions]},
+            ],
+            "control_boundary": IK_CONTROL_BOUNDARY,
+        },
+        "ik_solver_report": solver_report,
+        "joint_limit_check": {"ok": joint_ok, "joints": joint_limit_rows, "control_boundary": IK_CONTROL_BOUNDARY},
+        "collision_or_workspace_check": {
+            "workspace_reachable": workspace_ok,
+            "collision_free": collision_ok,
+            "target_distance_m": round(distance, 4),
+            "ik_position_error_m": solver_report["position_error_m"],
+            "method": "workspace_gate_plus_numeric_ik_pending_mujoco_shadow",
+            "control_boundary": IK_CONTROL_BOUNDARY,
+        },
+        "simulation_result": {
+            "ready": bool(simulation_report.get("ok") is True),
+            "readiness": simulation_report.get("readiness", "waiting_for_mujoco_or_urdf_shadow"),
+            "report_ok": simulation_report.get("ok"),
+            "source": "latest_simulation_readiness",
+            "expected_shadow_topics": MEDICAL_ARM_6DOF_SHADOW_TOPICS,
+            "control_boundary": "simulation_evidence_only_not_motion_permission",
+        },
+        "mujoco_shadow_validation_plan": _mujoco_shadow_validation_plan(joint_names, candidate_positions),
+        "control_boundary": IK_CONTROL_BOUNDARY,
+        "forbidden_outputs": sorted(DANGEROUS_VLA_OUTPUTS),
+    }
+    request_record = telemetry_record("ik_candidate_request", {**payload, "control_boundary": "ik_candidate_request_evidence_only_not_motion_permission"})
+    write_device_latest(request_record["device_id"], "ik_candidate_request", request_record)
+    record = telemetry_record("ik_candidate", {**payload, "candidate_response": response, "control_boundary": IK_CONTROL_BOUNDARY})
+    write_device_latest(record["device_id"], "ik_candidate", record)
     return response
 
 
@@ -1965,7 +2503,14 @@ def _relay_classification(payload: dict[str, Any], external_payload: dict[str, A
     prompt = str(payload.get("prompt") or "").strip()
     input_type = str(payload.get("input_type") or "").strip()
     if raw_type not in {"daily_chat", "vla_command", "none"}:
-        if input_type == "vla_language_from_voice" and re.search(r"抬|训练|康复|开始|暂停|停止|辅助|手臂|肩|肘|腕", prompt):
+        if input_type == "vla_language_from_voice" and re.search(
+            r"抬|训练|康复|开始|暂停|停止|辅助|助力|肌电|发力|手臂|肩|肘|腕|"
+            r"口渴|喝水|水杯|杯子|瓶子|拿|取|递给我|"
+            r"诊断|检查|状态|故障|摄像头|相机|can|m33|m55|nanopi|仿真|mujoco|"
+            r"采集|标注|数据|拍照|样本|dataset|label|capture|安全|确认|审核",
+            prompt,
+            flags=re.IGNORECASE,
+        ):
             raw_type = "vla_command"
         elif not prompt or len(prompt) <= 1:
             raw_type = "none"
@@ -2086,6 +2631,8 @@ def _build_vla_vision_context(relay_id: str, device_id: str, camera_payload: dic
             "confidence": camera_payload.get("confidence"),
             "image_pair_ref": camera_payload.get("image_pair_ref") or {},
             "visual_lock_summary": _visual_lock_summary(camera_payload.get("visual_lock_stability")),
+            "end_effector_summary": _vision_object_summary(camera_payload.get("end_effector_object"), "end_effector"),
+            "visual_servo_context": _visual_servo_context(camera_payload),
             "pixel_servo_hint": camera_payload.get("pixel_servo_hint") or {},
             "control_boundary": "vla_vision_context_only_not_motion_permission",
         }
@@ -2146,6 +2693,226 @@ def _build_server_action_command(
             "operator_review",
         ],
         "control_boundary": "server_action_high_level_only_not_motion_permission",
+    }
+
+
+def _infer_vla_action_mode(classification: dict[str, Any], payload: dict[str, Any], external_payload: dict[str, Any]) -> str:
+    kind = str(classification.get("type") or "none").strip()
+    prompt = _safe_text(payload.get("prompt"), 400).lower()
+    label = _safe_text(external_payload.get("label") or external_payload.get("mode") or external_payload.get("intent_label"), 160).lower()
+    haystack = f"{prompt} {label}"
+    if kind == "daily_chat":
+        return "chat"
+    if kind != "vla_command":
+        return "chat"
+    if re.search(r"安全|确认|审核|急停|停止|暂停|review|safety", haystack):
+        return "safety_review"
+    if re.search(r"诊断|检查|状态|故障|can|camera|摄像头|m33|m55|nanopi|仿真|mujoco", haystack):
+        return "diagnostics"
+    if re.search(r"采集|标注|数据|拍照|样本|dataset|label|capture", haystack):
+        return "data_collection"
+    if re.search(r"助力|辅助|肌电|发力|emg|assistive", haystack):
+        return "assistive_emg"
+    if re.search(r"训练|康复|开始今天|动作训练|training|rehab", haystack):
+        return "training"
+    if re.search(r"逼近|对准|视觉伺服|servo|align|跟踪", haystack):
+        return "vision_servo"
+    if re.search(r"口渴|喝水|水杯|杯子|瓶子|拿|取|递给我|fetch|cup|bottle", haystack):
+        return "fetch_object"
+    return "training"
+
+
+def _semantic_target_for_mode(mode: str, payload: dict[str, Any], external_payload: dict[str, Any]) -> dict[str, Any]:
+    prompt = _safe_text(payload.get("prompt"), 300)
+    explicit_label = _safe_text(external_payload.get("target_label") or external_payload.get("object_label"), 80)
+    if mode == "fetch_object":
+        label = explicit_label or ("target_bottle" if re.search(r"瓶|bottle", prompt, flags=re.IGNORECASE) else "target_cup")
+        aliases = ["水杯", "杯子", "cup"] if label == "target_cup" else ["瓶子", "bottle"]
+        return {"label": label, "aliases": aliases}
+    if mode == "training":
+        return {"label": explicit_label or _safe_text(external_payload.get("label") or "rehab_training_goal", 80), "aliases": ["训练", "康复"]}
+    if mode == "assistive_emg":
+        return {"label": explicit_label or "emg_assist_intent", "aliases": ["助力", "肌电", "assistive"]}
+    return {"label": explicit_label or mode, "aliases": []}
+
+
+def _semantic_requires_for_mode(mode: str) -> list[str]:
+    if mode == "fetch_object":
+        return ["vision_target", "end_effector_visible", "shadow_sim", "safety_review"]
+    if mode == "training":
+        return ["training_goal", "patient_profile", "safety_review"]
+    if mode == "assistive_emg":
+        return ["emg_context", "m55_intent", "m33_safety_gate"]
+    if mode == "vision_servo":
+        return ["vision_target", "visual_error", "shadow_sim"]
+    if mode == "safety_review":
+        return ["mujoco_dry_run", "operator_confirmation", "m33_final_gate"]
+    if mode == "diagnostics":
+        return ["telemetry_snapshot", "no_motion"]
+    if mode == "data_collection":
+        return ["operator_labeling", "no_motion"]
+    return ["no_robot_action"]
+
+
+def _build_vla_semantic_action(classification: dict[str, Any], payload: dict[str, Any], external_payload: dict[str, Any]) -> dict[str, Any]:
+    mode = _infer_vla_action_mode(classification, payload, external_payload)
+    return {
+        "schema_version": "vla_action_semantic_v1",
+        "mode": mode if mode in VLA_ACTION_MODES else "chat",
+        "intent_text": _safe_text(payload.get("prompt"), 600),
+        "target": _semantic_target_for_mode(mode, payload, external_payload),
+        "requires": _semantic_requires_for_mode(mode),
+        "source": "platform_language_semantic_router",
+        "control_boundary": "semantic_action_only_not_motion_permission",
+    }
+
+
+def _latest_semantic_mode(model_relay_response: dict[str, Any]) -> str:
+    payload = model_relay_response.get("payload") if isinstance(model_relay_response.get("payload"), dict) else {}
+    response = payload.get("relay_response") if isinstance(payload.get("relay_response"), dict) else {}
+    semantic = (response.get("a") or {}).get("semantic") if isinstance(response.get("a"), dict) else {}
+    mode = str((semantic or {}).get("mode") or "").strip()
+    return mode if mode in VLA_ACTION_MODES else "chat"
+
+
+def _mode_stage_tone(mode: str, active_mode: str, stereo_payload: dict[str, Any], safety_status: dict[str, Any]) -> tuple[str, str]:
+    has_stereo = bool(stereo_payload)
+    visual_lock = stereo_payload.get("visual_lock_stability") if isinstance(stereo_payload.get("visual_lock_stability"), dict) else {}
+    target_gate = stereo_payload.get("target_quality_gate") if isinstance(stereo_payload.get("target_quality_gate"), dict) else {}
+    target_ok = target_gate.get("state") == "candidate_accepted" or bool(stereo_payload.get("target_object"))
+    end_effector_ok = bool(stereo_payload.get("end_effector_object"))
+    locked = visual_lock.get("stable_for_dry_run") is True
+    motion_allowed = safety_status.get("motion_allowed") is True
+    if mode == active_mode and mode == "fetch_object":
+        if locked and target_ok and end_effector_ok:
+            return "dry_run_candidate_ready", "ok"
+        return "dry_run_visual_gate", "limited"
+    if mode == active_mode and mode in {"training", "assistive_emg", "vision_servo", "safety_review", "diagnostics", "data_collection", "chat"}:
+        active_stages = {
+            "training": "semantic_routed_training",
+            "assistive_emg": "semantic_routed_assistive_emg",
+            "vision_servo": "semantic_routed_visual_servo",
+            "safety_review": "semantic_routed_safety_review",
+            "diagnostics": "semantic_routed_diagnostics",
+            "data_collection": "semantic_routed_data_collection",
+            "chat": "chat_only_no_action",
+        }
+        return active_stages[mode], "ok"
+    if mode == "fetch_object":
+        return ("dry_run_visual_gate" if has_stereo else "reserved_waiting_vision"), "idle" if has_stereo else "limited"
+    if mode == "training":
+        return "reserved_app_ble_m33", "idle"
+    if mode == "assistive_emg":
+        return "pending_m55_m33_gate", "limited"
+    if mode == "vision_servo":
+        return ("shared_visual_evidence" if has_stereo else "reserved_waiting_vision"), "idle" if has_stereo else "limited"
+    if mode == "safety_review":
+        return "default_review_gate" if not motion_allowed else "m33_reports_motion_allowed_review_still_required", "idle"
+    if mode == "diagnostics":
+        return "read_only_available", "idle"
+    if mode == "data_collection":
+        return "reserved_dataset_pipeline", "idle"
+    return "chat_only_no_action", "idle"
+
+
+def build_mode_maturity(
+    model_relay_response: dict[str, Any],
+    stereo_vision_context: dict[str, Any],
+    safety_status: dict[str, Any],
+    sensor_state: dict[str, Any],
+    simulation_readiness: dict[str, Any],
+) -> dict[str, Any]:
+    active_mode = _latest_semantic_mode(model_relay_response)
+    stereo_payload = stereo_vision_context.get("payload") if isinstance(stereo_vision_context.get("payload"), dict) else {}
+    sensor_payload = sensor_state.get("payload") if isinstance(sensor_state.get("payload"), dict) else {}
+    sim_payload = simulation_readiness.get("payload") if isinstance(simulation_readiness.get("payload"), dict) else {}
+    has_emg = bool(sensor_payload.get("emg") or sensor_payload.get("emg_channels") or sensor_payload.get("muscle_activity"))
+    sim_ready = bool(sim_payload.get("ready") or sim_payload.get("mujoco_ready") or sim_payload.get("simulation_ready"))
+    mode_specs = {
+        "fetch_object": {
+            "label": "取物 VLA-lite",
+            "maturity": "scaffolded",
+            "uses": ["a.semantic", "stereo_vision_context", "mujoco_shadow", "m33_safety_state"],
+            "next_step": "real_target_acceptance_and_calibration",
+            "motion_boundary": "dry_run_only_not_motion_permission",
+        },
+        "training": {
+            "label": "训练计划",
+            "maturity": "reserved",
+            "uses": ["a.semantic", "app_training_library", "ble_to_m33", "patient_profile"],
+            "next_step": "connect_app_training_library_ble_to_m33",
+            "motion_boundary": "training_plan_only_not_motion_permission",
+        },
+        "assistive_emg": {
+            "label": "肌电助力",
+            "maturity": "pending_hardware",
+            "uses": ["emg_sensor_state", "m55_intent", "m33_safety_gate", "platform_display"],
+            "next_step": "connect_m55_emg_intent_and_m33_gate" if not has_emg else "validate_m33_assistive_gate",
+            "motion_boundary": "assistive_hint_only_m33_required",
+        },
+        "vision_servo": {
+            "label": "视觉伺服",
+            "maturity": "scaffolded",
+            "uses": ["stereo_vision_context", "target_end_effector_detector", "camera_to_robot_transform"],
+            "next_step": "camera_to_robot_calibration",
+            "motion_boundary": "visual_servo_hint_only_not_motion_permission",
+        },
+        "safety_review": {
+            "label": "安全审核",
+            "maturity": "readonly",
+            "uses": ["safety_state", "mujoco_shadow", "operator_review", "m33_gate"],
+            "next_step": "attach_mujoco_review_evidence" if not sim_ready else "operator_review_before_m33",
+            "motion_boundary": "review_status_only_not_motion_permission",
+        },
+        "diagnostics": {
+            "label": "只读诊断",
+            "maturity": "readonly",
+            "uses": ["device_telemetry", "camera_status", "can_status", "ros_status"],
+            "next_step": "add_topic_log_can_snapshots",
+            "motion_boundary": "read_only_no_motion",
+        },
+        "data_collection": {
+            "label": "数据采集",
+            "maturity": "reserved",
+            "uses": ["camera_keyframes", "emg_can_ros_logs", "label_index", "dataset_sessions"],
+            "next_step": "connect_capture_session_index_and_labels",
+            "motion_boundary": "dataset_artifact_only_no_motion",
+        },
+        "chat": {
+            "label": "日常聊天",
+            "maturity": "chat_only",
+            "uses": ["xiaozhi_language", "model_relay_reply"],
+            "next_step": "keep_isolated_from_robot_action",
+            "motion_boundary": "no_robot_action",
+        },
+    }
+    modes: list[dict[str, Any]] = []
+    for mode in MODE_MATURITY_ORDER:
+        stage, tone = _mode_stage_tone(mode, active_mode, stereo_payload, safety_status)
+        modes.append(
+            {
+                "mode": mode,
+                **mode_specs[mode],
+                "stage": stage,
+                "tone": tone,
+                "active": mode == active_mode,
+                "control_boundary": "mode_status_only_not_motion_permission",
+            }
+        )
+    return {
+        "schema_version": "rehab_arm_mode_maturity_v1",
+        "active_mode": active_mode,
+        "modes": modes,
+        "shared_resources": [
+            "xiaozhi_l_semantic_router",
+            "stereo_vision_context",
+            "target_end_effector_detector",
+            "emg_m55_intent",
+            "mujoco_shadow",
+            "m33_safety_state",
+            "platform_observability",
+        ],
+        "control_boundary": "mode_maturity_status_only_not_motion_permission",
     }
 
 
@@ -2293,6 +3060,7 @@ def record_model_relay_request(payload: dict[str, Any]) -> dict[str, Any]:
     camera_payload = _latest_camera_payload(request_record["device_id"])
     language_context = _build_vla_language_context(relay_id, payload, classification, external_payload)
     vision_context = _build_vla_vision_context(relay_id, request_record["device_id"], camera_payload)
+    semantic_action = _build_vla_semantic_action(classification, payload, external_payload)
     server_action_command = _build_server_action_command(
         relay_id,
         payload,
@@ -2317,6 +3085,11 @@ def record_model_relay_request(payload: dict[str, Any]) -> dict[str, Any]:
         "input_type": input_type,
         "classification": classification,
         "vla_language_gate": language_gate,
+        "a": {
+            "schema_version": "vla_a_field_v1",
+            "semantic": semantic_action,
+            "control_boundary": "a_field_semantic_only_not_motion_permission",
+        },
         "operator_facing_reply": language_context["operator_facing_reply"],
         "vla_language_context": language_context,
         "vla_vision_context": vision_context,
@@ -2415,6 +3188,7 @@ def record_camera_keyframe(payload: dict[str, Any], image_bytes: bytes) -> dict[
     record["camera_image_url"] = f"/api/rehab-arm/v1/devices/{device_id}/camera/keyframes/{camera_id}/latest/file"
     write_device_latest(device_id, "camera_keyframe", record)
     write_json(device_dir(device_id) / f"camera_keyframe_{camera_id}_latest.json", record)
+    cleanup_camera_keyframes(device_id, camera_id, keep=3)
     return {
         "ok": True,
         "device_id": device_id,
@@ -2437,6 +3211,29 @@ def latest_keyframe_path(device_id: str, camera_id: str = "") -> Path | None:
     if path and path.is_file():
         return path
     return None
+
+
+def cleanup_camera_keyframes(device_id: str, camera_id: str, keep: int = 3) -> None:
+    safe_device_id = safe_part(device_id)
+    safe_camera_id = safe_part(camera_id, "camera")
+    keyframe_dir = storage_root() / "keyframes" / safe_device_id
+    if not keyframe_dir.is_dir():
+        return
+    keep_count = max(1, int(keep or 1))
+    candidates = sorted(
+        (
+            path
+            for path in keyframe_dir.glob(f"*_{safe_camera_id}.*")
+            if path.is_file() and path.parent.resolve() == keyframe_dir.resolve()
+        ),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for old_path in candidates[keep_count:]:
+        try:
+            old_path.unlink()
+        except OSError:
+            continue
 
 
 def _device_latest(device_id: str, name: str) -> dict[str, Any] | None:
@@ -2505,6 +3302,7 @@ def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
         stereo_vision_context = _device_latest(device_id, "stereo_vision_context") or {}
         voice_relay = _device_latest(device_id, "voice_relay") or {}
         vla_plan_candidate = _device_latest(device_id, "vla_plan_candidate") or {}
+        ik_candidate = _device_latest(device_id, "ik_candidate") or {}
         model_relay_response = _device_latest(device_id, "model_relay_response") or {}
         xiaozhi_session = _device_latest(device_id, "xiaozhi_session") or {}
         estop_ack = _device_latest(device_id, "estop_ack") or {}
@@ -2528,6 +3326,7 @@ def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
             stereo_vision_context,
             voice_relay,
             vla_plan_candidate,
+            ik_candidate,
             model_relay_response,
             xiaozhi_session,
             estop_ack,
@@ -2567,6 +3366,13 @@ def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
             "",
         )
         safety_status = build_safety_status(device_id)
+        mode_maturity = build_mode_maturity(
+            model_relay_response,
+            stereo_vision_context,
+            safety_status,
+            sensor_state,
+            simulation_readiness,
+        )
         devices.append(
             {
                 "device_id": device_id,
@@ -2597,8 +3403,10 @@ def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
                 "stereo_vision_context": stereo_vision_context,
                 "wiring_health": build_wiring_health(device_id),
                 "safety_status": safety_status,
+                "mode_maturity": mode_maturity,
                 "voice_relay": voice_relay,
                 "vla_plan_candidate": vla_plan_candidate,
+                "ik_candidate": ik_candidate,
                 "model_relay_response": model_relay_response,
                 "xiaozhi_session": xiaozhi_session,
                 "estop_ack": estop_ack,

@@ -1,0 +1,18 @@
+{
+  "before": [
+    "0.41",
+    "-0.13",
+    "0.29",
+    "0,1,-1"
+  ],
+  "after": [
+    "0.41",
+    "-0.13",
+    "0.29",
+    "0,1,-1"
+  ],
+  "persisted": true,
+  "hasMetricText": true,
+  "url": "http://106.55.62.122:3001/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/rehab-arm-control",
+  "iframeUrl": "http://106.55.62.122:3001/rehab-stitch/twin.html"
+}

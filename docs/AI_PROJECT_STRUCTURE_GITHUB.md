@@ -16,7 +16,7 @@ Current same-level modules:
 
 - `CMD / 总控`: overall VLA control room.
 - `V / 视觉`: backend camera/keyframe/stereo evidence only; no fake frontend boxes.
-- `3D / 孪生`: URDF/Three.js stage plus MuJoCo/robot-render evidence.
+- `3D / 孪生`: URDF/Three.js stage plus MuJoCo/robot-render evidence. Imported URDF models are shown in MuJoCo-shadow metric/root coordinates; the browser camera frames the model instead of re-centering or re-scaling the model geometry.
 - `EMG / 肌电`: upper-limb muscle/EMG/M55 intent evidence.
 - `AI / 模型`: inline model relay module using `apps/web/public/rehab-stitch/model-lab.html`.
 - `L / 模式`: XiaoZhi/L semantic routing and shared-resource dispatch.
@@ -30,9 +30,11 @@ IK / digital-twin evidence boundary:
 
 - `3D / 孪生` now includes an IK dry-run evidence slot inside the Stitch page `apps/web/public/rehab-stitch/twin.html`.
 - The browser can submit `target_robot_frame: {x_m, y_m, z_m}`, optional `approach_vector`, optional `gripper_orientation`, and `source = vision_calibrated | manual_platform | simulation_test` to the platform API. This is for candidate generation and review only.
-- The API returns `rehab_arm_ik_candidate_evidence_v1` with `ik_status`, `candidate_joint_trajectory`, `joint_limit_check`, `collision_or_workspace_check`, `simulation_result`, and `control_boundary = ik_candidate_evidence_only_not_motion_permission`.
-- Current joint naming follows the platform render-state/URDF map: `jian_hengxiang_joint`, `jian_zongxiang_joint`, `zhou_zongxiang_joint`, `jian_xuanzhuan_joint`, `wanbu_zongxiang_joint`, `wanbu_hengxiang_joint`. Motor IDs `3/4/5/6` are wired evidence sources; wrist IDs `1/2` remain pending.
-- The backend candidate solver now uses the remote MuJoCo 6DOF shadow limits from `192.168.3.34`: `jian_hengxiang_joint [-0.7854,1.5708]`, `jian_zongxiang_joint [-0.5236,1.7453]`, `jian_xuanzhuan_joint [-1.0472,1.0472]`, `zhou_zongxiang_joint [0.0,2.3562]`, `wanbu_zongxiang_joint [-0.7854,0.7854]`, and `wanbu_hengxiang_joint [-0.3491,0.5236]`.
+- The API returns `rehab_arm_ik_candidate_evidence_v1` with `ik_status`, `candidate_joint_trajectory`, `ik_solver_report`, `joint_limit_check`, `collision_or_workspace_check`, `simulation_result`, and `control_boundary = ik_candidate_evidence_only_not_motion_permission`.
+- Current joint naming follows the MuJoCo shadow chain order: `jian_hengxiang_joint`, `jian_zongxiang_joint`, `jian_xuanzhuan_joint`, `zhou_zongxiang_joint`, `wanbu_zongxiang_joint`, `wanbu_hengxiang_joint`. Motor IDs `3/4/5/6` are wired evidence sources; wrist IDs `1/2` remain pending. When consuming older payloads, map by joint name rather than array index.
+- The backend candidate solver now uses a damped-least-squares numerical IK pass over the remote MuJoCo 6DOF shadow chain. FK maps by joint name and uses MuJoCo order `jian_hengxiang_joint`, `jian_zongxiang_joint`, `jian_xuanzhuan_joint`, `zhou_zongxiang_joint`, `wanbu_zongxiang_joint`, `wanbu_hengxiang_joint`; `robot_render_state_v1` is also emitted in this order for new platform-generated render state.
+- The `3D / 孪生` IK coordinate panel keeps a local draft while the Stitch iframe refreshes. Dashboard polling or manual refresh must not overwrite the operator's unsent `target_robot_frame`, approach vector, gripper orientation, or source selection.
+- The solver uses remote MuJoCo 6DOF shadow limits from `192.168.3.34`: `jian_hengxiang_joint [-0.7854,1.5708]`, `jian_zongxiang_joint [-0.5236,1.7453]`, `jian_xuanzhuan_joint [-1.0472,1.0472]`, `zhou_zongxiang_joint [0.0,2.3562]`, `wanbu_zongxiang_joint [-0.7854,0.7854]`, and `wanbu_hengxiang_joint [-0.3491,0.5236]`. Solver status is residual-based (`candidate_ready`, `candidate_approximate`, or `candidate_blocked`).
 - The response includes `mujoco_shadow_validation_plan` for the remote Linux host. It targets only `/sim/medical_arm/joint_trajectory` and observes `/sim/medical_arm/joint_states` under `ROS_DOMAIN_ID=42`; it explicitly must not publish `/arm_controller/joint_trajectory`, `/joint_states`, CAN, or motor bus outputs.
 - IK output is not motion permission. Real movement still requires `L instruction -> V target/coordinate -> A candidate -> MuJoCo/URDF validation -> M33 safety decision -> NanoPi/M33 hardware chain`.
 - The platform must not add buttons or endpoints for direct motion, CAN send, raw motor setpoints, emergency-stop release, or M33 override.
@@ -41,8 +43,10 @@ Stereo depth / camera-to-robot evidence boundary:
 
 - `V / 视觉` owns ordinary dual-USB RGB camera evidence. NanoPi or the local capture workstation may upload `stereo_left` and `stereo_right` keyframes plus a `stereo_rgb_yolo_context_v1` record; the platform consumes those records as read-only V evidence.
 - The first valid stereo calibration artifact must include left/right intrinsics, distortion, rectification/extrinsics `R/T`, image size, baseline, reprojection error, `calibration_id`, and creation time. Calibration output should be stored as versioned JSON/YAML evidence, not as hardcoded constants in the UI.
+- Current first metric bench artifact is `chessboard_real_20260703_01_A4_20mm_9x6`, produced from the A4 PDF `zhang_chessboard_9x6_inner_20mm_A4.pdf` with `9x6` inner corners and `20 mm` squares. The NanoPi artifact path is `/home/pi/rehab_arm_stereo_calibration/calibrations/chessboard_real_20260703_01_A4_20mm_9x6.json` / `.yaml`, and it reports `baseline_m=0.06276126842552868` with `reprojection_error=0.4277624184705839`.
 - Before stereo calibration is present, `estimated_depth_m`, `target_3d_camera_frame`, and `target_3d_robot_frame` must stay `null`, `waiting`, or equivalent. A 6 cm physical baseline can be displayed as setup context, but it must not be treated as calibrated metric depth.
 - After stereo calibration, V may publish `target_3d_camera_frame: {x_m, y_m, z_m}` plus `disparity_px`, target/end-effector labels, bbox/center evidence, multi-frame lock state, and `control_boundary = stereo_depth_evidence_only_not_motion_permission`.
+- Stereo evidence should carry the capture mapping that produced logical `stereo_left` and `stereo_right`: OpenCV camera indices when known, left/right frame flip (`none/h/v/hv/unknown`), and whether orientation was applied before detection/depth. If physical indices are not confirmed, the mapping state must remain waiting instead of inventing `/dev/video*` truth.
 - Camera-to-robot hand-eye calibration is a separate gate. Only after a current `camera_to_robot_transform` exists may V also publish `target_3d_robot_frame: {x_m, y_m, z_m}` and mark `camera_to_robot_ready = true`.
 - Target quality gates must remain explicit: no target, low confidence, poor bbox size, stale frame, missing right-eye match, missing end-effector, or unstable multi-frame lock should hold the A side at `hold_observe`.
 - The platform must not draw fake frontend detection boxes. Any visible boxes, labels, or annotated frames must originate from backend OpenCV/C++/YOLO output or true bbox payload fields. If no real detection exists, show `waiting`, `unknown`, or the actual rejection reason.
@@ -102,7 +106,7 @@ Phone target:
 - First runnable target is a mobile Web/PWA at `apps/web/public/rehab-arm-mobile/index.html`.
 - The phone App is not Python. Python/FastAPI owns the backend API only.
 - A later Android package can wrap the same PWA surface with Capacitor or a native shell.
-- Real phone-to-M33 transport uses the old verified Android App protocol when enabled: Bluetooth Classic SPP/RFCOMM UUID `00001101-0000-1000-8000-00805F9B34FB`, UTF-8 newline-delimited JSON. Browser/PWA JavaScript cannot open RFCOMM directly; APK `1.0.6` includes a debug Capacitor/Android native SPP bridge, but physical pairing/send/ACK validation with current M33 firmware is still required before user release.
+- Real phone-to-M33 transport uses the old verified Android App protocol when enabled: Bluetooth Classic SPP/RFCOMM UUID `00001101-0000-1000-8000-00805F9B34FB`, UTF-8 newline-delimited JSON. Browser/PWA JavaScript cannot open RFCOMM directly, so the Android package needs a native bridge before this becomes a usable hardware path.
 
 Frontend ownership:
 
@@ -126,7 +130,7 @@ Safety boundary:
 - App profile, device binding, training library, plan sync, sessions, EMG summaries, and M55 intent summaries are evidence/service data.
 - Training-plan sync means a structured plan was submitted to M33 review. It is not motion permission.
 - The backend exposes `m33_legacy_spp_profile` and may generate `legacy_transport_frame` records from the safe App BLE-message contract. The phone native bridge may send only frames with `sendable=true`; status/hello/diagnostic messages that are not part of the old SPP command set have `wire_text=null`.
-- Old SPP frames are compatibility transport, not App-granted motion permission. `training_session_start_request` still requires current-version `m33_accepted`; App-side SPP send attempts do not fabricate M33 ACKs, and M33/firmware remains responsible for final hardware safety.
+- Old SPP frames are compatibility transport, not App-granted motion permission. `training_session_start_request` still requires current-version `m33_accepted`, and M33/firmware remains responsible for final hardware safety.
 - The App and API must not expose CAN frames, raw motor setpoints, torque/current commands, raw motor position/velocity commands, M33 overrides, or emergency-stop release commands.
 - M33 remains the final safety authority before any real motion.
 
