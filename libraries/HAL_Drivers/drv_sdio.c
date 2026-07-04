@@ -86,6 +86,23 @@ struct cy_pse_sdio *sdio0;
 struct cy_pse_sdio *sdio1;
 #endif /* #ifdef BSP_USING_SDIO1 */
 
+void m55_sdio_kick_change(void)
+{
+#ifdef BSP_USING_SDIO0
+    if ((sdio0 != RT_NULL) && (sdio0->host != RT_NULL))
+    {
+        mmcsd_change(sdio0->host);
+    }
+#endif /* BSP_USING_SDIO0 */
+
+#ifdef BSP_USING_SDIO1
+    if ((sdio1 != RT_NULL) && (sdio1->host != RT_NULL))
+    {
+        mmcsd_change(sdio1->host);
+    }
+#endif /* BSP_USING_SDIO1 */
+}
+
 /**
  * @brief Convert RT-Thread response type to HAL response type
  */

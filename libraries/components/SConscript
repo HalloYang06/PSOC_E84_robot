@@ -17,4 +17,7 @@ if GetDepend('PKG_USING_LVGL') or GetDepend('BSP_USING_LVGL'):
 
 objs = objs + SConscript('wifi-host-driver/SConscript')
 
+if os.path.isfile(os.path.join(cwd, 'opus', 'SConscript')):
+    objs = objs + SConscript('opus/SConscript')
+
 Return('objs')

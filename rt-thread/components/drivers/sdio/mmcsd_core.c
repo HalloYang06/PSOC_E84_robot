@@ -42,6 +42,16 @@ static rt_uint32_t mmcsd_detect_mb_pool[4];
 static struct rt_mailbox mmcsd_hotpluge_mb;
 static rt_uint32_t mmcsd_hotpluge_mb_pool[4];
 
+volatile rt_uint32_t g_mmcsd_diag_core_init = 0;
+volatile rt_uint32_t g_mmcsd_diag_thread_started = 0;
+volatile rt_uint32_t g_mmcsd_diag_change_sent = 0;
+volatile rt_uint32_t g_mmcsd_diag_change_err = 0;
+volatile rt_uint32_t g_mmcsd_diag_recv_count = 0;
+volatile rt_uint32_t g_mmcsd_diag_power_up_count = 0;
+volatile rt_uint32_t g_mmcsd_diag_cmd5_before_count = 0;
+volatile rt_uint32_t g_mmcsd_diag_cmd5_after_count = 0;
+volatile rt_int32_t g_mmcsd_diag_cmd5_last_err = 0;
+
 void mmcsd_host_lock(struct rt_mmcsd_host *host)
 {
     rt_mutex_take(&host->bus_lock, RT_WAITING_FOREVER);
@@ -619,7 +629,20 @@ RTM_EXPORT(mmcsd_wait_cd_changed);
 
 void mmcsd_change(struct rt_mmcsd_host *host)
 {
-    rt_mb_send(&mmcsd_detect_mb, (rt_ubase_t)host);
+    rt_err_t ret;
+
+    if (host == RT_NULL)
+    {
+        g_mmcsd_diag_change_err++;
+        return;
+    }
+
+    g_mmcsd_diag_change_sent++;
+    ret = rt_mb_send(&mmcsd_detect_mb, (rt_ubase_t)host);
+    if (ret != RT_EOK)
+    {
+        g_mmcsd_diag_change_err++;
+    }
 }
 
 void mmcsd_detect(void *param)
@@ -632,15 +655,20 @@ void mmcsd_detect(void *param)
     {
         if (rt_mb_recv(&mmcsd_detect_mb, (rt_ubase_t *)&host, RT_WAITING_FOREVER) == RT_EOK)
         {
+            g_mmcsd_diag_recv_count++;
             if (host->card == RT_NULL)
             {
                 mmcsd_host_lock(host);
+                g_mmcsd_diag_power_up_count++;
                 mmcsd_power_up(host);
                 mmcsd_go_idle(host);
 
                 mmcsd_send_if_cond(host, host->valid_ocr);
 
+                g_mmcsd_diag_cmd5_before_count++;
                 err = sdio_io_send_op_cond(host, 0, &ocr);
+                g_mmcsd_diag_cmd5_after_count++;
+                g_mmcsd_diag_cmd5_last_err = err;
                 if (!err)
                 {
                     if (init_sdio(host, ocr))
@@ -755,6 +783,8 @@ int rt_mmcsd_core_init(void)
 {
     rt_err_t ret;
 
+    g_mmcsd_diag_core_init++;
+
     /* initialize detect SD cart thread */
     /* initialize mailbox and create detect SD card thread */
     ret = rt_mb_init(&mmcsd_detect_mb, "mmcsdmb",
@@ -770,7 +800,11 @@ int rt_mmcsd_core_init(void)
                          &mmcsd_stack[0], RT_MMCSD_STACK_SIZE, RT_MMCSD_THREAD_PREORITY, 20);
     if (ret == RT_EOK)
     {
-        rt_thread_startup(&mmcsd_detect_thread);
+        ret = rt_thread_startup(&mmcsd_detect_thread);
+        if (ret == RT_EOK)
+        {
+            g_mmcsd_diag_thread_started++;
+        }
     }
 
     rt_sdio_init();
@@ -778,4 +812,3 @@ int rt_mmcsd_core_init(void)
     return 0;
 }
 INIT_PREV_EXPORT(rt_mmcsd_core_init);
-

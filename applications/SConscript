@@ -30,6 +30,11 @@ path = [
     os.path.join(cwd, 'ifx_deepcraft', 'models'),
     os.path.join(cwd, 'ifx_deepcraft', 'models', 'Smart_Lights_Demo'),
 ]
+opus_root = os.path.abspath(os.path.join(cwd, '..', 'libraries', 'components', 'opus'))
+if os.path.isdir(opus_root):
+    path += [
+        os.path.join(opus_root, 'include'),
+    ]
 lvgl_enabled = GetDepend('BSP_USING_LVGL') or GetDepend('PKG_USING_LVGL')
 if lvgl_enabled:
     path += [
