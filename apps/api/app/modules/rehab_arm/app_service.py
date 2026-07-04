@@ -2626,6 +2626,7 @@ WORKFLOW_EXECUTABLE_ACTIONS = {
     "PROFILE_REQUIRED",
     "TRUSTED_DEVICE_REQUIRED",
     "TRAINING_PLAN_REQUIRED",
+    "PREFLIGHT_CHECK_REQUIRED",
     "READY_TO_START",
     "FINISH_SESSION",
     "RECORD_PROGRESS",
@@ -2716,6 +2717,12 @@ def execute_workflow_action(db: Session, user_id: str, action_code: str, payload
         result = bind_device(db, user_id, RehabAppDeviceBindRequest(**data))
     elif normalized == "TRAINING_PLAN_REQUIRED":
         result = create_training_plan(db, user_id, RehabAppTrainingPlanCreate(**data))
+    elif normalized == "PREFLIGHT_CHECK_REQUIRED":
+        preflight_payload = {
+            **hint,
+            **data,
+        }
+        result = create_preflight_check(db, user_id, RehabAppPreflightCheckCreate(**preflight_payload))
     elif normalized == "READY_TO_START":
         plan_id = str(data.get("plan_id") or hint.get("plan_id") or entities.get("plan_id") or "")
         device_id = str(data.get("device_id") or hint.get("device_id") or entities.get("device_id") or "")

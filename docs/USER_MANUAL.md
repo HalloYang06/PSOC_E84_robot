@@ -291,6 +291,8 @@ The same endpoint can complete first-run setup when the returned workflow action
 
 When the action queue exposes `SYNC_PLAN_TO_M33`, the phone may call `/me/workflow/actions` with `{"action_code":"SYNC_PLAN_TO_M33","payload":{}}` to create the backend plan-sync evidence record. The expected result is `sync_status=pending`; M33 acceptance or rejection still requires the real M33 decision path and is not App-granted motion permission.
 
+When the action queue exposes `PREFLIGHT_CHECK_REQUIRED`, the phone may call `/me/workflow/actions` with pain/checklist notes merged into the advertised payload. The backend requires the current plan/device/sync to already be M33 accepted, and may still return pain-review or incomplete-checklist blockers.
+
 
 Current user-release gate:
 

@@ -2247,7 +2247,19 @@ def test_rehab_arm_app_workflow_action_endpoint_executes_safe_loop_actions(tmp_p
         headers=headers,
         json={"sync_id": sync["id"], "sync_status": "m33_accepted", "m33_reason": "accepted for action endpoint test"},
     )
-    _pass_preflight(owner_token, plan["id"], device["id"], sync["id"])
+    preflight_workflow = client.get("/api/rehab-arm/app/v1/me/workflow", headers=headers).json()["data"]
+    assert preflight_workflow["next_action"]["code"] == "PREFLIGHT_CHECK_REQUIRED"
+    assert preflight_workflow["next_action"]["payload_hint"]["sync_id"] == sync["id"]
+    preflight_action = client.post(
+        "/api/rehab-arm/app/v1/me/workflow/actions",
+        headers=headers,
+        json={"action_code": "PREFLIGHT_CHECK_REQUIRED", "payload": {"pain_before": 1.0, "notes": "workflow action preflight"}},
+    )
+    assert preflight_action.status_code == 200
+    preflight_data = preflight_action.json()["data"]
+    assert preflight_data["result"]["status"] == "passed"
+    assert preflight_data["result"]["sync_id"] == sync["id"]
+    assert preflight_data["workflow"]["phase"]["status"] == "ready_to_start"
 
     start_action = client.post(
         "/api/rehab-arm/app/v1/me/workflow/actions",
