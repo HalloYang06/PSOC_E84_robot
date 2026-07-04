@@ -51,6 +51,9 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+static uint8_t s_clock_hse_fallback;
+static uint8_t s_clock_lse_used;
+static uint8_t s_clock_lse_fallback;
 
 /* USER CODE END PV */
 
@@ -105,6 +108,21 @@ int main(void)
   {
     static const uint8_t boot_msg[] = "BOOT USART1 OK\r\n";
     (void)HAL_UART_Transmit(&huart1, (uint8_t *)boot_msg, (uint16_t)(sizeof(boot_msg) - 1U), 100U);
+    if (s_clock_hse_fallback != 0U)
+    {
+      static const uint8_t clock_msg[] = "CLOCK HSE FAIL, HSI PLL FALLBACK\r\n";
+      (void)HAL_UART_Transmit(&huart1, (uint8_t *)clock_msg, (uint16_t)(sizeof(clock_msg) - 1U), 100U);
+    }
+    if (s_clock_lse_used != 0U)
+    {
+      static const uint8_t rtc_msg[] = "RTC LSE OK\r\n";
+      (void)HAL_UART_Transmit(&huart1, (uint8_t *)rtc_msg, (uint16_t)(sizeof(rtc_msg) - 1U), 100U);
+    }
+    else if (s_clock_lse_fallback != 0U)
+    {
+      static const uint8_t rtc_msg[] = "RTC LSE FAIL, LSI FALLBACK\r\n";
+      (void)HAL_UART_Transmit(&huart1, (uint8_t *)rtc_msg, (uint16_t)(sizeof(rtc_msg) - 1U), 100U);
+    }
   }
   /* 应用服务负责事件调度与业务流水线初始化。 */
   if (app_service_init() != 0)
@@ -135,6 +153,7 @@ int main(void)
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_OscInitTypeDef RtcOscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
   RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
 
@@ -150,7 +169,20 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL9;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
-    Error_Handler();
+    s_clock_hse_fallback = 1U;
+
+    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI|RCC_OSCILLATORTYPE_HSI;
+    RCC_OscInitStruct.HSEState = RCC_HSE_OFF;
+    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+    RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+    RCC_OscInitStruct.LSIState = RCC_LSI_ON;
+    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+    RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
+    RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL16;
+    if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
@@ -166,8 +198,28 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+
+  RtcOscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSE;
+  RtcOscInitStruct.LSEState = RCC_LSE_ON;
+  if (HAL_RCC_OscConfig(&RtcOscInitStruct) == HAL_OK)
+  {
+    s_clock_lse_used = 1U;
+    PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSE;
+  }
+  else
+  {
+    s_clock_lse_fallback = 1U;
+
+    RtcOscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_LSI;
+    RtcOscInitStruct.LSIState = RCC_LSI_ON;
+    if (HAL_RCC_OscConfig(&RtcOscInitStruct) != HAL_OK)
+    {
+      Error_Handler();
+    }
+    PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+  }
+
   PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_ADC;
-  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
   PeriphClkInit.AdcClockSelection = RCC_ADCPCLK2_DIV6;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
