@@ -487,7 +487,7 @@
 
   function insertWorkflowPanel(state) {
     removeWorkflowPanel();
-    if (state) return;
+    if (!state) return;
     const workflow = state.workflow || {};
     const phase = workflow.phase || {};
     const nextAction = workflow.next_action || {};
@@ -1296,6 +1296,30 @@
 
   async function handlePrimaryAction(label) {
     const state = readState();
+    if (label.includes("新建计划") || label.includes("生成 AI 草稿") || label.includes("AI 生成")) {
+      if (pageName() !== "ai-plan.html") {
+        navigate("ai-plan.html");
+        return;
+      }
+      await generateAiTrainingDraft();
+      return;
+    }
+    if (label.includes("查看下一步") || label.includes("查看流程")) {
+      if (state.workflow && state.workflow.phase) {
+        insertWorkflowPanel(state);
+        toast(`当前步骤：${actionLabel(state.workflow.next_action || {})}`);
+      } else {
+        toast("正在读取后端工作流，请稍后重试。", "warn");
+        await refreshFromBackend();
+      }
+      return;
+    }
+    if (label.includes("刷新报告")) {
+      const refreshed = await refreshFromBackend();
+      const reports = (refreshed.bootstrap && refreshed.bootstrap.training_reports) || [];
+      toast(reports.length ? "报告已刷新。" : "还没有真实训练报告；完成训练记录后再刷新。", reports.length ? undefined : "warn");
+      return;
+    }
     if (label.includes("同步")) {
       const plan = state.plans && state.plans[0];
       const device = state.devices && state.devices[0];

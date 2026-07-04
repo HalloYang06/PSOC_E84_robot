@@ -417,6 +417,20 @@ On an Android install, first pair the M33/PSoC SPP device in system Bluetooth se
 
 Safety boundary: the debug page does not expose CAN frames, raw motor commands, motor current/torque/position/velocity, M33 override, or emergency-stop release. SPP ACKs prove transport/device response only; they do not automatically mark a plan as M33-accepted.
 
+Mobile user-view QA path:
+
+```text
+Home -> 查看下一步
+Training -> 新建计划 (AI 生成)
+AI -> 生成 AI 草稿 -> 接受为训练计划
+Device -> 一键同步训练计划 -> 蓝牙调试 / 实机验证
+Report -> 刷新报告
+Training Session -> 查看流程 -> 记录停止请求
+Profile -> 训练活动 / 查看最近记录
+```
+
+Pass criteria: every tap must either navigate to the target page, show the backend workflow panel, call a safe App endpoint, or display a clear toast explaining the missing prerequisite. The App must not show a silent button, fake realtime value, fake report/EMG/session success, or any text implying that the phone can bypass M33, release emergency stop, send raw CAN, or command motor current/torque/position/velocity.
+
 Rebuild locally:
 
 ```powershell

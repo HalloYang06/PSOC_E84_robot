@@ -1,0 +1,116 @@
+{
+  "base": "http://127.0.0.1:4178/rehab-arm-mobile",
+  "apiBase": "http://106.55.62.122:8011",
+  "consoleErrors": [
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED",
+    "Access to fetch at 'http://106.55.62.122:8011/api/rehab-arm/app/v1/public-config' from origin 'http://127.0.0.1:4178' has been blocked by CORS policy: Response to preflight request doesn't pass access control check: No 'Access-Control-Allow-Origin' header is present on the requested resource.",
+    "Failed to load resource: net::ERR_FAILED"
+  ],
+  "results": [
+    {
+      "label": "查看下一步",
+      "found": false
+    },
+    {
+      "label": "新建计划",
+      "found": true,
+      "beforeUrl": "http://127.0.0.1:4178/rehab-arm-mobile/training-library.html",
+      "afterUrl": "http://127.0.0.1:4178/rehab-arm-mobile/ai-plan.html",
+      "navigated": true,
+      "toast": "",
+      "workflowPanel": 1,
+      "bodyChanged": true,
+      "bodyStart": "网络未连接，请检查后端服务\n今日康复进度\n绑定康复设备\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n0\n训练计划\n康复工作流\nwaiting\n等待后端工作流\n登录后读取 /me/workflow，页面不再使用本地 demo 成功状态。\n下一步：等待后端下一步\n当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。\n动作队列：等待读取后端动作\n阻塞：当前无后端阻塞记录\nApp 只显示流程证据；真实运动许可仍由 M33 最终裁决。\narrow_back\n康复智能体\n云端同步\nwarning\nAI 只生成训练草稿；接受后还需要设备审核和训练前检查，不能直接启动机械臂。\nterminal\n智能体规划输入\n肌电：等待读取\n意图：等待读取\n草稿：等待生成\n疼痛自评\n2/10\n疲劳状态\n轻微\n中等\n明显疲劳\nmemory\n生成 AI 草稿\nreceipt_long\n训练草稿处方\n草稿\n等待生成训练草稿\n\n训练量\n\n点击生成草稿\n\n助力 / 速度\n\n-\n\nreport\n\n安全提示：草稿接受后仍需同步到设备、等待设备审核，并通过训练前检查后才能开始记录。\n\nAI 规划会调用后端 /ai-training-drafts/generate。模型未配置时会明确显示规则回退，不再伪装真实 AI 调用。\ncheck_circle\n接受为训练计划\n闭环执行状态\ncheck\n\n生成 AI 草稿\n\n等待后端草稿\n\n人工确认草稿\n\n接受后仅生成普通训练计划\n\n生成训练计划\n\n同步到设备\n\n等待设备审核\n\nPreflight 后开始记录\n\n等待训练前检查\n\nhome_health\n首页\nte"
+    },
+    {
+      "label": "training-new-plan-target",
+      "url": "http://127.0.0.1:4178/rehab-arm-mobile/ai-plan.html",
+      "bodyStart": "网络未连接，请检查后端服务\n今日康复进度\n绑定康复设备\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n0\n训练计划\n康复工作流\nwaiting\n等待后端工作流\n登录后读取 /me/workflow，页面不再使用本地 demo 成功状态。\n下一步：等待后端下一步\n当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。\n动作队列：等待读取后端动作\n阻塞：当前无后端阻塞记录\nApp 只显示流程证据；真实运动许可仍由 M33 最终裁决。\narrow_back\n康复智能体\n云端同步\nwarning\nAI 只生成训练草稿；接受后还需要设备审核和训练前检查，不能直接启动机械臂。\nterminal\n智能体规划输入\n肌电：等待读取\n意图：等待读取\n草稿：等待生成\n疼痛自评\n2/10\n疲劳状态\n轻微\n中等\n明显疲劳\nmemory\n生成 AI 草稿\nreceipt_long\n训练草稿处方\n草稿\n等待生成训练草稿\n\n训练量\n\n点击生成草稿\n\n助力 / 速度\n\n-\n\nreport\n\n安全提示：草稿接受后仍需同步到设备、等待设备审核，并通过训练前检查后才能开始记录。\n\nAI 规划会调用后端 /ai-training-drafts/generate。模型未配置时会明确显示规则回退，不再伪装真实 AI 调用。\ncheck_circle\n接受为训练计划\n闭环执行状态\ncheck\n\n生成 AI 草稿\n\n等待后端草稿\n\n人工确认草稿\n\n接受后仅生成普通训练计划\n\n生成训练计划\n\n同步到设备\n\n等待设备审核\n\nPreflight 后开始记录\n\n等待训练前检查\n\nhome_health\n首页\nte"
+    },
+    {
+      "label": "生成 AI 草稿",
+      "found": true,
+      "beforeUrl": "http://127.0.0.1:4178/rehab-arm-mobile/ai-plan.html",
+      "afterUrl": "http://127.0.0.1:4178/rehab-arm-mobile/ai-plan.html",
+      "navigated": false,
+      "toast": "",
+      "workflowPanel": 1,
+      "bodyChanged": false,
+      "bodyStart": "网络未连接，请检查后端服务\n今日康复进度\n绑定康复设备\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n0\n训练计划\n康复工作流\nwaiting\n等待后端工作流\n登录后读取 /me/workflow，页面不再使用本地 demo 成功状态。\n下一步：等待后端下一步\n当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。\n动作队列：等待读取后端动作\n阻塞：当前无后端阻塞记录\nApp 只显示流程证据；真实运动许可仍由 M33 最终裁决。\narrow_back\n康复智能体\n云端同步\nwarning\nAI 只生成训练草稿；接受后还需要设备审核和训练前检查，不能直接启动机械臂。\nterminal\n智能体规划输入\n肌电：等待读取\n意图：等待读取\n草稿：等待生成\n疼痛自评\n2/10\n疲劳状态\n轻微\n中等\n明显疲劳\nmemory\n生成 AI 草稿\nreceipt_long\n训练草稿处方\n草稿\n等待生成训练草稿\n\n训练量\n\n点击生成草稿\n\n助力 / 速度\n\n-\n\nreport\n\n安全提示：草稿接受后仍需同步到设备、等待设备审核，并通过训练前检查后才能开始记录。\n\nAI 规划会调用后端 /ai-training-drafts/generate。模型未配置时会明确显示规则回退，不再伪装真实 AI 调用。\ncheck_circle\n接受为训练计划\n闭环执行状态\ncheck\n\n生成 AI 草稿\n\n等待后端草稿\n\n人工确认草稿\n\n接受后仅生成普通训练计划\n\n生成训练计划\n\n同步到设备\n\n等待设备审核\n\nPreflight 后开始记录\n\n等待训练前检查\n\nhome_health\n首页\nte"
+    },
+    {
+      "label": "一键同步训练计划",
+      "found": true,
+      "beforeUrl": "http://127.0.0.1:4178/rehab-arm-mobile/device.html",
+      "afterUrl": "http://127.0.0.1:4178/rehab-arm-mobile/device.html",
+      "navigated": false,
+      "toast": "请先登录并完成设备/计划；App 不使用本地 demo 同步。",
+      "workflowPanel": 1,
+      "bodyChanged": true,
+      "bodyStart": "网络未连接，请检查后端服务\n今日康复进度\n绑定康复设备\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n0\n训练计划\n康复工作流\nwaiting\n等待后端工作流\n登录后读取 /me/workflow，页面不再使用本地 demo 成功状态。\n下一步：等待后端下一步\n当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。\n动作队列：等待读取后端动作\n阻塞：当前无后端阻塞记录\nApp 只显示流程证据；真实运动许可仍由 M33 最终裁决。\nclinical_notes\nRoboRehab 控制器\nsmart_toy\ncheck_circle\n系统状态\n\n设备状态：等待绑定与审核\n\n系统架构图\nsmartphone\n手机 APP\nhub\n等待协议门控 (Gatekeeper)\nmemory\nM55\ndns\nNanoPi\nprecision_manufacturing\n机械臂\n当前连接\n等待绑定设备\nbluetooth_connected\n等待绑定康复设备\n待绑定\nmonitor_heart\n心跳状态待上报\nM33:\n待上报\n云端:\n待上报\nbattery_charging_80\n电源状态待上报\n机械臂电量:\n机械臂电量: 待上报\nsync\n一键同步训练计划\n\n需要 M33 医疗系统授权。\n\nbug_report\n蓝牙调试 / 实机验证\nbug_report\n调试信息\nexpand_more\nrobot_2\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的\n请先登录"
+    },
+    {
+      "label": "蓝牙调试",
+      "found": true,
+      "beforeUrl": "http://127.0.0.1:4178/rehab-arm-mobile/device.html",
+      "afterUrl": "http://127.0.0.1:4178/rehab-arm-mobile/bluetooth-debug.html",
+      "navigated": true,
+      "toast": "",
+      "workflowPanel": 1,
+      "bodyChanged": true,
+      "bodyStart": "网络未连接，请检查后端服务\n今日康复进度\n绑定康复设备\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n0\n训练计划\n康复工作流\nwaiting\n等待后端工作流\n登录后读取 /me/workflow，页面不再使用本地 demo 成功状态。\n下一步：等待后端下一步\n当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。\n动作队列：等待读取后端动作\n阻塞：当前无后端阻塞记录\nApp 只显示流程证据；真实运动许可仍由 M33 最终裁决。\nclinical_notes\n蓝牙调试\nsmart_toy\n连接状态\n仅 Web/无权限\n设备名:\n未连接\nMAC:\n-\nUUID:\n00001101-0000-1000-8000-00805F9B34FB\n权限状态:\n等待读取\n后端绑定:\n未绑定\n刷新状态\n断开\n已配对设备\n\n* 需先在 Android 系统设置中完成配对\n\n读取已配对设备\n等待 Android 权限\n安装 APK 后，这里显示 Android 系统已配对的 SPP 设备。\n后端 SPP 帧\n等待后端批准帧\n只有后端生成并标记 sendable=true 的 legacy_transport_frame 会出现在这里。\n发送后端批准帧\n\n安全边界：本页不发送 CAN、原始电机、电流、力矩、速度、位置或 M33 覆盖指令。\n\nTX / RX / API 证据\n上次发送:\n-\n上次回包:\n-\n后端入库:\n-\n传感器:\n等待 sensor JSON\n等待真实蓝牙事件。\n实机验证清单\n1. Android 系统蓝牙已开启并完成配对。\n2. SPP UUID 与旧 App"
+    },
+    {
+      "label": "刷新报告",
+      "found": true,
+      "beforeUrl": "http://127.0.0.1:4178/rehab-arm-mobile/report.html",
+      "afterUrl": "http://127.0.0.1:4178/rehab-arm-mobile/report.html",
+      "navigated": false,
+      "toast": "还没有真实训练报告；完成训练记录后再刷新。",
+      "workflowPanel": 1,
+      "bodyChanged": true,
+      "bodyStart": "网络未连接，请检查后端服务\n今日康复进度\n绑定康复设备\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n0\n训练计划\n康复工作流\nwaiting\n等待后端工作流\n登录后读取 /me/workflow，页面不再使用本地 demo 成功状态。\n下一步：等待后端下一步\n当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。\n动作队列：等待读取后端动作\n阻塞：当前待报告后端阻塞记录\nApp 只显示流程证据；真实运动许可仍由 M33 最终裁决。\nclinical_notes\nRoboRehab Controller\nsmart_toy\n训练报告闭环\n--\n待生成\n\n报告生成后显示\n\ntask_alt\n待报告\n重复次数\ntimer\n待报告\n训练时长\nwarning\n2\n中断记录\n质量指标待报告待报告\nanalytics\nbalance\n稳定性待报告待报告\n待报告\nroute\n路径偏差待报告待报告\n待报告\naccessibility_new\n代偿情况待报告待报告\n待报告\n肌肉洞察待报告待报告\nmonitor_heart\n峰值疲劳 (第 3 组)\n待同步\n左右平衡待报告待报告\n待报告 / 待报告\n待报告\n待报告\nmemory\n设备审核记录\n设备通过\n0\n人工复核\n0\nauto_awesome\n\n报告建议\n\n完成真实训练记录并生成报告后，这里会显示复盘建议。\n\ncloud_sync\n刷新报告\nios_share\n等待照护协作\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我"
+    },
+    {
+      "label": "查看流程",
+      "found": true,
+      "beforeUrl": "http://127.0.0.1:4178/rehab-arm-mobile/training-session.html",
+      "afterUrl": "http://127.0.0.1:4178/rehab-arm-mobile/training-session.html",
+      "navigated": false,
+      "toast": "正在读取后端工作流，请稍后重试。",
+      "workflowPanel": 1,
+      "bodyChanged": true,
+      "bodyStart": "网络未连接，请检查后端服务\n今日康复进度\n绑定康复设备\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n0\n训练计划\n康复工作流\nwaiting\n等待后端工作流\n登录后读取 /me/workflow，页面不再使用本地 demo 成功状态。\n下一步：等待后端下一步\n当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。\n动作队列：等待读取后端动作\n阻塞：当前无后端阻塞记录\nApp 只显示流程证据；真实运动许可仍由 M33 最终裁决。\nclinical_notes\nRoboRehab Controller\n设备待绑定\nsmart_toy\n系统状态\nvital_signs\n等待设备审核，暂不能开始训练\n训练记录：待创建\nwarning\n\n等待真实训练数据\n\n当前没有可执行训练；需要设备审核和训练前检查后才能记录。\n\n进度监控\nSets --/--\n--/--\n剩余时间\n--:--\narchitecture\n角度记录待同步\n偏差：待同步\n目标\n--°\n当前\n--°\nelectric_bolt\n助力状态待设备审核待设备审核\n比例\n待审核\n方向\n待同步\narrow_upward\nmonitor_heart\n肌电信号摘要\n肱二头肌 (CH1)\n待同步\n肱三头肌 (CH2)\n待同步\n屈肌 (CH3)\n待同步\n伸肌 (CH4)\n待同步\npause\n查看流程\nblock\n记录停止请求\n参数覆盖需经过 M33 医疗审核确认。\n正在读取后端工作流，请稍后重试。"
+    },
+    {
+      "label": "记录停止请求",
+      "found": true,
+      "beforeUrl": "http://127.0.0.1:4178/rehab-arm-mobile/training-session.html",
+      "afterUrl": "http://127.0.0.1:4178/rehab-arm-mobile/training-session.html",
+      "navigated": false,
+      "toast": "App 只能记录停止请求，不能释放急停或绕过 M33。",
+      "workflowPanel": 1,
+      "bodyChanged": true,
+      "bodyStart": "网络未连接，请检查后端服务\n今日康复进度\n绑定康复设备\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n0\n训练计划\n康复工作流\nwaiting\n等待后端工作流\n登录后读取 /me/workflow，页面不再使用本地 demo 成功状态。\n下一步：等待后端下一步\n当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。\n动作队列：等待读取后端动作\n阻塞：当前无后端阻塞记录\nApp 只显示流程证据；真实运动许可仍由 M33 最终裁决。\nclinical_notes\nRoboRehab Controller\n设备待绑定\nsmart_toy\n系统状态\nvital_signs\n等待设备审核，暂不能开始训练\n训练记录：待创建\nwarning\n\n等待真实训练数据\n\n当前没有可执行训练；需要设备审核和训练前检查后才能记录。\n\n进度监控\nSets --/--\n--/--\n剩余时间\n--:--\narchitecture\n角度记录待同步\n偏差：待同步\n目标\n--°\n当前\n--°\nelectric_bolt\n助力状态待设备审核待设备审核\n比例\n待审核\n方向\n待同步\narrow_upward\nmonitor_heart\n肌电信号摘要\n肱二头肌 (CH1)\n待同步\n肱三头肌 (CH2)\n待同步\n屈肌 (CH3)\n待同步\n伸肌 (CH4)\n待同步\npause\n查看流程\nblock\n记录停止请求\n参数覆盖需经过 M33 医疗审核确认。\nApp 只能记录停止请求，不能释放急停或绕过 M33。"
+    }
+  ]
+}
