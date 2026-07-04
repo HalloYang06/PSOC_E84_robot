@@ -15,6 +15,8 @@
 - Clarified and tested the shared AI relay split for XiaoZhi/L and App training planning. App public config now advertises AI draft endpoints plus `ai_relay_contract`, and generated App drafts store `relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, `scope=rehab_training_planning`, and `does_not_touch_xiaozhi_l=true` in `context_snapshot.ai_planner`.
 - The App route reuses server-side model relay provider settings only as model configuration; it does not call or modify XiaoZhi WebSocket/L transport. Draft output remains `ai_draft_only_not_execution_permission`, then must be accepted, synced to M33, accepted by M33, and pass readiness before a training session can start.
 - Validation passed with `python -m pytest apps/api/tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`12 passed`). No frontend/Stitch files were changed for this backend contract task.
+- Continued the App AI training-planner closure. `POST /training-reports/{report_id}/draft-next-plan` now uses the same App training-planner relay path and writes the same `context_snapshot.ai_planner` metadata as direct draft generation, while `rehab_app.ai_training_draft.generated` audit events mirror `relay_channel`, `client_type`, `purpose`, and `scope` for unified platform visibility. XiaoZhi/L WebSocket, ASR/TTS, M55 input, and semantic-routing code were not changed.
+- Validation passed again with `python -m pytest apps/api/tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`12 passed`, deprecation warnings only).
 
 ## 2026-06-17
 

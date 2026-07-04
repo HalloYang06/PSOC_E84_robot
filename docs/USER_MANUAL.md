@@ -225,7 +225,7 @@ POST /api/rehab-arm/app/v1/devices/{device_id}/m33-status
 POST /api/rehab-arm/app/v1/training-sessions/start
 ```
 
-The response draft contains `context_snapshot.ai_planner`. Use those fields for platform logs: `relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, and `scope=rehab_training_planning`. XiaoZhi/L records remain under model relay / voice relay / L mode logs, so App and XiaoZhi evidence can be displayed together without sharing control authority.
+The response draft contains `context_snapshot.ai_planner`. Use those fields for platform logs: `relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, and `scope=rehab_training_planning`. The same metadata is also mirrored into `rehab_app.ai_training_draft.generated` audit events returned by `GET /safety-audit`, so platform viewers can show XiaoZhi/L and App AI records together while still filtering by client type, purpose, and scope. XiaoZhi/L records remain under model relay / voice relay / L mode logs, so App and XiaoZhi evidence can be displayed together without sharing control authority.
 
 Mobile diagnostic and offline replay:
 
@@ -244,7 +244,7 @@ BLE messages are structured App-to-M33 contract records. They can prepare App he
 
 Training reports summarize session completion, EMG overview, M55 intent overview, M33 safety evidence, and review recommendations. Report reviews can record patient/therapist notes, next-step intent, and a request-new-plan flag. They are review records only and return `training_report_review_only_not_medical_diagnosis_or_motion_permission`.
 
-The report-to-next-plan endpoint turns a finished report and latest review into an AI draft. It is useful after fatigue, pain, or therapist review indicates adjustment, but the output is still `ai_draft_only_not_execution_permission`. After the draft is accepted, run `sync-to-device`, wait for `m33_accepted`, and only then call `training-sessions/start`.
+The report-to-next-plan endpoint turns a finished report and latest review into an AI draft through the same App training-planner relay contract. It is useful after fatigue, pain, or therapist review indicates adjustment, but the output is still `ai_draft_only_not_execution_permission`. After the draft is accepted, run `sync-to-device`, wait for `m33_accepted`, and only then call `training-sessions/start`.
 
 Platform sync accepts evidence resource types including `training_plans`, `training_sessions`, `training_reports`, `training_report_reviews`, `plan_constraint_reviews`, `session_safety_events`, `ai_training_drafts`, `emg_summaries`, and `m33_decisions`.
 

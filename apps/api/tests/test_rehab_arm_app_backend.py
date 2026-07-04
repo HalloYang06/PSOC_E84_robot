@@ -1445,10 +1445,26 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert next_draft["context_snapshot"]["source"] == "training_report_review"
     assert next_draft["context_snapshot"]["report_id"] == report["id"]
     assert next_draft["context_snapshot"]["latest_review"]["id"] == review["id"]
+    assert next_draft["context_snapshot"]["ai_planner"]["relay_channel"] == "app_training_planner"
+    assert next_draft["context_snapshot"]["ai_planner"]["client_type"] == "app"
+    assert next_draft["context_snapshot"]["ai_planner"]["purpose"] == "training_plan_draft"
+    assert next_draft["context_snapshot"]["ai_planner"]["scope"] == "rehab_training_planning"
+    assert next_draft["context_snapshot"]["ai_planner"]["does_not_touch_xiaozhi_l"] is True
+    assert next_draft["context_snapshot"]["ai_planner"]["source_report_id"] == report["id"]
+    assert next_draft["context_snapshot"]["ai_planner"]["source_endpoint"] == "/api/rehab-arm/app/v1/training-reports/{report_id}/draft-next-plan"
     assert next_draft["generated_plan"]["control_boundary"] == "ai_draft_only_not_execution_permission"
     assert next_draft["generated_plan"]["sets"] == 1
     assert next_draft["generated_plan"]["reps"] == 5
     assert next_draft["generated_plan"]["safety_constraints"]["source_report_id"] == report["id"]
+    draft_audit = client.get("/api/rehab-arm/app/v1/safety-audit", headers=auth_headers(owner_token))
+    assert draft_audit.status_code == 200
+    draft_audit_events = [item for item in draft_audit.json()["data"] if item["action"] == "rehab_app.ai_training_draft.generated"]
+    assert draft_audit_events
+    assert draft_audit_events[0]["after"]["relay_channel"] == "app_training_planner"
+    assert draft_audit_events[0]["after"]["client_type"] == "app"
+    assert draft_audit_events[0]["after"]["purpose"] == "training_plan_draft"
+    assert draft_audit_events[0]["after"]["scope"] == "rehab_training_planning"
+    assert draft_audit_events[0]["after"]["does_not_touch_xiaozhi_l"] is True
     bootstrap_needs_draft_review = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert bootstrap_needs_draft_review.status_code == 200
     report_followup_accept = bootstrap_needs_draft_review.json()["data"]["report_followup_guide"]

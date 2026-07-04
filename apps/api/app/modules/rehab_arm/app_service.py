@@ -5351,6 +5351,21 @@ def _call_external_ai_training_planner(input_text: str, context_snapshot: dict, 
     return generated_plan, evidence
 
 
+def _app_ai_training_draft_audit_after(context_snapshot: dict, generated_plan: dict) -> dict:
+    planner = (context_snapshot or {}).get("ai_planner") or {}
+    return {
+        "relay_channel": planner.get("relay_channel", "app_training_planner"),
+        "client_type": planner.get("client_type", "app"),
+        "purpose": planner.get("purpose", "training_plan_draft"),
+        "scope": planner.get("scope", "rehab_training_planning"),
+        "does_not_touch_xiaozhi_l": bool(planner.get("does_not_touch_xiaozhi_l", True)),
+        "planner_status": planner.get("status", "unknown"),
+        "source": (context_snapshot or {}).get("source", "app_ai_training_draft_generate"),
+        "movement_type": (generated_plan or {}).get("movement_type", ""),
+        "control_boundary": "ai_draft_only_not_execution_permission",
+    }
+
+
 def _persist_ai_training_draft(db: Session, user_id: str, input_text: str, context_snapshot: dict, generated_plan: dict, risk_notes: list[str]) -> dict:
     draft = RehabAppAiTrainingDraft(
         user_id=user_id,
@@ -5369,7 +5384,7 @@ def _persist_ai_training_draft(db: Session, user_id: str, input_text: str, conte
         action="rehab_app.ai_training_draft.generated",
         resource_type="rehab_app_ai_training_draft",
         resource_id=draft.id,
-        after={"control_boundary": "ai_draft_only_not_execution_permission"},
+        after=_app_ai_training_draft_audit_after(context_snapshot, generated_plan),
     )
     db.commit()
     db.refresh(draft)
@@ -5432,7 +5447,7 @@ def draft_next_plan_from_report(db: Session, user_id: str, report_id: str) -> di
         should_reduce = True
     if avg_fatigue >= 0.5:
         should_reduce = True
-    generated_plan = {
+    fallback_plan = {
         "title": "复核后下一次训练草稿",
         "source": "ai_generated",
         "goal": f"Based on report {report.id}: {next_step or 'continue_current_plan'}",
@@ -5465,11 +5480,23 @@ def draft_next_plan_from_report(db: Session, user_id: str, report_id: str) -> di
         "control_boundary": "report_to_ai_draft_only_not_execution_permission",
     }
     input_text = f"Draft next plan from training report {report.id} and latest review. This must remain a draft only."
+    generated_plan, ai_evidence = _call_external_ai_training_planner(input_text, context_snapshot, fallback_plan)
+    context_snapshot = {
+        **context_snapshot,
+        "ai_planner": {
+            **ai_evidence,
+            "source_endpoint": "/api/rehab-arm/app/v1/training-reports/{report_id}/draft-next-plan",
+            "source_report_id": report.id,
+        },
+        "control_boundary": "ai_planner_context_only_not_motion_permission",
+    }
     risk_notes = [
         "复核后计划仍然只是草稿，不代表执行许可",
         "接受草稿后仍需同步到 M33 并获得当前版本 m33_accepted",
         "如疼痛或疲劳升高，应先由治疗师复核再进入下一次训练",
     ]
+    if ai_evidence.get("status") != "external_used":
+        risk_notes.append(f"模型调用未用于最终草稿：{ai_evidence.get('error') or ai_evidence.get('status')}")
     return _persist_ai_training_draft(db, user_id, input_text, context_snapshot, generated_plan, risk_notes)
 
 
