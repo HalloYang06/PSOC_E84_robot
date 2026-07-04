@@ -222,6 +222,35 @@ function text(value: unknown, fallback = "") {
   return next || fallback;
 }
 
+async function copyTextToClipboard(value: string) {
+  const content = String(value ?? "");
+  if (!content.trim()) return false;
+  try {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(content);
+      return true;
+    }
+  } catch {
+    // Cloud previews and embedded pages can expose the API but reject writes.
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = content;
+    area.setAttribute("readonly", "true");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    area.style.top = "0";
+    document.body.appendChild(area);
+    area.focus();
+    area.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(area);
+    return copied;
+  } catch {
+    return false;
+  }
+}
+
 function isRawIdentifier(value: unknown) {
   const raw = text(value, "");
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
@@ -3737,11 +3766,14 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
 
   async function copyRelayInvokeToken() {
     if (!relayExportToken) return;
-    try {
-      await navigator.clipboard.writeText(relayExportToken);
+    const copied = await copyTextToClipboard(relayExportToken);
+    if (copied) {
       setRelayExportState("copied");
-    } catch {
+      setRelayExportError("");
+      window.setTimeout(() => setRelayExportState("created"), 1600);
+    } else {
       setRelayExportState("created");
+      setRelayExportError("复制失败：浏览器拒绝剪贴板权限，请手动选中 token 复制。");
     }
   }
 
@@ -5940,15 +5972,16 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           event.preventDefault();
           const value = button.dataset.copyValue || "";
           if (!value) return;
-          try {
-            await navigator.clipboard.writeText(value);
+          const copied = await copyTextToClipboard(value);
+          if (copied) {
             button.textContent = "已复制";
             setText('[data-role="model-export-state"]', "已复制到剪贴板");
             window.setTimeout(() => {
               button.innerHTML = '<span class="material-symbols-outlined text-[12px]">content_copy</span> 复制';
             }, 1200);
-          } catch {
+          } else {
             button.textContent = "复制失败";
+            setText('[data-role="model-export-state"]', "复制失败：请手动选中内容复制");
           }
         });
       });
@@ -6572,13 +6605,14 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         }, 1200);
       });
       bindDataButton('[data-role="data-copy-packet"]', (button) => {
-        void navigator.clipboard.writeText(packet?.textContent || JSON.stringify(dataPacket(), null, 2)).then(() => {
+        void copyTextToClipboard(packet?.textContent || JSON.stringify(dataPacket(), null, 2)).then((copied) => {
+          if (!copied) return;
           const original = button.innerHTML;
           button.innerHTML = '<span class="material-symbols-outlined text-[18px]">done</span>';
           window.setTimeout(() => {
             button.innerHTML = original;
           }, 1200);
-        }).catch(() => undefined);
+        });
       });
       bindDataButton('[data-role="data-open-workbench"]', () => {
         window.location.href = `/projects/${projectId}/robotics?tab=dataset&device=${encodeURIComponent(selected?.device_id ?? "")}`;
@@ -6955,13 +6989,14 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       });
       bindLogsButton('[data-role="logs-copy-packet"]', (button) => {
         const value = packet?.textContent || JSON.stringify(logsEvidenceSnapshot(), null, 2);
-        void navigator.clipboard.writeText(value).then(() => {
+        void copyTextToClipboard(value).then((copied) => {
+          if (!copied) return;
           const original = button.innerHTML;
           button.innerHTML = '<span class="material-symbols-outlined text-[18px]">done</span>';
           window.setTimeout(() => {
             button.innerHTML = original;
           }, 1200);
-        }).catch(() => undefined);
+        });
       });
       bindLogsButton('[data-role="logs-open-vision"]', () => {
         setActiveModule("vision");
