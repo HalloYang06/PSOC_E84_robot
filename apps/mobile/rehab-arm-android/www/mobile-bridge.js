@@ -638,8 +638,8 @@
 
   function renderAiPlanPage(state) {
     if (pageName() !== "ai-plan.html") return;
-    const draft = state.lastAiDraft || ((state.bootstrap || {}).latest_open_ai_draft) || null;
-    const acceptedPlan = !draft ? state.lastAcceptedAiPlan : null;
+    const acceptedPlan = state.lastAcceptedAiPlan || null;
+    const draft = acceptedPlan ? null : (state.lastAiDraft || ((state.bootstrap || {}).latest_open_ai_draft) || null);
     if (acceptedPlan) {
       const sets = acceptedPlan.sets == null ? "-" : acceptedPlan.sets;
       const reps = acceptedPlan.reps == null ? "-" : acceptedPlan.reps;
