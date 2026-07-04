@@ -1,0 +1,19 @@
+{
+  "shot": "D:/ai合作产品/docs/screenshots/rehab-arm-profile-calendar-qa/profile-mobile-cloud-final.png",
+  "result": {
+    "url": "http://106.55.62.122:3001/rehab-arm-mobile/profile.html",
+    "hasOct2023": false,
+    "hasFakeWeekly": false,
+    "hasSystemOk": false,
+    "hasPatientA": false,
+    "hasDebugPanel": false,
+    "topStatusTextPresent": true,
+    "month": "2026年7月",
+    "weekly": "暂无本周训练记录",
+    "logButton": "查看最近记录",
+    "logTarget": "ai-plan.html",
+    "firstTimelineTarget": "ai-plan.html",
+    "status": "已连接后端｜下一步：审核 AI 训练草稿",
+    "bodyStart": "已连接后端｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n6\n训练计划\nclinical_notes\n灵动康复 ArmControl\n已同步\nsmart_toy\nRehab App User\nID: 待同步\nrelax\n\n康复阶段待完善\n\nwarning\n\n医疗约束\n\n暂无后端医疗约束记录\n\n待绑定设备\nsettings_input_component\nprecision_manufacturing\n\n等待绑定康复设备\n\n未绑定设备\n\n待同步\nsensors\n\n等待肌电记录\n\n暂无肌电\n\n待同步\nadd\n配对新设备\ncalendar_month\n训练活动\n2026年7月\n一\n二\n三\n四\n五\n六\n日\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n1\n2\n3\n4\n\n暂无本周训练记录\n\n查看最近记录\nAI 草稿已接受\n07/04 10:34\nAI 草稿 · 草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。\nAI 草稿已接受\n07/04 10:29\nAI 草稿 · 草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。\nAI 草稿待审核\n07/04 10:25\nAI 草稿 · AI 草稿不能直接授予运动权限。\nAI 草稿已接受\n07/04 10:23\nAI 草稿 · 草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。\ncloud_sync\n云端同步\n\n已同步\n\nrecord_voice_over\n语音入口\n\n由平台配置\n\nsupervisor_account\n照护协作\n\n待邀请\n\nshield_lock\n数据隐私与通知\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的"
+  }
+}
