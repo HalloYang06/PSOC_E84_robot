@@ -359,6 +359,7 @@
 
   function timelineKindLabel(kind) {
     return {
+      training_plan: "训练计划",
       training_session: "训练记录",
       training_report: "训练报告",
       ai_training_draft: "AI 草稿",
@@ -372,8 +373,29 @@
     if (code.includes("AI_DRAFT") || item.kind === "ai_training_draft") return "ai-plan.html";
     if (code.includes("REPORT") || item.kind === "training_report") return "report.html";
     if (code.includes("SESSION") || item.kind === "training_session") return "report.html";
+    if (code.includes("PLAN") || item.kind === "training_plan") return "training-library.html";
     if (item.kind === "offline_queue_item") return "device.html";
     return "training-library.html";
+  }
+
+  function timelineBadge(item) {
+    return {
+      training_plan: "计",
+      training_session: "训",
+      training_report: "报",
+      ai_training_draft: "AI",
+      offline_queue_item: "离"
+    }[item.kind] || "证";
+  }
+
+  function timelineDayTitle(dayItems) {
+    if (!dayItems.length) return "无康复活动";
+    const counts = dayItems.reduce((acc, item) => {
+      const label = timelineKindLabel(item.kind);
+      acc[label] = (acc[label] || 0) + 1;
+      return acc;
+    }, {});
+    return Object.keys(counts).map((label) => `${label} ${counts[label]} 条`).join(" / ");
   }
 
   function renderProfileTrainingActivity(state) {
@@ -389,10 +411,10 @@
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekEnd.getDate() + 7);
     const items = profileTimelineItems(state);
-    const trainingItems = items.filter((item) => item.kind === "training_session");
-    const currentWeekSessions = trainingItems.filter((item) => item._date >= weekStart && item._date < weekEnd);
+    const currentWeekItems = items.filter((item) => item._date >= weekStart && item._date < weekEnd);
+    const currentWeekSessions = items.filter((item) => item.kind === "training_session" && item._date >= weekStart && item._date < weekEnd);
     const byDay = new Map();
-    trainingItems.forEach((item) => {
+    items.forEach((item) => {
       const key = dateKey(item._date);
       const list = byDay.get(key) || [];
       list.push(item);
@@ -400,9 +422,9 @@
     });
     if (monthNode) monthNode.textContent = today.toLocaleDateString("zh-CN", { year: "numeric", month: "long" });
     if (countNode) {
-      countNode.textContent = currentWeekSessions.length
-        ? `${currentWeekSessions.length} 次本周真实训练记录`
-        : "暂无本周训练记录";
+      countNode.textContent = currentWeekItems.length
+        ? `${currentWeekItems.length} 条本周康复活动，其中 ${currentWeekSessions.length} 次训练记录`
+        : "暂无本周康复活动";
     }
     const days = [];
     const first = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -422,8 +444,15 @@
         ? "bg-primary-container text-on-primary-container border border-primary shadow-sm"
         : "bg-surface-container-low text-on-surface-variant border border-outline-variant/20";
       const todayClass = isToday ? " ring-2 ring-primary ring-offset-1 ring-offset-surface-container-lowest" : "";
-      const title = dayItems.length ? `${dayItems.length} 次训练记录` : "无训练记录";
-      return `<div class="aspect-square rounded-md flex items-center justify-center text-data-viz font-data-viz ${activeClass}${todayClass}" title="${escapeHtml(title)}">${day.getDate()}</div>`;
+      const title = timelineDayTitle(dayItems);
+      const target = dayItems.length ? timelineTarget(dayItems[0]) : "training-library.html";
+      const badges = dayItems.slice(0, 2).map((item) => `<span class="text-[9px] leading-none font-bold">${escapeHtml(timelineBadge(item))}</span>`).join("");
+      return [
+        `<button type="button" data-arm-timeline-target="${target}" class="aspect-square rounded-md flex flex-col items-center justify-center gap-1 text-data-viz font-data-viz ${activeClass}${todayClass}" title="${escapeHtml(title)}">`,
+        `<span>${day.getDate()}</span>`,
+        dayItems.length ? `<span class="flex items-center gap-0.5">${badges}</span>` : "",
+        "</button>"
+      ].join("");
     }).join("");
     grid.innerHTML = headerHtml + dayHtml;
     if (logNode) {

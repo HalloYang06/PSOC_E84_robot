@@ -945,7 +945,7 @@ def _app_daily_action_guide(
 
 
 def _timeline_status_tone(kind: str, status: str) -> str:
-    if status in {"reviewed", "accepted", "finished", "replayed", "synced"}:
+    if status in {"reviewed", "accepted", "finished", "replayed", "synced", "active"}:
         return "success"
     if status in {"review_required", "open", "queued", "failed", "paused"}:
         return "warning"
@@ -958,7 +958,14 @@ def _timeline_status_tone(kind: str, status: str) -> str:
 
 def _timeline_display(kind: str, status: str, title: str, detail: dict) -> dict:
     tone = _timeline_status_tone(kind, status)
-    if kind == "training_session":
+    if kind == "training_plan":
+        copy = {
+            "active": ("训练计划已创建", "计划已进入用户训练库；真实训练仍需同步 M33、接受和 preflight。"),
+            "draft": ("训练计划草稿", "草稿需要用户或治疗师确认后再进入 M33 同步。"),
+            "archived": ("训练计划已归档", "该计划不会作为当前训练入口。"),
+            "rejected": ("训练计划已拒绝", "该计划不会进入训练流程。"),
+        }.get(status, (title, "训练计划证据。"))
+    elif kind == "training_session":
         copy = {
             "finished": ("训练记录已完成", "已结束训练记录，等待报告或复盘证据。"),
             "cancelled": ("训练记录已取消", "该训练记录已关闭，不会生成完成报告。"),
@@ -989,6 +996,14 @@ def _timeline_display(kind: str, status: str, title: str, detail: dict) -> dict:
 
 
 def _timeline_primary_action(kind: str, status: str, source_id: str, detail: dict) -> dict:
+    if kind == "training_plan":
+        return {
+            "code": "VIEW_TRAINING_PLAN",
+            "label": "查看训练计划",
+            "endpoint": f"/api/rehab-arm/app/v1/training-plans/{source_id}",
+            "method": "GET",
+            "payload_hint": {"plan_id": source_id},
+        }
     if kind == "training_session":
         return {
             "code": "VIEW_SESSION",
@@ -1071,8 +1086,24 @@ def _timeline_sort_value(item: dict) -> str:
     return value.isoformat() if hasattr(value, "isoformat") else str(value or "")
 
 
-def _app_care_timeline(sessions: list[dict], reports: list[dict], drafts: list[dict], offline_items: list[dict], limit: int = 8) -> dict:
+def _app_care_timeline(plans: list[dict], sessions: list[dict], reports: list[dict], drafts: list[dict], offline_items: list[dict], limit: int = 12) -> dict:
     items: list[dict] = []
+    for plan in plans:
+        items.append(
+            _timeline_item(
+                "training_plan",
+                plan.get("updated_at") or plan.get("created_at"),
+                "训练计划",
+                plan["status"],
+                plan["id"],
+                {
+                    "plan_id": plan["id"],
+                    "movement_type": plan.get("movement_type"),
+                    "source": plan.get("source"),
+                    "version": plan.get("version"),
+                },
+            )
+        )
     for session in sessions:
         items.append(
             _timeline_item(
@@ -2519,7 +2550,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
         },
     )
     home_status_guide = _app_home_status_guide(daily_action_guide, care_summary, home_related_actions)
-    care_timeline = _app_care_timeline(sessions, reports, all_drafts, offline_queue)
+    care_timeline = _app_care_timeline(plans, sessions, reports, all_drafts, offline_queue)
     return {
         "profile": profile,
         "devices": devices,

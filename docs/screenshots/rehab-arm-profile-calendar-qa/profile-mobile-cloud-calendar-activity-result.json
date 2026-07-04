@@ -1,0 +1,21 @@
+{
+  "login": {
+    "ok": true,
+    "hasToken": true
+  },
+  "result": {
+    "loginOk": true,
+    "month": "2026年7月",
+    "weekly": "12 条本周康复活动，其中 0 次训练记录",
+    "activeCellCount": 1,
+    "activeCellText": [
+      "4AIAI"
+    ],
+    "firstActiveTarget": "ai-plan.html",
+    "logText": "AI 草稿待审核07/04 13:22AI 草稿 · AI 草稿不能直接授予运动权限。AI 草稿待审核07/04 13:21AI 草稿 · AI 草稿不能直接授予运动权限。训练计划草稿07/04 13:18训练计划 · 草稿需要用户或治疗师确认后再进入 M33 同步。AI 草稿已接受07/04 13:18AI 草稿 · 草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。",
+    "hasTrainingPlanLabel": true,
+    "hasAiDraftLabel": true,
+    "horizontalOverflow": false
+  },
+  "consoleErrors": []
+}

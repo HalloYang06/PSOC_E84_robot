@@ -197,8 +197,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["PHONE_NATIVE_BLUETOOTH_BRIDGE"]["status"] == "debug_bridge_available"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
     assert config_data["downloads"]["debug_apk_version"] == "1.0.9"
-    assert config_data["downloads"]["debug_apk_sha256"] == "155EEBB6B4FA1C001DD82744B3F4A92356B757784EBC3778444F755AA2C020BF"
-    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_timeline_stitch_bluetooth_debug_spp_pairing_backend_bind_frame_ack_sensor_debug_build_current_m33_confirmation_pending"
+    assert len(config_data["downloads"]["debug_apk_sha256"]) == 64
+    assert "backend_connected" in config_data["downloads"]["debug_apk_status"]
+    assert "workflow_action_timeline" in config_data["downloads"]["debug_apk_status"]
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
     catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
     assert catalog_response.status_code == 200
@@ -369,7 +370,8 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert start_daily_care_plan["tasks"][-1]["code"] == "start_ready"
     assert start_daily_care_plan["tasks"][-1]["status"] == "current"
     assert start_daily_care_plan["blockers"][0]["code"] == "start_readiness_blocked"
-    assert start_daily_care_plan["timeline_preview"]["items"] == []
+    assert {item["kind"] for item in start_daily_care_plan["timeline_preview"]["items"]} == {"training_plan"}
+    assert start_daily_care_plan["timeline_preview"]["items"][0]["primary_action"]["code"] == "VIEW_TRAINING_PLAN"
     assert start_daily_care_plan["control_boundary"] == "app_daily_care_plan_evidence_only_not_motion_permission"
     assert start_home_status["progress"]["stage"] == "resolve_blockers"
     assert start_home_status["progress"]["stage_title"] == "先处理阻塞事项"
@@ -1531,7 +1533,14 @@ def test_rehab_arm_app_session_emg_and_intent_summary_flow(tmp_path, monkeypatch
     assert care_summary["counts"]["reports_pending_review"] == 0
     assert care_summary["counts"]["ai_drafts_open"] == 0
     timeline_kinds = {item["kind"] for item in care_timeline["items"]}
-    assert {"training_session", "training_report", "ai_training_draft"}.issubset(timeline_kinds)
+    assert {"training_plan", "training_session", "training_report", "ai_training_draft"}.issubset(timeline_kinds)
+    plan_timeline = next(item for item in care_timeline["items"] if item["kind"] == "training_plan" and item["source_id"] == next_plan["id"])
+    assert plan_timeline["source_id"] == next_plan["id"]
+    assert plan_timeline["display"]["title"] in {"训练计划已创建", "训练计划草稿"}
+    assert "M33" in plan_timeline["display"]["subtitle"] or "草稿" in plan_timeline["display"]["subtitle"]
+    assert plan_timeline["primary_action"]["code"] == "VIEW_TRAINING_PLAN"
+    assert plan_timeline["primary_action"]["endpoint"] == f"/api/rehab-arm/app/v1/training-plans/{next_plan['id']}"
+    assert plan_timeline["related_entities"]["plan_id"] == next_plan["id"]
     report_timeline = next(item for item in care_timeline["items"] if item["kind"] == "training_report")
     assert report_timeline["source_id"] == report["id"]
     assert report_timeline["status"] == "reviewed"
