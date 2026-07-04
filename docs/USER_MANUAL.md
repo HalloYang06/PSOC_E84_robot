@@ -254,15 +254,15 @@ APK details:
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0.5 debug
-versionCode: 6
-size: 4,173,798 bytes
-sha256: D29649F38FA7684ED87EE9F42139DFED3C93FC38C6D8933ABC62650285DBF45C
+version: 1.0.6 debug
+versionCode: 7
+size: 4,180,750 bytes
+sha256: 673282444B58F198895A5F9A036A22542A9B0BA41F615F1809925FE60753CB05
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
 
-APK 1.0.5 behavior:
+APK 1.0.6 behavior:
 
 ```text
 - Starts with cloud API base http://106.55.62.122:8011
@@ -274,6 +274,7 @@ APK 1.0.5 behavior:
 - Calls /api/rehab-arm/app/v1/me/workflow and shows backend phase, next action, action queue, blockers, and forbidden actions
 - Calls /api/rehab-arm/app/v1/me/workflow/actions for backend-allowed safe workflow actions
 - Renders a real care timeline from the `/api/rehab-arm/app/v1/me` response `care_timeline` for sessions, reports, AI drafts, and offline evidence
+- Includes Android native Bluetooth Classic SPP bridge for already paired M33 devices. During plan sync, the phone creates a backend `training_plan_push` BLE-message and writes `legacy_transport_frame.wire_text` only when the backend marks it `sendable=true`.
 ```
 
 Use the existing cloud test account `3245056131@qq.com` / `1234` for internal verification only. This debug build is still not a medical device release: it displays backend workflow/readiness evidence and does not grant BLE, CAN, motor, or M33 override authority.
@@ -298,8 +299,8 @@ Current user-release gate:
 
 ```text
 status: blocked
-reason: APK 1.0.5 connects to backend public-config/catalog/bootstrap/workflow, renders backend care timeline/daily workflow state, can execute safe workflow actions, and now receives the old verified SPP protocol contract, but current M33 firmware compatibility and the Android native Bluetooth Classic bridge are still pending.
-hardware_protocol: legacy SPP profile available; current M33 confirmation and phone native RFCOMM bridge required before motion-adjacent UX can be certified.
+reason: APK 1.0.6 connects to backend public-config/catalog/bootstrap/workflow, renders backend care timeline/daily workflow state, can execute safe workflow actions, receives the old verified SPP protocol contract, and includes an Android native SPP bridge. Current M33 firmware compatibility plus physical pairing/send/ACK validation are still pending.
+hardware_protocol: legacy SPP profile and debug native RFCOMM bridge available; current M33 confirmation plus physical phone-to-device send/ACK validation required before motion-adjacent UX can be certified.
 ```
 
 Backend readiness endpoints:
@@ -310,7 +311,7 @@ GET /api/rehab-arm/app/v1/me
 GET /api/rehab-arm/app/v1/me/workflow
 ```
 
-`public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, old SPP protocol availability, and native phone-bridge blockers. Authenticated `/me/workflow` is the phone workflow contract for `phase`, `next_action`, `action_queue`, `blockers`, primary entity ids, and `forbidden_actions`. These responses are workflow/evidence guidance only and do not grant Bluetooth send authority, CAN, motor, or M33 override authority.
+`public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, old SPP protocol availability, debug native phone-bridge status, and physical hardware-validation blockers. Authenticated `/me/workflow` is the phone workflow contract for `phase`, `next_action`, `action_queue`, `blockers`, primary entity ids, and `forbidden_actions`. These responses are workflow/evidence guidance only and do not grant Bluetooth send authority, CAN, motor, or M33 override authority.
 
 Authenticated `/me.daily_care_plan` is the phone home source for the user's current daily checklist. It includes the primary task, next action, blocker details, progress totals, counts, and a short care-timeline preview. Frontend shells should render this field instead of using demo progress cards or recomputing the task order.
 

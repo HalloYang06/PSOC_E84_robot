@@ -20,7 +20,9 @@
     workflow: null,
     publicConfig: null,
     latestEmg: null,
+    nativeSpp: null,
     lastSync: null,
+    lastLegacySppSend: null,
     online: false,
     authenticated: false,
     statusText: "正在连接后端..."
@@ -51,6 +53,32 @@
 
   function token() {
     return localStorage.getItem(TOKEN_KEY) || "";
+  }
+
+  function nativeSppPlugin() {
+    return window.Capacitor && window.Capacitor.Plugins ? window.Capacitor.Plugins.RehabArmSpp : null;
+  }
+
+  async function readNativeSppStatus() {
+    const plugin = nativeSppPlugin();
+    if (!plugin || !plugin.status) {
+      return { available: false, connected: false, permission: "web_unavailable", controlBoundary: "pwa_no_bluetooth_classic_spp" };
+    }
+    try {
+      return await plugin.status();
+    } catch (error) {
+      return { available: true, connected: false, permission: "error", error: error.message || String(error), controlBoundary: "android_spp_transport_only_m33_final_authority" };
+    }
+  }
+
+  function nativeDeviceSelector(device) {
+    if (!device) return {};
+    const id = device.m33_device_id || "";
+    const looksLikeMac = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/i.test(id);
+    return {
+      address: looksLikeMac ? id : "",
+      name: device.ble_name || (looksLikeMac ? "" : id)
+    };
   }
 
   async function api(path, options) {
@@ -401,6 +429,7 @@
       '<div style="font-size:13px;font-weight:900;color:#92400e;margin-bottom:6px">真实后端状态</div>',
       `<div>账号：${state.authenticated ? "已登录" : "未登录"}；设备：${devices.length}；计划：${plans.length}</div>`,
       `<div>门禁：${readiness.status || "等待读取"}</div>`,
+      `<div>蓝牙桥：${(state.nativeSpp && state.nativeSpp.connected) ? "SPP 已连接" : (state.nativeSpp && state.nativeSpp.available) ? "SPP 待连接/待权限" : "仅 Web，不支持 SPP"}</div>`,
       `<div>阻塞：${primaryBlocker.title || "等待完成康复档案、设备和硬件协议"}</div>`,
       '<div style="margin-top:6px;color:#9a3412">页面内训练/M33/AI 文案均为后端证据展示，不代表运动许可。</div>'
     ].join("");
@@ -505,12 +534,14 @@
       const workflowEndpoint = (publicConfig.rehab_app && publicConfig.rehab_app.workflow_endpoint) || "/api/rehab-arm/app/v1/me/workflow";
       const workflow = await api(workflowEndpoint);
       const latestEmg = await api("/api/rehab-arm/app/v1/emg/latest").catch(() => null);
+      const nativeSpp = await readNativeSppStatus();
       const nextState = {
         ...state,
         publicConfig,
         catalog,
         bootstrap,
         workflow,
+        nativeSpp,
         profile: bootstrap.profile,
         devices: bootstrap.devices || [],
         plans: bootstrap.training_plans || [],
@@ -555,6 +586,41 @@
     await refreshFromBackend();
   }
 
+  async function connectNativeSpp(device, profile) {
+    const plugin = nativeSppPlugin();
+    if (!plugin || !plugin.connect) {
+      throw new Error("当前运行环境不是 Android 原生包，不能打开 Bluetooth Classic SPP。");
+    }
+    if (plugin.requestPermissions) {
+      await plugin.requestPermissions().catch(() => null);
+    }
+    const selector = nativeDeviceSelector(device);
+    return plugin.connect({
+      ...selector,
+      uuid: (profile && profile.standard_uuid) || "00001101-0000-1000-8000-00805F9B34FB"
+    });
+  }
+
+  async function sendLegacyFrameToNative(device, frame, profile) {
+    if (!frame || !frame.sendable || !frame.wire_text) {
+      return { sent: false, reason: "legacy_frame_not_sendable" };
+    }
+    const plugin = nativeSppPlugin();
+    if (!plugin || !plugin.sendLegacyFrame) {
+      return { sent: false, reason: "android_native_spp_plugin_unavailable" };
+    }
+    let status = await readNativeSppStatus();
+    if (!status.connected) {
+      status = await connectNativeSpp(device, profile);
+    }
+    return plugin.sendLegacyFrame({
+      sendable: true,
+      wireText: frame.wire_text,
+      messageType: frame.json && frame.json.type,
+      controlBoundary: "android_spp_transport_only_m33_final_authority"
+    });
+  }
+
   async function handlePrimaryAction(label) {
     const state = readState();
     if (label.includes("同步")) {
@@ -568,8 +634,15 @@
         method: "POST",
         body: JSON.stringify({ device_id: device.id })
       });
-      writeState({ ...state, lastSync: sync });
-      toast("训练计划已提交给 M33 审核，不是运动许可。");
+      const bleMessage = await api(`/api/rehab-arm/app/v1/devices/${device.id}/ble/messages`, {
+        method: "POST",
+        body: JSON.stringify({ message_type: "training_plan_push", plan_id: plan.id })
+      });
+      const profile = (state.publicConfig && state.publicConfig.m33_legacy_spp_profile) || (state.catalog && state.catalog.m33_legacy_spp_profile);
+      const frame = bleMessage && bleMessage.payload ? bleMessage.payload.legacy_transport_frame : null;
+      const sendResult = await sendLegacyFrameToNative(device, frame, profile).catch((error) => ({ sent: false, reason: error.message || String(error) }));
+      writeState({ ...state, lastSync: sync, lastBleMessage: bleMessage, lastLegacySppSend: sendResult, nativeSpp: await readNativeSppStatus() });
+      toast(sendResult.sent ? "训练计划已通过旧 SPP 帧写入手机蓝牙桥；M33 仍需确认。" : `已创建后端蓝牙帧，但手机未发送：${sendResult.reason}`, sendResult.sent ? undefined : "warn");
       return;
     }
     if (label.includes("开始训练") || label.includes("play_arrow")) {

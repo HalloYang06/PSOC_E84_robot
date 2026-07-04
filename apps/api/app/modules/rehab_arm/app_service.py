@@ -2285,9 +2285,9 @@ def _app_mobile_readiness_guide(
         },
         {
             "code": "PHONE_NATIVE_BLUETOOTH_BRIDGE",
-            "status": "pending",
-            "title": "等待手机原生蓝牙桥",
-            "detail": "PWA JavaScript 不能直接打开 Bluetooth Classic RFCOMM，安装包需要 Capacitor/Android 原生桥接后才能真正连 M33。",
+            "status": "debug_bridge_available",
+            "title": "调试安装包已接入手机原生蓝牙桥",
+            "detail": "APK 1.0.6 内置 Capacitor/Android Bluetooth Classic SPP 桥；仍需用当前 M33 固件和已配对设备实测发送/ACK。",
         },
     ]
 
@@ -2311,10 +2311,10 @@ def _app_mobile_readiness_guide(
     )
     blockers.append(
         {
-            "code": "phone_native_bluetooth_bridge_pending",
+            "code": "phone_native_bluetooth_bridge_hardware_validation_pending",
             "severity": "warning",
-            "title": "手机原生蓝牙桥待接入",
-            "clear_condition": "安装包需要 Android/Capacitor 原生层打开 Bluetooth Classic SPP，并写入后端生成的 legacy_transport_frame.wire_text。",
+            "title": "手机原生蓝牙桥待实机验证",
+            "clear_condition": "安装 APK 1.0.6，在 Android 蓝牙设置中先配对 M33，再通过后端生成的 legacy_transport_frame.wire_text 完成实机发送和 M33 ACK 记录。",
             "related_action_codes": ["BIND_TRUSTED_DEVICE", "UPLOAD_DEVICE_DIAGNOSTIC"],
         }
     )

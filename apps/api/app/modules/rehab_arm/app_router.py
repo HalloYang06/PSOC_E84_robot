@@ -176,9 +176,9 @@ def api_public_config(request: Request):
             "m33_legacy_spp_profile": LEGACY_M33_SPP_PROFILE,
             "downloads": {
                 "debug_apk_url": _download_url(api_base),
-                "debug_apk_version": "1.0.5",
-                "debug_apk_sha256": "D29649F38FA7684ED87EE9F42139DFED3C93FC38C6D8933ABC62650285DBF45C",
-                "debug_apk_status": "backend_connected_workflow_action_timeline_legacy_spp_contract_debug_build_current_m33_confirmation_pending",
+                "debug_apk_version": "1.0.6",
+                "debug_apk_sha256": "673282444B58F198895A5F9A036A22542A9B0BA41F615F1809925FE60753CB05",
+                "debug_apk_status": "backend_connected_workflow_action_timeline_legacy_spp_native_bridge_debug_build_current_m33_confirmation_pending",
             },
             "mobile_boot_flow": [
                 {"step": "load_public_config", "endpoint": "/api/rehab-arm/app/v1/public-config", "auth_required": False},
@@ -190,7 +190,7 @@ def api_public_config(request: Request):
             ],
             "release_gate": {
                 "status": "blocked",
-                "reason": "debug_apk_connects_backend_and_has_legacy_spp_contract_but_current_m33_firmware_confirmation_and_native_phone_bridge_are_still_required",
+                "reason": "debug_apk_connects_backend_and_has_legacy_spp_native_bridge_but_current_m33_firmware_confirmation_and_physical_pairing_validation_are_still_required",
                 "checks": [
                     {
                         "code": "PUBLIC_CONFIG_AVAILABLE",
@@ -214,15 +214,15 @@ def api_public_config(request: Request):
                     },
                     {
                         "code": "PHONE_NATIVE_BLUETOOTH_BRIDGE",
-                        "status": "pending",
-                        "description": "Capacitor/PWA shell needs a native Bluetooth Classic SPP bridge; browser JavaScript cannot open RFCOMM directly.",
+                        "status": "debug_bridge_available",
+                        "description": "APK 1.0.6 includes a Capacitor/Android Bluetooth Classic SPP bridge. User release still needs physical pairing/send/ACK validation with current M33 firmware.",
                     },
                 ],
                 "required_frontend_work": [
                     "replace the temporary bridge login panel with Stitch-designed screens",
                     "render catalog/profile/device/plan/readiness/daily_care_plan fields inside Stitch pages",
                     "preserve Authorization: Bearer {access_token} on rehab app API calls",
-                    "use the legacy SPP profile for phone-to-M33 Bluetooth Classic transport instead of Web Bluetooth GATT",
+                    "use the legacy SPP profile through the Android native bridge for phone-to-M33 Bluetooth Classic transport instead of Web Bluetooth GATT",
                 ],
             },
             "required_profile_fields": ["affected_side", "rehab_stage", "pain_baseline"],
