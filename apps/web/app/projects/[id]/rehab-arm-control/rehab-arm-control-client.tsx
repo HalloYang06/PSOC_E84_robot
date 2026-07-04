@@ -5794,7 +5794,12 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         const waveformCards = Array.from(panel?.querySelectorAll<HTMLElement>(".waveform-container") ?? []).slice(0, 4);
         waveformCards.forEach((card, index) => {
           card.setAttribute("data-codex-emg-channel", String(index + 1));
-          const labelNode = card.querySelector<HTMLElement>(".absolute.top-2.left-2");
+          const labelNode = Array.from(card.querySelectorAll<HTMLElement>("div"))
+            .find((node) => (
+              node.classList.contains("absolute")
+              && node.classList.contains("top-2")
+              && node.classList.contains("left-2")
+            ));
           if (labelNode) {
             labelNode.textContent = `CH${index + 1} ${emgChannelTexts[index]}`;
           }
@@ -5809,6 +5814,15 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           .find((node) => text(node.textContent, "").trim() === "四路 EMG");
         const emgMetricValue = emgMetricLabel?.parentElement?.querySelectorAll<HTMLElement>("div")[1];
         if (emgMetricValue) emgMetricValue.textContent = `${emgLiveCount}/4 路上报`;
+
+        const featurePanel = Array.from(doc.querySelectorAll<HTMLElement>(".glass-panel"))
+          .find((node) => text(node.textContent, "").includes("Feature Extraction Monitor"));
+        Array.from(featurePanel?.querySelectorAll<HTMLElement>("div") ?? []).forEach((node) => {
+          const current = text(node.textContent, "").trim();
+          if (current.startsWith("前臂肌电:")) {
+            node.textContent = `前臂肌电: ${emgLiveCount}/4 路上报`;
+          }
+        });
       };
       setText("h1", "VLA 控制台");
       setText("h2", intentText);
