@@ -232,6 +232,21 @@ class CollectF103SensorDataTests(unittest.TestCase):
         self.assertIn("emg_motor_stream", str(error))
         self.assertIn("firmware", str(error))
 
+    def test_serial_command_bytes_splits_multiple_shell_commands(self):
+        payload = collect._serial_command_bytes(
+            "cmd_control_init; cmd_sensor_rate 2 50; emg_motor_stream 1 20"
+        )
+
+        self.assertEqual(
+            payload,
+            b"cmd_control_init\r\ncmd_sensor_rate 2 50\r\nemg_motor_stream 1 20\r\n",
+        )
+
+    def test_serial_command_bytes_splits_newline_commands(self):
+        payload = collect._serial_command_bytes("cmd_control_init\ncmd_sensor_rate 2 50\n")
+
+        self.assertEqual(payload, b"cmd_control_init\r\ncmd_sensor_rate 2 50\r\n")
+
     def test_window_aggregator_emits_overlapping_features(self):
         aggregator = collect.WindowAggregator(window_ms=40, step_ms=20)
         rows = []
@@ -403,6 +418,31 @@ class CollectF103SensorDataTests(unittest.TestCase):
         self.assertEqual(second_elbow.trial_index, 3)
         self.assertEqual(second_elbow.label_trial_index, 2)
         self.assertEqual(second_elbow.trial_id, "003_elbow_flex_02")
+
+    def test_manual_trial_state_accepts_numeric_label_shortcuts(self):
+        state = collect.ManualTrialState()
+
+        rest = state.start_trial("1")
+        elbow_up = state.start_trial("2")
+        elbow_down = state.start_trial("3")
+        shoulder_up = state.start_trial("4")
+
+        self.assertEqual(rest.label, "rest")
+        self.assertEqual(elbow_up.label, "elbow_flex")
+        self.assertEqual(elbow_down.label, "elbow_extend")
+        self.assertEqual(shoulder_up.label, "shoulder_flex")
+        self.assertEqual(elbow_up.trial_id, "002_elbow_flex_01")
+
+    def test_manual_trial_state_counts_shortcut_and_full_label_together(self):
+        state = collect.ManualTrialState()
+
+        first_elbow = state.start_trial("2")
+        second_elbow = state.start_trial("elbow_flex")
+
+        self.assertEqual(first_elbow.label, "elbow_flex")
+        self.assertEqual(first_elbow.label_trial_index, 1)
+        self.assertEqual(second_elbow.label, "elbow_flex")
+        self.assertEqual(second_elbow.label_trial_index, 2)
 
     def test_manual_trial_state_rejects_empty_label(self):
         state = collect.ManualTrialState()

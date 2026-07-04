@@ -63,6 +63,12 @@ M33_TRAINING_FLAG_SATURATED = 0x08
 M33_TRAINING_FLAG_STALE = 0x10
 
 DEFAULT_EMG3_LABELS = ("rest", "elbow_flex", "elbow_extend", "shoulder_flex")
+MANUAL_LABEL_SHORTCUTS = {
+    "1": "rest",
+    "2": "elbow_flex",
+    "3": "elbow_extend",
+    "4": "shoulder_flex",
+}
 DEFAULT_EMG3_SAMPLE_HZ = 50
 DEFAULT_EMG3_WINDOW_MS = 300
 DEFAULT_EMG3_STEP_MS = 100
@@ -288,7 +294,7 @@ class ManualTrialState:
         self._label_counts: Dict[str, int] = {}
 
     def start_trial(self, label: str) -> GuidedTrial:
-        clean_label = label.strip()
+        clean_label = _resolve_manual_label(label)
         if not clean_label:
             raise ValueError("label must not be empty")
 
@@ -318,6 +324,11 @@ class CsvRowWriter:
         stable_row = {column: row.get(column, "") for column in self._columns}
         self._writer.writerow(stable_row)
         self._output.flush()
+
+
+def _resolve_manual_label(label: str) -> str:
+    clean_label = label.strip()
+    return MANUAL_LABEL_SHORTCUTS.get(clean_label, clean_label)
 
 
 class WindowAggregator:
@@ -1105,8 +1116,8 @@ def collect_manual(args: argparse.Namespace) -> None:
     if aggregator is not None:
         print(f"window_csv={window_path}")
     print(f"trial_plan_csv={trials_path}")
-    print("manual labels: rest, elbow_flex, elbow_extend, shoulder_flex")
-    print("type a label to start, press Enter to stop that segment, type q to quit")
+    print("manual labels: 1=rest 2=elbow_flex 3=elbow_extend 4=shoulder_flex")
+    print("type 1/2/3/4 or a label to start, press Enter to stop that segment, type q to quit")
 
     with raw_path.open("w", newline="", encoding="utf-8") as raw_file, \
             trials_path.open("w", newline="", encoding="utf-8") as trials_file:
@@ -1370,8 +1381,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--serial-baudrate", type=int, default=115200, help="M33 serial baudrate")
     parser.add_argument("--serial-timeout-s", type=float, default=1.0, help="serial read timeout")
-    parser.add_argument("--serial-start-command", default="", help="optional RT-Thread shell command sent after opening serial")
-    parser.add_argument("--serial-stop-command", default="", help="optional RT-Thread shell command sent before closing serial")
+    parser.add_argument(
+        "--serial-start-command",
+        default="",
+        help="optional RT-Thread shell command(s) sent after opening serial; separate multiple commands with ';' or newlines",
+    )
+    parser.add_argument(
+        "--serial-stop-command",
+        default="",
+        help="optional RT-Thread shell command(s) sent before closing serial; separate multiple commands with ';' or newlines",
+    )
     parser.add_argument("--output-dir", type=Path, default=Path("data") / "sensor_capture")
     parser.add_argument("--session-id", default="", help="file prefix; defaults to current timestamp")
     parser.add_argument("--subject-id", default="", help="subject/person identifier saved with rows")
@@ -1548,8 +1567,10 @@ def _serial_joint_fresh(flags: int) -> bool:
 
 
 def _serial_command_bytes(command: str) -> bytes:
-    command = command.rstrip("\r\n")
-    return f"{command}\r\n".encode("utf-8")
+    commands = [item.strip() for item in re.split(r"[;\r\n]+", command) if item.strip()]
+    if not commands:
+        return b""
+    return "".join(f"{item}\r\n" for item in commands).encode("utf-8")
 
 
 def _serial_diagnostic_error(line: str) -> Optional[RuntimeError]:
