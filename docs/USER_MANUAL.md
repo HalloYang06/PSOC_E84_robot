@@ -162,6 +162,15 @@ GET /api/rehab-arm/app/v1/public-config
 
 Read `data.rehab_app.ai_relay_contract`. Expected values are `relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, `scope=rehab_training_planning`, and `does_not_touch_xiaozhi_l=true`.
 
+Phone UI:
+
+- Open the mobile App `AI` tab / `ai-plan.html`, shown as `康复智能体`.
+- Enter natural language needs such as `今天有点酸，下一次练轻一点`.
+- Set pain and fatigue. The page sends these values through `data-arm-ai-input`, `data-arm-ai-pain`, and `data-arm-ai-fatigue` to the App backend.
+- Tap `生成 AI 草稿`. The page binds the returned draft into `ai-draft-title`, `ai-draft-sets-reps`, `ai-draft-assist`, and `ai-draft-explain`.
+- Tap `接受为训练计划` only after review. This creates a normal training plan and does not grant motion permission.
+- Continue through device sync, M33 acceptance, and preflight before starting a training session record.
+
 Call flow:
 
 1. Login and keep the returned token.

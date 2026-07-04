@@ -20,6 +20,8 @@
     workflow: null,
     publicConfig: null,
     latestEmg: null,
+    lastAiDraft: null,
+    lastAcceptedAiPlan: null,
     nativeSpp: null,
     lastSync: null,
     lastLegacySppSend: null,
@@ -226,9 +228,9 @@
     ].join(";");
     panel.innerHTML = [
       '<div style="font-weight:800;color:#0f172a;margin-bottom:8px">登录后查看真实后端数据</div>',
-      '<input name="email" placeholder="账号/邮箱" autocomplete="username" style="box-sizing:border-box;width:100%;height:38px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px" />',
-      '<input name="password" placeholder="密码" type="password" autocomplete="current-password" style="box-sizing:border-box;width:100%;height:38px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px" />',
-      '<button type="submit" style="width:100%;height:38px;border:0;border-radius:6px;background:#0f766e;color:white;font-weight:800">连接后端</button>',
+      '<input name="email" placeholder="账号/邮箱" autocomplete="username" style="box-sizing:border-box;width:100%;height:48px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px" />',
+      '<input name="password" placeholder="密码" type="password" autocomplete="current-password" style="box-sizing:border-box;width:100%;height:48px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px" />',
+      '<button type="submit" style="width:100%;height:48px;border:0;border-radius:6px;background:#0f766e;color:white;font-weight:800">连接后端</button>',
       `<div style="margin-top:8px;color:#64748b">API: ${apiBase()}；当前${state.online ? "已连 public-config" : "等待连接"}。</div>`
     ].join("");
     panel.addEventListener("submit", async (event) => {
@@ -520,6 +522,9 @@
     if (current === "bluetooth-debug.html") {
       renderBluetoothDebugPage(state);
     }
+    if (current === "ai-plan.html") {
+      renderAiPlanPage(state);
+    }
     if (current === "training-library.html" || current === "ai-plan.html") {
       const movement = catalog.training_movements && catalog.training_movements[0];
       replaceFirst(["屈肘训练"], movement ? movement.label : "目录加载中");
@@ -576,6 +581,7 @@
         devices: bootstrap.devices || [],
         plans: bootstrap.training_plans || [],
         latestEmg,
+        lastAiDraft: state.lastAiDraft || bootstrap.latest_open_ai_draft || null,
         online: true,
         authenticated: true,
         statusText: `已连接后端：${workflow.phase ? workflow.phase.title : bootstrap.mobile_readiness_guide ? bootstrap.mobile_readiness_guide.summary : "读取成功"}`
@@ -616,6 +622,114 @@
     await refreshFromBackend();
   }
 
+  function aiDraftPlan(draft) {
+    return draft && (draft.generated_plan || draft.training_plan || draft.plan) ? (draft.generated_plan || draft.training_plan || draft.plan) : {};
+  }
+
+  function aiPlannerStatus(draft) {
+    const context = (draft && draft.context_snapshot) || {};
+    const planner = context.ai_planner || {};
+    if (planner.status === "external_used") return `模型已调用：${planner.model || "configured relay"}`;
+    if (planner.status === "external_rejected_fallback_rule_based") return "模型响应被安全过滤，已使用规则草稿";
+    if (planner.status === "fallback_rule_based") return `规则草稿：${planner.error || "模型未配置/未启用"}`;
+    return "等待生成";
+  }
+
+  function renderAiPlanPage(state) {
+    if (pageName() !== "ai-plan.html") return;
+    const draft = state.lastAiDraft || ((state.bootstrap || {}).latest_open_ai_draft) || null;
+    const plan = aiDraftPlan(draft);
+    const sets = plan.sets == null ? "-" : plan.sets;
+    const reps = plan.reps == null ? "-" : plan.reps;
+    const assist = plan.assist_level == null ? "-" : `${Math.round(Number(plan.assist_level) * 100)}%`;
+    const speed = plan.speed_level || "-";
+    const riskNotes = Array.isArray(draft && draft.risk_notes) ? draft.risk_notes : [];
+    setText("[data-role='ai-draft-title']", plan.title || (draft ? "AI 训练草稿" : "等待生成训练草稿"));
+    setText("[data-role='ai-draft-sets-reps']", draft ? `${sets} 组 x ${reps} 次` : (state.authenticated ? "点击生成草稿" : "登录后生成"));
+    setText("[data-role='ai-draft-assist']", draft ? `${assist} / ${speed}` : "-");
+    setText(
+      "[data-role='ai-draft-explain']",
+      draft
+        ? `${aiPlannerStatus(draft)}。${plan.goal || "草稿只用于生成训练计划。"} ${riskNotes[0] || "接受后仍需设备同步、M33 接受和训练前检查。"}`
+        : "AI 规划会调用后端 /ai-training-drafts/generate。模型未配置时会明确显示规则回退，不再伪装真实 AI 调用。"
+    );
+    document.querySelectorAll("[data-arm-ai-accept]").forEach((button) => {
+      button.disabled = !(draft && draft.id && !draft.accepted_plan_id);
+    });
+  }
+
+  function selectedAiFatigue() {
+    const node = document.querySelector("[data-arm-ai-fatigue]");
+    return node ? node.value || node.options[node.selectedIndex]?.text || "" : "";
+  }
+
+  function composeAiDraftContext(state) {
+    const painNode = document.querySelector("[data-arm-ai-pain]");
+    const profile = (state.bootstrap && state.bootstrap.profile) || state.profile || {};
+    const plan = (state.plans || [])[0] || {};
+    return {
+      source: "app_ai_plan_page",
+      movement_type: plan.movement_type || "elbow_flexion",
+      pain_level: painNode ? Number(painNode.value || 0) : null,
+      fatigue_level: selectedAiFatigue(),
+      latest_emg: state.latestEmg || null,
+      current_plan: plan && plan.id ? {
+        id: plan.id,
+        movement_type: plan.movement_type,
+        sets: plan.sets,
+        reps: plan.reps,
+        assist_level: plan.assist_level,
+        speed_level: plan.speed_level,
+        target_angle_range: plan.target_angle_range
+      } : null,
+      profile_snapshot: {
+        rehab_stage: profile.rehab_stage || "",
+        affected_side: profile.affected_side || "",
+        medical_constraints: profile.medical_constraints || []
+      },
+      control_boundary: "app_ai_context_only_not_motion_permission"
+    };
+  }
+
+  async function generateAiTrainingDraft() {
+    if (!token()) {
+      toast("请先登录后端，再生成 AI 训练草稿。", "warn");
+      return null;
+    }
+    const input = document.querySelector("[data-arm-ai-input]");
+    const inputText = (input && input.value ? input.value.trim() : "") || "根据当前康复档案、疼痛、疲劳和最近肌电生成下一次轻量训练草稿。";
+    const state = readState();
+    document.querySelectorAll("[data-arm-ai-generate]").forEach((button) => { button.disabled = true; });
+    try {
+      const draft = await api("/api/rehab-arm/app/v1/ai-training-drafts/generate", {
+        method: "POST",
+        body: JSON.stringify({ input_text: inputText, context_snapshot: composeAiDraftContext(state) })
+      });
+      const nextState = { ...readState(), lastAiDraft: draft };
+      writeState(nextState);
+      renderAiPlanPage(nextState);
+      toast(aiPlannerStatus(draft));
+      await refreshFromBackend();
+      return draft;
+    } finally {
+      document.querySelectorAll("[data-arm-ai-generate]").forEach((button) => { button.disabled = false; });
+    }
+  }
+
+  async function acceptAiTrainingDraft() {
+    const state = readState();
+    const draft = state.lastAiDraft || ((state.bootstrap || {}).latest_open_ai_draft) || null;
+    if (!token() || !draft || !draft.id) {
+      toast("没有可接受的后端 AI 草稿。请先生成或刷新。", "warn");
+      return null;
+    }
+    const plan = await api(`/api/rehab-arm/app/v1/ai-training-drafts/${draft.id}/accept`, { method: "POST", body: JSON.stringify({}) });
+    writeState({ ...readState(), lastAiDraft: null, lastAcceptedAiPlan: plan, plans: [plan, ...((state.plans || []).filter((item) => item.id !== plan.id))] });
+    toast("AI 草稿已接受为训练计划；仍需同步设备、M33 accepted 和 preflight。");
+    await refreshFromBackend();
+    return plan;
+  }
+
   async function connectNativeSpp(device, profile) {
     const plugin = nativeSppPlugin();
     if (!plugin || !plugin.connect) {
@@ -649,6 +763,33 @@
     writeState(nextState);
     appendLegacySppLog("CONNECT", `${device.name || "SPP"} ${device.address || ""}`);
     renderBluetoothDebugPage(nextState);
+    return result;
+  }
+
+  async function bindSelectedSppDeviceToBackend(device) {
+    if (!token()) {
+      throw new Error("请先登录后端，再绑定可信 M33 设备。");
+    }
+    const m33DeviceId = device.address || device.name || "";
+    if (!m33DeviceId) {
+      throw new Error("已配对设备缺少 MAC/名称，不能绑定到后端。");
+    }
+    const result = await api("/api/rehab-arm/app/v1/devices/bind", {
+      method: "POST",
+      body: JSON.stringify({
+        m33_device_id: m33DeviceId,
+        ble_name: device.name || m33DeviceId,
+        trust_status: "trusted"
+      })
+    });
+    const nextState = {
+      ...readState(),
+      selectedSppDevice: device,
+      devices: [result, ...((readState().devices || []).filter((item) => item.id !== result.id))]
+    };
+    writeState(nextState);
+    appendLegacySppLog("BIND", `${result.ble_name || result.m33_device_id} -> backend trusted device`);
+    await refreshFromBackend();
     return result;
   }
 
@@ -756,6 +897,8 @@
     setText("[data-role='spp-device-address']", nativeSpp.deviceAddress || (state.selectedSppDevice && state.selectedSppDevice.address) || "-");
     setText("[data-role='spp-uuid']", nativeSpp.uuid || "00001101-0000-1000-8000-00805F9B34FB");
     setText("[data-role='spp-permission']", nativeSpp.permission || "等待读取");
+    const primaryDevice = (state.devices || []).find((item) => item.trust_status !== "revoked");
+    setText("[data-role='spp-backend-binding']", primaryDevice ? `${primaryDevice.ble_name || primaryDevice.m33_device_id} / ${primaryDevice.trust_status}` : (state.authenticated ? "未绑定" : "等待登录"));
     setText("[data-role='spp-frame-state']", frame && frame.sendable ? "sendable=true" : "等待后端批准帧");
     setText("[data-role='spp-frame-preview']", frame && frame.wire_text ? frame.wire_text.trim() : "只有后端生成并标记 sendable=true 的 legacy_transport_frame 会出现在这里。");
     setText("[data-role='spp-last-send']", lastSend.sent ? `sent ${lastSend.byteLength || 0} bytes` : (lastSend.reason || "-"));
@@ -823,7 +966,10 @@
             `<div class="font-label-md text-label-md">${escapeHtml(device.name || "未命名 SPP 设备")}</div>`,
             `<div class="text-data-viz text-on-surface-variant">${escapeHtml(device.address || "")}</div>`,
             "</div>",
+            '<div class="flex gap-2">',
+            `<button class="bg-surface-container-high text-on-surface px-3 py-2 rounded text-label-md font-label-md hover:opacity-90 transition-opacity" data-arm-spp-bind-device="${escapeHtml(device.address || device.name || "")}" type="button">绑定</button>`,
             `<button class="bg-primary text-on-primary px-4 py-2 rounded text-label-md font-label-md hover:opacity-90 transition-opacity" data-arm-spp-connect="${escapeHtml(device.address || device.name || "")}" type="button">连接</button>`,
+            "</div>",
             "</div>"
           ].join(""))
         : '<div class="border border-outline-variant rounded-lg p-3 bg-surface-container-lowest text-data-viz text-on-surface-variant">没有读取到已配对设备，请先去 Android 系统蓝牙设置配对 M33/PSoC SPP。</div>';
@@ -917,6 +1063,14 @@
         connectSelectedNativeSpp(device).then(() => toast("SPP 已连接，等待 M33 回包。")).catch((error) => toast(error.message, "warn"));
         return;
       }
+      const sppBindDevice = event.target && event.target.closest ? event.target.closest("[data-arm-spp-bind-device]") : null;
+      if (sppBindDevice) {
+        event.preventDefault();
+        const key = sppBindDevice.getAttribute("data-arm-spp-bind-device") || "";
+        const device = ((readState().nativeSppBondedDevices || []).find((item) => item.address === key || item.name === key)) || { address: key };
+        bindSelectedSppDeviceToBackend(device).then(() => toast("已绑定为后端可信设备；仍需 M33 决策后才能训练。")).catch((error) => toast(error.message, "warn"));
+        return;
+      }
       const sppDisconnect = event.target && event.target.closest ? event.target.closest("[data-arm-spp-disconnect]") : null;
       if (sppDisconnect) {
         event.preventDefault();
@@ -929,13 +1083,25 @@
         sendDebugLegacyFrame().then(() => toast("已发送后端批准帧，等待 M33 ACK。")).catch((error) => toast(error.message, "warn"));
         return;
       }
+      const aiGenerate = event.target && event.target.closest ? event.target.closest("[data-arm-ai-generate]") : null;
+      if (aiGenerate) {
+        event.preventDefault();
+        generateAiTrainingDraft().catch((error) => toast(error.message, "warn"));
+        return;
+      }
+      const aiAccept = event.target && event.target.closest ? event.target.closest("[data-arm-ai-accept]") : null;
+      if (aiAccept) {
+        event.preventDefault();
+        acceptAiTrainingDraft().catch((error) => toast(error.message, "warn"));
+        return;
+      }
       const button = event.target && event.target.closest ? event.target.closest("[data-arm-workflow-action]") : null;
       if (!button) return;
       event.preventDefault();
       executeWorkflowAction(button.getAttribute("data-arm-workflow-action")).catch((error) => toast(error.message, "warn"));
     });
     document.querySelectorAll("button").forEach((button) => {
-      if (button.matches("[data-arm-spp-refresh], [data-arm-spp-list-devices], [data-arm-spp-connect], [data-arm-spp-disconnect], [data-arm-spp-send-frame]")) return;
+      if (button.matches("[data-arm-spp-refresh], [data-arm-spp-list-devices], [data-arm-spp-connect], [data-arm-spp-bind-device], [data-arm-spp-disconnect], [data-arm-spp-send-frame], [data-arm-ai-generate], [data-arm-ai-accept]")) return;
       button.addEventListener("click", () => {
         const label = (button.textContent || button.innerText || "").trim();
         handlePrimaryAction(label).catch((error) => toast(error.message, "warn"));

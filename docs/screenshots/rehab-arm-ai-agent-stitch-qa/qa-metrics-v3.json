@@ -1,0 +1,27 @@
+{
+  "title": "康复智能体 - 灵动康复 ArmControl",
+  "hasHorizontalOverflow": false,
+  "hooks": {
+    "[data-arm-ai-input]": true,
+    "[data-arm-ai-generate]": true,
+    "[data-arm-ai-accept]": true,
+    "[data-arm-ai-pain]": true,
+    "[data-arm-ai-fatigue]": true,
+    "[data-role=\"ai-draft-title\"]": true,
+    "[data-role=\"ai-draft-sets-reps\"]": true,
+    "[data-role=\"ai-draft-assist\"]": true,
+    "[data-role=\"ai-draft-explain\"]": true
+  },
+  "buttonHeights": [
+    48,
+    48,
+    48,
+    51,
+    51,
+    51,
+    48
+  ],
+  "minButtonHeight": 48,
+  "hasSafetyCopy": true,
+  "hasAgentCopy": true
+}

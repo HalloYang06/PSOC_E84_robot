@@ -19,6 +19,9 @@
 - Validation passed again with `python -m pytest apps/api/tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`12 passed`, deprecation warnings only).
 - Closed the QA concerns from the App AI relay audit split. `public-config.rehab_app.ai_relay_contract` now exposes `relay_channel=app_training_planner`, and AI-generated/fallback training plans are recursively stripped of dangerous control-shaped keys before persistence or accept-to-plan. Added regression coverage for dangerous keys inside nested `emg_policy` and `safety_constraints`.
 - Validation passed with `python -m pytest apps/api/tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`13 passed`, deprecation warnings only).
+- Used Stitch MCP to regenerate the mobile `AI 规划` page as `AI 规划 - 康复智能体 (中文版)` and replaced the App `ai-plan.html` with the Stitch output plus minimal compatibility edits: Chinese clinical copy, no fake model/connection values, preserved `data-arm-ai-*` and `data-role="ai-draft-*"` hooks, loaded `mobile-bridge.js`, and kept the AI draft -> accept -> plan -> M33 -> preflight safety chain visible.
+- Validated the AI page locally at 390 px mobile viewport. Evidence: `docs/screenshots/rehab-arm-ai-agent-stitch-qa/ai-agent-mobile-390-v3.png` and `qa-metrics-v3.json`; no horizontal overflow, all AI binding hooks present, safety copy includes M33/CAN/急停 boundaries, and minimum button height is 48 px. `node --check` passed for PWA and Android `mobile-bridge.js`; `npm run sync:web` copied the Stitch page into the Android wrapper.
+- Cloud API call check with the test account successfully created an AI draft, but the cloud response did not include `context_snapshot.ai_planner`, showing the cloud backend had not yet deployed the latest App AI relay metadata commit. The cloud draft therefore must be treated as a callable rule/fallback draft, not proof of an external model call.
 
 ## 2026-06-17
 
