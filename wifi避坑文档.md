@@ -3382,3 +3382,79 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 当前基线满足软件复位后的自动恢复：约 5 秒内小智 WebSocket 到 `stage=70`，随后 60 秒稳定。
 2. 真正断电启动无法由串口远程拔电模拟，但判据相同：上电后 5-10 秒内应看到 `wlan=1 ready=1`、`xz_ws=1 stage=70`、`srv_hello>=1`、`voice_svc/lvgl_flush` 增长。
 3. 如果断电启动偶发不稳，先记录第一次 `m55qa_status` 的 `xz_stage/xz_errno/wlan/ready/ip/srv_hello`，不要先改 TTS 播放节拍。
+
+## 79. 2026-07-04 Edgi AI M55 工程 WiFi 复测：资源已通，关键是 CM55 shell 优先级
+
+背景：
+
+1. 本轮在 `Edgi_Talk_M55_Blink_LED` 的 `M55` 分支上复测 WiFi，不是旧 `wifi` 工程。
+2. 用户现场反馈“WiFi 没资源/未就绪”，因此先确认 WHD resources、FAL 分区、M33 QA 桥接和 M55 WHD 初始化阶段。
+
+资源与分区确认：
+
+1. 当前配置使用 `WHD_RESOURCES_IN_EXTERNAL_STORAGE_FAL`。
+2. FAL 分区仍是：
+   - `whd_firmware`：`0x60E00000`，`384KB`
+   - `whd_clm`：`0x60E60000`，`64KB`
+   - `whd_nvram`：`0x60E70000`，`64KB`
+3. `whd_resources_all.bin` 已用 OpenOCD 写入 `0x60E00000` 并通过 `verify_image`，写入约 `466944 bytes`，校验约 `465509 bytes`。
+4. 直接 `dump_image` 读 SMIF/XIP 地址可能看到全 0，不能单独据此判定外部 Flash 没写进去；复位后如果 SMIF memory-map 没被应用初始化，OpenOCD 直接读内存窗口并不可靠。资源是否有效以 OpenOCD `verify_image` 和运行时 WHD/FAL 结果为准。
+
+故障现象：
+
+1. 通过 M33 shell 执行 `m55qa_status`，初始状态为：
+   - `ipc_ready=1`
+   - `netdev name=(none)`
+   - `wlan=0 ready=0`
+   - `wifi_diag=-255`
+   - `scan=-1`
+   - `whd_stage=11`
+   - `whd_result=101580800`
+   - `whd_flags=0x1`
+2. `101580800` 换算为 `0x060E0000`，对应 CY result 的 RTOS timeout 类错误。
+3. `whd_stage=11` 对应 `WHD_DIAG_STAGE_WIFI_ON_START`，说明 SDIO attach 和前置资源路径已经走过，真正卡在 `whd_wifi_on()` 等待固件/事件阶段。
+
+根因：
+
+1. 当前 CM55 FinSH shell 优先级仍为 `20`，在无有效控制台输入时会影响 WHD FreeRTOS wrapper 线程调度。
+2. 这会导致 WHD 底层等待事件超时，看起来像资源/固件/SDIO 问题，但实际是线程调度余量不足。
+3. 这和第 8.1 节旧 `wifi` 工程的结论一致：CM55 shell 优先级应降到 `30`，给 WHD 线程让出运行机会。
+
+修复：
+
+1. `.config`：
+   - `CONFIG_FINSH_THREAD_PRIORITY=20 -> 30`
+2. `rtconfig.h`：
+   - `FINSH_THREAD_PRIORITY 20 -> 30`
+3. 本轮没有改 WHD resources 分区、没有改 SDIO、没有改 WiFi 固件包内容。
+
+验证：
+
+1. M55 SCons 构建通过，生成新的 `rtthread.hex` 和 `rt-thread.elf`。
+2. M55 `rtthread.hex` 已烧录并通过 OpenOCD verify，应用写入约 `1789952 bytes`，校验约 `1785440 bytes`。
+3. 烧录后通过 M33 shell 复测：
+   - `m55qa_whd_diag` 返回 `0`
+   - `m55qa_wifi_diag` 返回 `0`
+   - `m55qa_wifi_scan` 返回 `0`
+   - 后续 `m55qa_status` 可见 `netdev name=w0`
+   - `whd_stage=19`
+   - `whd_result=0`
+   - `scan=8` 到 `12`，取决于现场周围 AP 数量
+4. 这说明 WHD 初始化和扫描链路已经打通。
+
+容易误判的点：
+
+1. `wlan=0 ready=0` 不等于 WiFi 驱动没起来；它更多表示还没有成功关联 AP、没有进入连接 ready 状态。
+2. 当前状态里 `saved=0`、`ip=0.0.0.0`，说明还没有保存或使用 AP 凭据连接路由器。
+3. 判断 WiFi 驱动是否已经可用，应优先看：
+   - `netdev name=w0`
+   - `whd_stage=19`
+   - `whd_result=0`
+   - `wifi_diag=0`
+   - `scan` 是否能得到大于 0 的数量
+4. 下一步如果要联网，不是继续烧资源，而是通过 M33 QA 命令写入 SSID/密码并连接：
+   - `m55qa_wifi_ssid <SSID>`
+   - `m55qa_wifi_password <PASSWORD>`
+   - `m55qa_wifi_connect`
+   - `m55qa_wifi_save`
+   - `m55qa_status`
