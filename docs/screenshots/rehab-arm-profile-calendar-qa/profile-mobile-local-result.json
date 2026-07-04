@@ -1,0 +1,17 @@
+{
+  "shot": "D:/ai合作产品/docs/screenshots/rehab-arm-profile-calendar-qa/profile-mobile-local.png",
+  "result": {
+    "url": "http://127.0.0.1:8798/profile.html",
+    "hasOct2023": false,
+    "hasFakeWeekly": false,
+    "hasSystemOk": false,
+    "hasPatientA": false,
+    "month": "2026年7月",
+    "weekly": "暂无本周训练记录",
+    "logButton": "去创建计划",
+    "logTarget": "training-library.html",
+    "logList": "还没有真实训练日志。先去“训练”创建计划，或去“AI 规划”生成草稿。",
+    "status": "网络未连接，请检查后端服务",
+    "bodyStart": "网络未连接，请检查后端服务\nclinical_notes\n灵动康复 ArmControl\n待登录\nsmart_toy\n康复用户\nID: 待同步\nrelax\n\n康复阶段待完善\n\nwarning\n\n医疗约束\n\n暂无后端医疗约束记录\n\n已连接设备\nsettings_input_component\nprecision_manufacturing\n\n等待绑定康复设备\n\n未绑定设备\n\n待同步\nsensors\n\n等待肌电记录\n\n暂无肌电\n\n待同步\nadd\n配对新设备\ncalendar_month\n训练活动\n2026年7月\n一\n二\n三\n四\n五\n六\n日\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n1\n2\n3\n4\n\n暂无本周训练记录\n\n去创建计划\n还没有真实训练日志。先去“训练”创建计划，或去“AI 规划”生成草稿。\ncloud_sync\n云端同步\n\n待登录\n\nrecord_voice_over\n语音入口\n\n由平台配置\n\nsupervisor_account\n照护协作\n\n待邀请\n\nshield_lock\n数据隐私与通知\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的\n登录后同步康复数据\n登录并同步\n训练计划、报告和设备状态会从云端同步。"
+  }
+}

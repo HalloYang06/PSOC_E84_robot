@@ -184,6 +184,27 @@
     return { bg: "#ecfdf5", border: "#a7f3d0", color: "#047857" };
   }
 
+  function userNextAction(state) {
+    const bootstrap = state.bootstrap || {};
+    const workflow = state.workflow || {};
+    const guide = bootstrap.daily_action_guide || {};
+    const action = workflow.next_action || guide.next_action || {};
+    const label = action.label || action.title || "";
+    if (label) return label;
+    const readiness = bootstrap.mobile_readiness_guide || {};
+    if (!state.authenticated) return "登录账号";
+    if ((bootstrap.devices || []).length === 0) return "绑定康复设备";
+    if ((bootstrap.training_plans || []).length === 0) return "创建训练计划";
+    if (readiness.status === "ready") return "可以进入训练前检查";
+    return "完成首次设置";
+  }
+
+  function userStatusText(state) {
+    if (!state.online) return "网络未连接，请检查后端服务";
+    if (!state.authenticated) return "请登录后同步康复数据";
+    return `已同步｜下一步：${userNextAction(state)}`;
+  }
+
   function upsertStatusStrip(state) {
     let strip = document.querySelector("[data-arm-status]");
     if (!strip) {
@@ -205,7 +226,7 @@
     strip.style.background = tone.bg;
     strip.style.borderBottom = `1px solid ${tone.border}`;
     strip.style.color = tone.color;
-    strip.textContent = state.statusText || "灵动康复 ArmControl";
+    strip.textContent = userStatusText(state);
   }
 
   function createLoginPanel(state) {
@@ -228,11 +249,11 @@
       "font:500 12px/1.35 Inter,system-ui,sans-serif"
     ].join(";");
     panel.innerHTML = [
-      '<div style="font-weight:800;color:#0f172a;margin-bottom:8px">登录后查看真实后端数据</div>',
+      '<div style="font-weight:800;color:#0f172a;margin-bottom:8px">登录后同步康复数据</div>',
       '<input name="email" placeholder="账号/邮箱" autocomplete="username" style="box-sizing:border-box;width:100%;height:48px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px" />',
       '<input name="password" placeholder="密码" type="password" autocomplete="current-password" style="box-sizing:border-box;width:100%;height:48px;margin-bottom:8px;border:1px solid #cbd5e1;border-radius:6px;padding:0 10px" />',
-      '<button type="submit" style="width:100%;height:48px;border:0;border-radius:6px;background:#0f766e;color:white;font-weight:800">连接后端</button>',
-      `<div style="margin-top:8px;color:#64748b">API: ${apiBase()}；当前${state.online ? "已连 public-config" : "等待连接"}。</div>`
+      '<button type="submit" style="width:100%;height:48px;border:0;border-radius:6px;background:#0f766e;color:white;font-weight:800">登录并同步</button>',
+      `<div style="margin-top:8px;color:#64748b">训练计划、报告和设备状态会从云端同步。</div>`
     ].join("");
     panel.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -308,6 +329,126 @@
     return action.label || action.title || action.code || "等待后端下一步";
   }
 
+  function parseEventDate(value) {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  function dateKey(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function startOfWeek(date) {
+    const copy = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const day = copy.getDay() || 7;
+    copy.setDate(copy.getDate() - day + 1);
+    return copy;
+  }
+
+  function profileTimelineItems(state) {
+    const bootstrap = state.bootstrap || {};
+    return (((bootstrap.care_timeline || {}).items) || [])
+      .map((item) => ({ ...item, _date: parseEventDate(item.event_at) }))
+      .filter((item) => item._date)
+      .sort((a, b) => b._date.getTime() - a._date.getTime());
+  }
+
+  function timelineKindLabel(kind) {
+    return {
+      training_session: "训练记录",
+      training_report: "训练报告",
+      ai_training_draft: "AI 草稿",
+      offline_queue_item: "离线证据"
+    }[kind] || "康复证据";
+  }
+
+  function timelineTarget(item) {
+    const action = item.primary_action || {};
+    const code = action.code || "";
+    if (code.includes("AI_DRAFT")) return "ai-plan.html";
+    if (code.includes("REPORT") || item.kind === "training_report") return "report.html";
+    if (code.includes("SESSION") || item.kind === "training_session") return "report.html";
+    if (item.kind === "offline_queue_item") return "device.html";
+    return "training-library.html";
+  }
+
+  function renderProfileTrainingActivity(state) {
+    if (pageName() !== "profile.html") return;
+    const grid = document.querySelector("[data-role='profile-calendar-grid']");
+    if (!grid) return;
+    const monthNode = document.querySelector("[data-role='profile-calendar-month']");
+    const countNode = document.querySelector("[data-role='profile-weekly-count']");
+    const logNode = document.querySelector("[data-role='profile-log-list']");
+    const logButton = document.querySelector("[data-role='profile-view-log']");
+    const today = new Date();
+    const weekStart = startOfWeek(today);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    const items = profileTimelineItems(state);
+    const trainingItems = items.filter((item) => item.kind === "training_session");
+    const currentWeekSessions = trainingItems.filter((item) => item._date >= weekStart && item._date < weekEnd);
+    const byDay = new Map();
+    trainingItems.forEach((item) => {
+      const key = dateKey(item._date);
+      const list = byDay.get(key) || [];
+      list.push(item);
+      byDay.set(key, list);
+    });
+    if (monthNode) monthNode.textContent = today.toLocaleDateString("zh-CN", { year: "numeric", month: "long" });
+    if (countNode) {
+      countNode.textContent = currentWeekSessions.length
+        ? `${currentWeekSessions.length} 次本周真实训练记录`
+        : "暂无本周训练记录";
+    }
+    const days = [];
+    const first = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    first.setDate(first.getDate() - 13);
+    for (let index = 0; index < 14; index += 1) {
+      const day = new Date(first);
+      day.setDate(first.getDate() + index);
+      days.push(day);
+    }
+    const headers = ["一", "二", "三", "四", "五", "六", "日"];
+    const headerHtml = headers.map((label) => `<div class="text-center text-data-viz font-data-viz text-outline mb-2">${label}</div>`).join("");
+    const dayHtml = days.map((day) => {
+      const key = dateKey(day);
+      const dayItems = byDay.get(key) || [];
+      const isToday = key === dateKey(today);
+      const activeClass = dayItems.length
+        ? "bg-primary-container text-on-primary-container border border-primary shadow-sm"
+        : "bg-surface-container-low text-on-surface-variant border border-outline-variant/20";
+      const todayClass = isToday ? " ring-2 ring-primary ring-offset-1 ring-offset-surface-container-lowest" : "";
+      const title = dayItems.length ? `${dayItems.length} 次训练记录` : "无训练记录";
+      return `<div class="aspect-square rounded-md flex items-center justify-center text-data-viz font-data-viz ${activeClass}${todayClass}" title="${escapeHtml(title)}">${day.getDate()}</div>`;
+    }).join("");
+    grid.innerHTML = headerHtml + dayHtml;
+    if (logNode) {
+      const recent = items.slice(0, 4);
+      logNode.innerHTML = recent.length
+        ? recent.map((item) => {
+            const display = item.display || {};
+            const title = display.title || item.title || timelineKindLabel(item.kind);
+            const subtitle = display.subtitle || item.status || "";
+            const dateText = item._date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+            return [
+              `<button type="button" data-arm-timeline-target="${timelineTarget(item)}" class="w-full text-left rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-2 hover:border-primary/40 transition-colors">`,
+              `<div class="flex items-center justify-between gap-2"><span class="text-label-md font-label-md text-on-surface">${escapeHtml(title)}</span><span class="text-data-viz font-data-viz text-on-surface-variant">${escapeHtml(dateText)}</span></div>`,
+              `<div class="mt-1 text-data-viz font-data-viz text-on-surface-variant">${escapeHtml(timelineKindLabel(item.kind))} · ${escapeHtml(subtitle)}</div>`,
+              "</button>"
+            ].join("");
+          }).join("")
+        : '<div class="rounded-lg border border-outline-variant/30 bg-surface-container-low p-3 text-body-md font-body-md text-on-surface-variant">还没有真实训练日志。先去“训练”创建计划，或去“AI 规划”生成草稿。</div>';
+    }
+    if (logButton) {
+      logButton.textContent = items.length ? "查看最近记录" : "去创建计划";
+      logButton.setAttribute("data-arm-timeline-target", items.length ? timelineTarget(items[0]) : "training-library.html");
+    }
+  }
+
   function canExecuteWorkflowAction(action) {
     const code = action && action.code;
     return [
@@ -346,6 +487,7 @@
 
   function insertWorkflowPanel(state) {
     removeWorkflowPanel();
+    if (state) return;
     const workflow = state.workflow || {};
     const phase = workflow.phase || {};
     const nextAction = workflow.next_action || {};
@@ -395,6 +537,7 @@
 
   function insertTimelinePanel(state) {
     removeTimelinePanel();
+    if (state) return;
     const bootstrap = state.bootstrap || {};
     const items = ((bootstrap.care_timeline || {}).items || []).slice(0, 4);
     const panel = document.createElement("section");
@@ -439,29 +582,31 @@
   function insertBackendEvidencePanel(state) {
     removeBackendEvidencePanel();
     const bootstrap = state.bootstrap || {};
-    const readiness = bootstrap.mobile_readiness_guide || {};
-    const blockers = readiness.blockers || [];
-    const primaryBlocker = blockers[0] || {};
     const devices = bootstrap.devices || [];
     const plans = bootstrap.training_plans || [];
+    const nextAction = userNextAction(state);
+    const needsDevice = devices.length === 0;
     const panel = document.createElement("section");
     panel.setAttribute("data-arm-evidence", "true");
     panel.style.cssText = [
-      "margin:10px 16px 12px",
-      "padding:12px",
-      "border:1px solid #f59e0b",
+      "margin:8px 14px 10px",
+      "padding:12px 14px",
+      "border:1px solid #dbeafe",
       "border-radius:8px",
-      "background:#fffbeb",
-      "color:#78350f",
+      "background:#ffffff",
+      "color:#0f172a",
+      "box-shadow:0 6px 18px rgba(15,23,42,.06)",
       "font:600 12px/1.5 Inter,system-ui,sans-serif"
     ].join(";");
     panel.innerHTML = [
-      '<div style="font-size:13px;font-weight:900;color:#92400e;margin-bottom:6px">真实后端状态</div>',
-      `<div>账号：${state.authenticated ? "已登录" : "未登录"}；设备：${devices.length}；计划：${plans.length}</div>`,
-      `<div>门禁：${readiness.status || "等待读取"}</div>`,
-      `<div>蓝牙桥：${(state.nativeSpp && state.nativeSpp.connected) ? "SPP 已连接" : (state.nativeSpp && state.nativeSpp.available) ? "SPP 待连接/待权限" : "仅 Web，不支持 SPP"}</div>`,
-      `<div>阻塞：${primaryBlocker.title || "等待完成康复档案、设备和硬件协议"}</div>`,
-      '<div style="margin-top:6px;color:#9a3412">页面内训练/M33/AI 文案均为后端证据展示，不代表运动许可。</div>'
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">',
+      '<div>',
+      '<div style="font-size:12px;color:#64748b">今日康复进度</div>',
+      `<div style="font-size:16px;font-weight:900;color:#0f172a;margin-top:2px">${escapeHtml(nextAction)}</div>`,
+      `<div style="margin-top:4px;color:#475569">${needsDevice ? "还没有绑定设备；可以先规划训练，正式训练前再连接设备。" : "训练前仍会做设备同步和安全检查。"}</div>`,
+      "</div>",
+      `<div style="flex:0 0 auto;text-align:right;color:#2563eb;font-weight:900">${plans.length}<div style="font-size:11px;color:#64748b;font-weight:700">训练计划</div></div>`,
+      "</div>"
     ].join("");
     const anchor = document.querySelector("[data-arm-status]");
     if (anchor && anchor.nextSibling) {
@@ -494,8 +639,13 @@
     const nextAction = workflow.next_action || {};
     if (isBlocked) {
       replaceAll(["M33 ACTIVE", "状态：M33 已允许执行", "M33 已允许执行"], "M33 待协议/待审核");
+      replaceAll(["M33 状态：准备就绪，允许安全训练"], "设备状态：等待绑定与审核");
+      replaceAll(["需 M33 审核：计划必须先同步并经由 M33 审核后方可执行。"], "训练前需要先同步到设备，并完成设备审核与训练前检查。");
       replaceAll(["急停已就绪"], "急停状态待硬件上报");
       replaceAll(["已连接"], devices.length ? "已绑定" : "待绑定");
+      replaceAll(["已扫描蓝牙"], devices.length ? "已绑定设备" : "等待绑定设备");
+      replaceAll(["M33 康复机械臂"], devices[0] ? devices[0].ble_name || devices[0].m33_device_id : "等待绑定康复设备");
+      replaceAll(["准备就绪"], "等待设备审核");
       replaceAll(["激活"], state.latestEmg ? "有记录" : "等待记录");
       replaceAll(["安全"], "等待协议");
       replaceAll(["已同步"], "已连接后端");
@@ -507,14 +657,33 @@
       replaceAll(["动作稳定性极佳，建议维持当前强度"], "等待真实训练报告和治疗师复核");
       replaceAll(["最近训练结果快照"], "后端训练证据快照");
       replaceAll(["开始训练"], nextAction.code === "READY_TO_START" ? "开始训练记录" : "查看下一步");
+      replaceAll(["目标角度\n\n120°", "120°"], plans[0] && plans[0].target_angle_range ? `${plans[0].target_angle_range.min_deg || 0}-${plans[0].target_angle_range.max_deg || 0}°` : "待同步");
+      replaceAll(["最近完成\n\n2小时前", "2小时前"], "暂无真实记录");
     }
     replaceAll(["执行中 - 由 M33 监控"], phase.title ? `工作流状态：${phase.title}` : "工作流状态：等待读取");
     replaceAll(["AI 建议"], "AI/报告建议待复核");
     replaceAll(["训练总结"], "训练报告闭环");
-    if (current === "profile.html" && profile) {
-      replaceFirst(["Sarah Chen", "康复用户"], profile.name || "康复用户");
+    if (current === "profile.html") {
+      replaceFirst(["Sarah Chen", "康复用户"], (profile && profile.name) || "康复用户");
       replaceFirst(["RoboRehab Controller"], "灵动康复 ArmControl");
+      replaceAll(["患者 A"], (profile && profile.name) || "康复用户");
+      replaceAll(["ID: 8829"], profile && profile.id ? `ID: ${String(profile.id).slice(0, 8)}` : "ID: 待同步");
+      replaceAll(["第二阶段康复中"], profile && profile.rehab_stage ? `康复阶段：${profile.rehab_stage}` : "康复阶段待完善");
+      replaceAll(["避免过度伸展 > 120°"], profile && (profile.medical_constraints || []).length ? (profile.medical_constraints || []).join("；") : "暂无后端医疗约束记录");
+      replaceAll(["System OK"], state.authenticated ? "已同步" : "待登录");
+      replaceAll(["M33 康复机械臂"], devices[0] ? devices[0].ble_name || devices[0].m33_device_id : "等待绑定康复设备");
+      replaceAll(["M55 肌电传感器"], state.latestEmg ? "M55 肌电最近记录" : "等待肌电记录");
+      replaceAll(["EXO-L-01"], devices[0] ? devices[0].m33_device_id || devices[0].id : "未绑定设备");
+      replaceAll(["EMG-PATCH"], state.latestEmg ? "已同步肌电" : "暂无肌电");
+      replaceAll(["激活"], devices.length || state.latestEmg ? "有记录" : "待同步");
+      replaceAll(["云端平台"], "云端同步");
+      replaceAll(["同步中"], state.authenticated ? "已同步" : "待登录");
+      replaceAll(["小智语音"], "语音入口");
+      replaceAll(["已开启"], "由平台配置");
+      replaceAll(["权限管理"], "照护协作");
+      replaceAll(["康复师/家属"], "待邀请");
     }
+    renderProfileTrainingActivity(state);
     if (current === "device.html") {
       const device = devices[0];
       replaceFirst(["M33-Cortex", "ArmControl"], device ? device.ble_name || device.m33_device_id : "等待绑定 M33");
@@ -1070,6 +1239,19 @@
   function bindActions() {
     document.addEventListener("click", (event) => {
       const sppRefresh = event.target && event.target.closest ? event.target.closest("[data-arm-spp-refresh]") : null;
+      const timelineTarget = event.target && event.target.closest ? event.target.closest("[data-arm-timeline-target]") : null;
+      if (timelineTarget) {
+        event.preventDefault();
+        navigate(timelineTarget.getAttribute("data-arm-timeline-target") || "training-library.html");
+        return;
+      }
+      const profileLog = event.target && event.target.closest ? event.target.closest("[data-role='profile-view-log']") : null;
+      if (profileLog) {
+        event.preventDefault();
+        const target = profileLog.getAttribute("data-arm-timeline-target") || "training-library.html";
+        navigate(target);
+        return;
+      }
       if (sppRefresh) {
         event.preventDefault();
         refreshBluetoothDebugStatus().then(() => toast("SPP 状态已刷新")).catch((error) => toast(error.message, "warn"));
