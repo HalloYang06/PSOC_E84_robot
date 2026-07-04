@@ -205,7 +205,7 @@ def api_public_config(request: Request):
                     {
                         "code": "APK_FRONTEND_API_WIRING",
                         "status": "pass",
-                        "description": "Debug APK 1.0.5 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, renders backend care timeline/daily care plan, and can execute safe workflow actions through /me/workflow/actions.",
+                        "description": "Debug APK 1.0.6 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, renders backend care timeline/daily care plan, can execute safe workflow actions through /me/workflow/actions, and includes the Android native SPP bridge.",
                     },
                     {
                         "code": "HARDWARE_PROTOCOL_PACKET_MAP",
