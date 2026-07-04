@@ -396,6 +396,87 @@
     }[item.kind] || "证";
   }
 
+  function formatAngleRange(range) {
+    if (!range) return "待同步";
+    const min = range.min_deg == null ? null : Number(range.min_deg);
+    const max = range.max_deg == null ? null : Number(range.max_deg);
+    if (Number.isFinite(min) && Number.isFinite(max)) return `${min}-${max}°`;
+    if (Number.isFinite(max)) return `${max}°`;
+    return "待同步";
+  }
+
+  function formatAssistLevel(value) {
+    if (value == null || value === "") return "待审核";
+    const number = Number(value);
+    return Number.isFinite(number) ? `${Math.round(number * 100)}%` : String(value);
+  }
+
+  function planStatusLabel(plan) {
+    if (!plan) return "待创建";
+    if (plan.m33_status === "m33_accepted" || plan.device_sync_status === "accepted") return "M33 已接受";
+    if (plan.device_sync_status === "synced" || plan.status === "synced") return "已同步待审核";
+    if (plan.status === "draft") return "待同步";
+    return plan.status || "待同步";
+  }
+
+  function movementLabel(plan, catalog) {
+    const movementType = plan && plan.movement_type;
+    const movement = ((catalog && catalog.training_movements) || []).find((item) => item.code === movementType || item.id === movementType);
+    return movement ? movement.label : "";
+  }
+
+  function renderTrainingLibraryPage(state) {
+    if (pageName() !== "training-library.html") return;
+    const bootstrap = state.bootstrap || {};
+    const catalog = state.catalog || {};
+    const plans = bootstrap.training_plans || state.plans || [];
+    const cards = Array.from(document.querySelectorAll("section"))
+      .find((section) => (section.textContent || "").includes("今日计划"))
+      ?.querySelectorAll(".glass-panel.rounded-xl");
+    if (!cards || !cards.length) return;
+    cards.forEach((card, index) => {
+      const plan = plans[index];
+      const titleNode = card.querySelector("h4");
+      const statusNode = card.querySelector("h4 + span");
+      const valueNodes = card.querySelectorAll(".grid p.text-body-md");
+      const badgeText = card.querySelector(".border-t span.text-data-viz");
+      const actionIcon = card.querySelector(".border-t button span");
+      const actionButton = card.querySelector(".border-t button");
+      if (!plan) {
+        if (index === 0) {
+          if (titleNode) titleNode.textContent = "还没有训练计划";
+          if (statusNode) statusNode.textContent = "待生成";
+          if (valueNodes[0]) valueNodes[0].textContent = "待同步";
+          if (valueNodes[1]) valueNodes[1].textContent = "待审核";
+          if (valueNodes[2]) valueNodes[2].textContent = "暂无真实记录";
+          if (badgeText) badgeText.textContent = "去 AI 生成";
+          if (actionIcon) actionIcon.textContent = "auto_awesome";
+          card.addEventListener("click", () => navigate("ai-plan.html"), { once: true });
+        } else {
+          if (titleNode) titleNode.textContent = "等待更多计划";
+          if (statusNode) statusNode.textContent = "待评估";
+          if (valueNodes[0]) valueNodes[0].textContent = "待同步";
+          if (valueNodes[1]) valueNodes[1].textContent = "待审核";
+          if (valueNodes[2]) valueNodes[2].textContent = "暂无真实记录";
+          if (badgeText) badgeText.textContent = "待同步";
+          if (actionIcon) actionIcon.textContent = "lock";
+        }
+        return;
+      }
+      if (titleNode) titleNode.textContent = plan.title || movementLabel(plan, catalog) || "后端训练计划";
+      if (statusNode) statusNode.textContent = planStatusLabel(plan);
+      if (valueNodes[0]) valueNodes[0].textContent = formatAngleRange(plan.target_angle_range);
+      if (valueNodes[1]) valueNodes[1].textContent = formatAssistLevel(plan.assist_level);
+      if (valueNodes[2]) valueNodes[2].textContent = "等待真实训练记录";
+      if (badgeText) badgeText.textContent = planStatusLabel(plan);
+      if (actionIcon) actionIcon.textContent = planStatusLabel(plan).includes("接受") ? "play_arrow" : "sync";
+      if (actionButton) {
+        actionButton.setAttribute("aria-label", planStatusLabel(plan).includes("接受") ? "进入训练记录" : "去设备页同步计划");
+      }
+      card.addEventListener("click", () => navigate(planStatusLabel(plan).includes("接受") ? "training-session.html" : "device.html"), { once: true });
+    });
+  }
+
   function timelineDayTitle(dayItems) {
     if (!dayItems.length) return "无康复活动";
     const counts = dayItems.reduce((acc, item) => {
@@ -574,7 +655,8 @@
 
   function insertTimelinePanel(state) {
     removeTimelinePanel();
-    if (state) return;
+    if (!state) return;
+    if (pageName() !== "training-library.html") return;
     const bootstrap = state.bootstrap || {};
     const items = ((bootstrap.care_timeline || {}).items || []).slice(0, 4);
     const panel = document.createElement("section");
@@ -767,6 +849,7 @@
         replaceAll(["生成蓝图"], "生成 AI 草稿");
       }
     }
+    renderTrainingLibraryPage(state);
     if (current === "emg.html") {
       replaceFirst(["肱二头肌", "biceps"], state.latestEmg ? state.latestEmg.muscle_name : "等待肌电记录");
       replaceAll(["Exoskeleton: Connected"], "设备待绑定");

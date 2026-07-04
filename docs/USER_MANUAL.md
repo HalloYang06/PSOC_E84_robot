@@ -489,3 +489,11 @@ Tap 生成 AI 草稿.
 ```
 
 Pass criteria: the page shows `模型已调用：qwen-plus`, not `model_relay_config_incomplete`; the returned draft keeps `context_snapshot.ai_planner.relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, `scope=rehab_training_planning`, and `does_not_touch_xiaozhi_l=true`; no API key is exposed to the App; and no CAN, motor current/torque, raw position/velocity, M33 override, or emergency-stop-release controls appear.
+
+Verify accepted plan visibility:
+
+```text
+AI -> 接受为训练计划 -> 训练
+```
+
+Pass criteria: `训练库` shows the accepted backend plan title, target angle, assist level, and `待同步` state in the existing Stitch plan card. Tapping an unsynced plan routes to `设备`, where `一键同步训练计划` either syncs to a trusted device or clearly explains that M33/PSoC binding is still required. The page must not fall back to static demo exercises as the primary plan.
