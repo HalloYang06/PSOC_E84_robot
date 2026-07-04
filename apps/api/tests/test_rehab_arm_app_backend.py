@@ -182,9 +182,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "legacy_spp_profile_available"
     assert release_checks["PHONE_NATIVE_BLUETOOTH_BRIDGE"]["status"] == "debug_bridge_available"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
-    assert config_data["downloads"]["debug_apk_version"] == "1.0.7"
-    assert config_data["downloads"]["debug_apk_sha256"] == "386309ED8FF507A878817C7744AB4E69E944D1C22FEC32BD16DD34B229897802"
-    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_timeline_legacy_spp_native_bridge_inbound_ack_debug_build_current_m33_confirmation_pending"
+    assert config_data["downloads"]["debug_apk_version"] == "1.0.8"
+    assert config_data["downloads"]["debug_apk_sha256"] == "772B5D618CA4553C25E2A10B6F79254DDE968D143B3E1BE1F8F21D6604D3705C"
+    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_timeline_stitch_bluetooth_debug_spp_pairing_frame_ack_sensor_debug_build_current_m33_confirmation_pending"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
     catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
     assert catalog_response.status_code == 200

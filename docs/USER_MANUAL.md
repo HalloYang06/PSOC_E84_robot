@@ -268,10 +268,10 @@ APK details:
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0.7 debug
-versionCode: 8
-size: 4,181,238 bytes
-sha256: 386309ED8FF507A878817C7744AB4E69E944D1C22FEC32BD16DD34B229897802
+version: 1.0.8 debug
+versionCode: 9
+size: 4,188,454 bytes
+sha256: 772B5D618CA4553C25E2A10B6F79254DDE968D143B3E1BE1F8F21D6604D3705C
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
@@ -313,8 +313,8 @@ Current user-release gate:
 
 ```text
 status: blocked
-reason: APK 1.0.7 connects to backend public-config/catalog/bootstrap/workflow, renders backend care timeline/daily workflow state, can execute safe workflow actions, receives the old verified SPP protocol contract, and includes Android native SPP send plus inbound ACK/sensor upload. Current M33 firmware compatibility plus physical pairing/send/ACK validation are still pending.
-hardware_protocol: legacy SPP profile and debug native RFCOMM bridge available; current M33 confirmation plus physical phone-to-device send/ACK validation required before motion-adjacent UX can be certified.
+reason: APK 1.0.8 connects to backend public-config/catalog/bootstrap/workflow, renders backend care timeline/daily workflow state, can execute safe workflow actions, includes the Android native Bluetooth Classic SPP bridge, and now exposes a Stitch-designed Bluetooth debug / M33 validation page. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
+hardware_protocol: legacy SPP profile available; UUID 00001101-0000-1000-8000-00805F9B34FB with newline-delimited UTF-8 JSON. Real device pairing, frame send, and ACK/sensor evidence must be tested on Android hardware before motion-adjacent UX can be certified.
 ```
 
 Backend readiness endpoints:
@@ -334,6 +334,16 @@ Authenticated `/me.daily_care_plan` is the phone home source for the user's curr
 Use `/me/workflow/actions` with JSON like `{"action_code":"GENERATE_TRAINING_REPORT","payload":{}}`. The backend only executes actions present in the current workflow queue and rejects forbidden motion/hardware actions such as direct motor commands, CAN frame send, M33 override, emergency-stop release, M33 decision spoofing, or App-granted motion permission.
 
 Each item in `/me/workflow.action_queue` may include `payload_schema` and `form_contract`. Phone shells should render profile, trusted-device, training-plan, preflight, progress, finish-session, report-review, offline, and sync forms from these backend fields, then submit to `/me/workflow/actions`; do not hard-code demo payloads in the APK/PWA.
+
+Bluetooth debug / M33 validation page:
+
+```text
+Device page -> 蓝牙调试 / 实机验证
+```
+
+On an Android install, first pair the M33/PSoC SPP device in system Bluetooth settings. Then open the App, log in, enter the device page, open `蓝牙调试 / 实机验证`, tap `读取已配对设备`, connect the target device, sync a training plan to generate a backend `legacy_transport_frame`, then tap `发送后端批准帧`. The page should show TX/RX/API evidence after `memory_ack`, `execute_ack`, `sensor`, or `error` returns from M33. In normal browser/PWA mode it should show `仅 Web/无权限`, because Web Bluetooth does not support Classic SPP.
+
+Safety boundary: the debug page does not expose CAN frames, raw motor commands, motor current/torque/position/velocity, M33 override, or emergency-stop release. SPP ACKs prove transport/device response only; they do not automatically mark a plan as M33-accepted.
 
 Rebuild locally:
 

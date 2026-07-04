@@ -178,9 +178,9 @@ def api_public_config(request: Request):
             "m33_legacy_spp_profile": LEGACY_M33_SPP_PROFILE,
             "downloads": {
                 "debug_apk_url": _download_url(api_base),
-                "debug_apk_version": "1.0.7",
-                "debug_apk_sha256": "386309ED8FF507A878817C7744AB4E69E944D1C22FEC32BD16DD34B229897802",
-                "debug_apk_status": "backend_connected_workflow_action_timeline_legacy_spp_native_bridge_inbound_ack_debug_build_current_m33_confirmation_pending",
+                "debug_apk_version": "1.0.8",
+                "debug_apk_sha256": "772B5D618CA4553C25E2A10B6F79254DDE968D143B3E1BE1F8F21D6604D3705C",
+                "debug_apk_status": "backend_connected_workflow_action_timeline_stitch_bluetooth_debug_spp_pairing_frame_ack_sensor_debug_build_current_m33_confirmation_pending",
             },
             "mobile_boot_flow": [
                 {"step": "load_public_config", "endpoint": "/api/rehab-arm/app/v1/public-config", "auth_required": False},
@@ -207,7 +207,7 @@ def api_public_config(request: Request):
                     {
                         "code": "APK_FRONTEND_API_WIRING",
                         "status": "pass",
-                        "description": "Debug APK 1.0.7 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, renders backend care timeline/daily care plan, can execute safe workflow actions through /me/workflow/actions, and includes Android native SPP send plus inbound ACK/sensor upload.",
+                        "description": "Debug APK 1.0.8 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, renders backend care timeline/daily care plan, can execute safe workflow actions through /me/workflow/actions, and includes a Stitch-designed Bluetooth debug page for Android SPP pairing, backend-approved frame send, and inbound ACK/sensor evidence upload.",
                     },
                     {
                         "code": "HARDWARE_PROTOCOL_PACKET_MAP",
@@ -217,7 +217,7 @@ def api_public_config(request: Request):
                     {
                         "code": "PHONE_NATIVE_BLUETOOTH_BRIDGE",
                         "status": "debug_bridge_available",
-                        "description": "APK 1.0.7 includes a Capacitor/Android Bluetooth Classic SPP bridge with inbound ACK/sensor evidence upload. User release still needs physical pairing/send/ACK validation with current M33 firmware.",
+                        "description": "APK 1.0.8 includes a Capacitor/Android Bluetooth Classic SPP bridge plus a Stitch-designed Bluetooth debug page for listing paired devices, connecting SPP, sending backend-approved legacy frames, and uploading inbound ACK/sensor evidence. User release still needs physical validation with current M33 firmware.",
                     },
                 ],
                 "required_frontend_work": [

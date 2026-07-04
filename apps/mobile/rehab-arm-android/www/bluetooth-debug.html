@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>蓝牙调试 / M33 实机验证</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-bright": "#faf9fe",
+                        "surface": "#faf9fe",
+                        "tertiary": "#9e3d00",
+                        "surface-tint": "#005bc1",
+                        "surface-container-lowest": "#ffffff",
+                        "outline": "#717786",
+                        "on-tertiary-fixed": "#351000",
+                        "on-primary-container": "#fefcff",
+                        "secondary-fixed-dim": "#c2c1ff",
+                        "primary-fixed-dim": "#adc6ff",
+                        "on-surface-variant": "#414755",
+                        "surface-variant": "#e3e2e7",
+                        "inverse-surface": "#2f3034",
+                        "error-container": "#ffdad6",
+                        "on-tertiary-fixed-variant": "#7c2e00",
+                        "on-primary-fixed": "#001a41",
+                        "inverse-on-surface": "#f1f0f5",
+                        "inverse-primary": "#adc6ff",
+                        "tertiary-container": "#c64f00",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed-dim": "#ffb595",
+                        "surface-container-highest": "#e3e2e7",
+                        "secondary": "#4c4aca",
+                        "outline-variant": "#c1c6d7",
+                        "error": "#ba1a1a",
+                        "secondary-fixed": "#e2dfff",
+                        "secondary-container": "#6664e4",
+                        "tertiary-fixed": "#ffdbcc",
+                        "primary-container": "#0070eb",
+                        "on-tertiary": "#ffffff",
+                        "on-primary": "#ffffff",
+                        "primary-fixed": "#d8e2ff",
+                        "background": "#faf9fe",
+                        "surface-container-low": "#f4f3f8",
+                        "on-tertiary-container": "#fffbff",
+                        "on-error": "#ffffff",
+                        "surface-dim": "#dad9df",
+                        "on-secondary": "#ffffff",
+                        "on-primary-fixed-variant": "#004493",
+                        "surface-container-high": "#e9e7ed",
+                        "primary": "#0058bc",
+                        "on-secondary-fixed": "#0c006a",
+                        "on-surface": "#1a1b1f",
+                        "surface-container": "#eeedf3",
+                        "on-secondary-fixed-variant": "#3631b4",
+                        "on-background": "#1a1b1f",
+                        "on-secondary-container": "#fffbff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "24px",
+                        "container-max": "1280px",
+                        "unit": "8px",
+                        "margin-desktop": "48px",
+                        "margin-mobile": "16px"
+                    },
+                    "fontFamily": {
+                        "label-md": ["JetBrains Mono"],
+                        "headline-md": ["Inter"],
+                        "headline-lg-mobile": ["Inter"],
+                        "body-lg": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "body-md": ["Inter"],
+                        "data-viz": ["JetBrains Mono"],
+                        "display-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "data-viz": ["12px", { "lineHeight": "16px", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 4px 6px -1px rgba(0, 88, 188, 0.05), 0 2px 4px -1px rgba(0, 88, 188, 0.03);
+        }
+        .monospaced { font-family: 'JetBrains Mono', monospace; }
+        .log-line { border-bottom: 1px solid #f4f3f8; padding-bottom: 4px; margin-bottom: 4px; }
+        .log-line:last-child { border-bottom: none; }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-surface text-on-surface font-body-md min-h-screen flex flex-col pb-24" data-page="bluetooth-debug">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile h-16 bg-surface/80 backdrop-blur-xl border-b border-outline-variant shadow-sm">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary font-bold">clinical_notes</span>
+<h1 class="text-headline-md font-headline-md font-bold text-primary">蓝牙调试</h1>
+</div>
+<span class="material-symbols-outlined text-primary font-bold">smart_toy</span>
+</header>
+<!-- Main Content -->
+<main class="flex-1 mt-20 px-margin-mobile flex flex-col gap-unit">
+<!-- Connection Status Panel -->
+<section class="glass-card rounded-xl p-4 flex flex-col gap-2">
+<div class="flex justify-between items-center mb-2">
+<h2 class="text-label-md font-label-md text-on-surface-variant uppercase">连接状态</h2>
+<span class="px-2 py-1 bg-surface-container-high text-on-surface-variant text-data-viz font-data-viz rounded flex items-center gap-1" data-role="spp-status-pill">
+<span class="w-2 h-2 rounded-full bg-outline" data-role="spp-status-dot"></span>
+                    等待读取
+                </span>
+</div>
+<div class="grid grid-cols-2 gap-2 text-data-viz font-data-viz">
+<div class="text-on-surface-variant">设备名:</div><div class="text-on-surface" data-role="spp-device-name">未连接</div>
+<div class="text-on-surface-variant">MAC:</div><div class="text-on-surface" data-role="spp-device-address">-</div>
+<div class="text-on-surface-variant">UUID:</div><div class="text-on-surface truncate" data-role="spp-uuid">00001101-0000-1000-8000-00805F9B34FB</div>
+<div class="text-on-surface-variant">权限状态:</div><div class="text-primary" data-role="spp-permission">等待读取</div>
+</div>
+<div class="grid grid-cols-2 gap-2 mt-2">
+<button class="bg-primary text-on-primary px-3 py-2 rounded text-label-md font-label-md" data-arm-spp-refresh type="button">刷新状态</button>
+<button class="bg-surface-container-high text-on-surface px-3 py-2 rounded text-label-md font-label-md" data-arm-spp-disconnect type="button">断开</button>
+</div>
+</section>
+<!-- Paired Devices -->
+<section class="glass-card rounded-xl p-4 flex flex-col gap-3">
+<h2 class="text-label-md font-label-md text-on-surface-variant uppercase">已配对设备</h2>
+<p class="text-xs text-outline italic mb-1">* 需先在 Android 系统设置中完成配对</p>
+<div class="flex justify-between items-center gap-2">
+<button class="bg-primary text-on-primary px-4 py-2 rounded text-label-md font-label-md hover:opacity-90 transition-opacity" data-arm-spp-list-devices type="button">
+                    读取已配对设备
+                </button>
+<span class="text-data-viz text-on-surface-variant" data-role="spp-device-count">等待 Android 权限</span>
+</div>
+<div class="flex flex-col gap-2" data-role="spp-device-list">
+<div class="border border-outline-variant rounded-lg p-3 bg-surface-container-lowest text-data-viz text-on-surface-variant">安装 APK 后，这里显示 Android 系统已配对的 SPP 设备。</div>
+</div>
+</section>
+<!-- Backend Frame Preview -->
+<section class="glass-card rounded-xl p-4 flex flex-col gap-3">
+<div class="flex justify-between items-center">
+<h2 class="text-label-md font-label-md text-on-surface-variant uppercase">后端 SPP 帧</h2>
+<span class="text-data-viz text-on-surface-variant" data-role="spp-frame-state">等待同步计划</span>
+</div>
+<pre class="monospaced text-data-viz bg-surface-container-low rounded-lg p-3 overflow-x-auto min-h-[88px]" data-role="spp-frame-preview">只有后端生成并标记 sendable=true 的 legacy_transport_frame 会出现在这里。</pre>
+<button class="bg-primary text-on-primary px-4 py-3 rounded text-label-md font-label-md disabled:opacity-50" data-arm-spp-send-frame type="button">
+                    发送后端批准帧
+                </button>
+<p class="text-xs text-outline">安全边界：本页不发送 CAN、原始电机、电流、力矩、速度、位置或 M33 覆盖指令。</p>
+</section>
+<!-- RX / API Evidence -->
+<section class="glass-card rounded-xl p-4 flex flex-col gap-3">
+<h2 class="text-label-md font-label-md text-on-surface-variant uppercase">TX / RX / API 证据</h2>
+<div class="grid grid-cols-2 gap-2 text-data-viz font-data-viz">
+<div class="text-on-surface-variant">上次发送:</div><div class="text-on-surface" data-role="spp-last-send">-</div>
+<div class="text-on-surface-variant">上次回包:</div><div class="text-on-surface" data-role="spp-last-inbound">-</div>
+<div class="text-on-surface-variant">后端入库:</div><div class="text-on-surface" data-role="spp-last-api">-</div>
+<div class="text-on-surface-variant">传感器:</div><div class="text-on-surface" data-role="spp-sensor-snapshot">等待 sensor JSON</div>
+</div>
+<div class="monospaced text-data-viz bg-surface-container-low rounded-lg p-3 max-h-48 overflow-y-auto" data-role="spp-log-stream">
+<div class="log-line">等待真实蓝牙事件。</div>
+</div>
+</section>
+<!-- Validation Checklist -->
+<section class="glass-card rounded-xl p-4 flex flex-col gap-3">
+<h2 class="text-label-md font-label-md text-on-surface-variant uppercase">实机验证清单</h2>
+<div class="flex flex-col gap-2 text-data-viz" data-role="spp-validation-list">
+<div>1. Android 系统蓝牙已开启并完成配对。</div>
+<div>2. SPP UUID 与旧 App 一致：00001101-0000-1000-8000-00805F9B34FB。</div>
+<div>3. App 登录后端并选择已绑定设备/训练计划。</div>
+<div>4. 回包上传后端后，仅作为 transport evidence，不代表 M33 已接受运动。</div>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe h-20 bg-surface/90 backdrop-blur-2xl shadow-[0_-4px_12px_rgba(0,88,188,0.05)] rounded-t-xl border-t border-outline-variant">
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">home_health</span>
+<span class="text-label-md font-label-md mt-1">首页</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">exercise</span>
+<span class="text-label-md font-label-md mt-1">训练</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">monitoring</span>
+<span class="text-label-md font-label-md mt-1">肌电</span>
+</a>
+<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 scale-90 transition-transform duration-150" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">precision_manufacturing</span>
+<span class="text-label-md font-label-md mt-1">设备</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors" href="#">
+<span class="material-symbols-outlined">person</span>
+<span class="text-label-md font-label-md mt-1">我的</span>
+</a>
+</nav>
+<script src="./mobile-bridge.js"></script>
+</body></html>

@@ -24,6 +24,8 @@
     lastSync: null,
     lastLegacySppSend: null,
     lastLegacySppInbound: null,
+    legacySppLogs: [],
+    selectedSppDevice: null,
     online: false,
     authenticated: false,
     statusText: "正在连接后端..."
@@ -70,6 +72,17 @@
     } catch (error) {
       return { available: true, connected: false, permission: "error", error: error.message || String(error), controlBoundary: "android_spp_transport_only_m33_final_authority" };
     }
+  }
+
+  async function listNativeSppDevices() {
+    const plugin = nativeSppPlugin();
+    if (!plugin || !plugin.listBondedDevices) {
+      throw new Error("当前运行环境不是 Android 原生包，不能读取 Classic SPP 已配对设备。");
+    }
+    if (plugin.requestPermissions) {
+      await plugin.requestPermissions().catch(() => null);
+    }
+    return plugin.listBondedDevices();
   }
 
   function nativeDeviceSelector(device) {
@@ -121,6 +134,19 @@
     node.style.border = tone === "warn" ? "1px solid #fed7aa" : "1px solid #a7f3d0";
     window.clearTimeout(toast.timer);
     toast.timer = window.setTimeout(() => node.remove(), 3200);
+  }
+
+  function appendLegacySppLog(direction, detail) {
+    const state = readState();
+    const logs = Array.isArray(state.legacySppLogs) ? state.legacySppLogs.slice(0, 39) : [];
+    logs.unshift({
+      at: new Date().toISOString(),
+      direction,
+      detail: typeof detail === "string" ? detail : JSON.stringify(detail || {})
+    });
+    const nextState = { ...state, legacySppLogs: logs };
+    writeState(nextState);
+    renderBluetoothDebugPage(nextState);
   }
 
   function pageName() {
@@ -491,6 +517,9 @@
       replaceFirst(["M33-Cortex", "ArmControl"], device ? device.ble_name || device.m33_device_id : "等待绑定 M33");
       replaceFirst(["已连接"], device && device.trust_status === "trusted" ? "已绑定" : "待绑定");
     }
+    if (current === "bluetooth-debug.html") {
+      renderBluetoothDebugPage(state);
+    }
     if (current === "training-library.html" || current === "ai-plan.html") {
       const movement = catalog.training_movements && catalog.training_movements[0];
       replaceFirst(["屈肘训练"], movement ? movement.label : "目录加载中");
@@ -602,6 +631,40 @@
     });
   }
 
+  async function connectSelectedNativeSpp(device) {
+    const plugin = nativeSppPlugin();
+    if (!plugin || !plugin.connect) {
+      throw new Error("当前运行环境不是 Android 原生包，不能打开 Bluetooth Classic SPP。");
+    }
+    if (plugin.requestPermissions) {
+      await plugin.requestPermissions().catch(() => null);
+    }
+    const profile = (readState().publicConfig && readState().publicConfig.m33_legacy_spp_profile) || (readState().catalog && readState().catalog.m33_legacy_spp_profile) || {};
+    const result = await plugin.connect({
+      address: device.address || "",
+      name: device.name || "",
+      uuid: profile.standard_uuid || "00001101-0000-1000-8000-00805F9B34FB"
+    });
+    const nextState = { ...readState(), nativeSpp: result, selectedSppDevice: device };
+    writeState(nextState);
+    appendLegacySppLog("CONNECT", `${device.name || "SPP"} ${device.address || ""}`);
+    renderBluetoothDebugPage(nextState);
+    return result;
+  }
+
+  async function disconnectNativeSpp() {
+    const plugin = nativeSppPlugin();
+    if (!plugin || !plugin.disconnect) {
+      throw new Error("当前运行环境不是 Android 原生包，不能断开 SPP。");
+    }
+    const result = await plugin.disconnect();
+    const nextState = { ...readState(), nativeSpp: result };
+    writeState(nextState);
+    appendLegacySppLog("DISCONNECT", "SPP socket closed");
+    renderBluetoothDebugPage(nextState);
+    return result;
+  }
+
   async function sendLegacyFrameToNative(device, frame, profile) {
     if (!frame || !frame.sendable || !frame.wire_text) {
       return { sent: false, reason: "legacy_frame_not_sendable" };
@@ -620,6 +683,40 @@
       messageType: frame.json && frame.json.type,
       controlBoundary: "android_spp_transport_only_m33_final_authority"
     });
+  }
+
+  async function sendDebugLegacyFrame() {
+    const state = readState();
+    const frame = state.lastBleMessage && state.lastBleMessage.payload ? state.lastBleMessage.payload.legacy_transport_frame : null;
+    if (!frame || !frame.sendable || !frame.wire_text) {
+      throw new Error("还没有可发送的后端 legacy_transport_frame。请先在设备页同步训练计划。");
+    }
+    const plugin = nativeSppPlugin();
+    if (!plugin || !plugin.sendLegacyFrame) {
+      throw new Error("当前运行环境不是 Android 原生包，不能发送 SPP 帧。");
+    }
+    let status = await readNativeSppStatus();
+    if (!status.connected) {
+      const selected = state.selectedSppDevice;
+      if (selected && (selected.address || selected.name)) {
+        status = await connectSelectedNativeSpp(selected);
+      } else {
+        const profile = (state.publicConfig && state.publicConfig.m33_legacy_spp_profile) || (state.catalog && state.catalog.m33_legacy_spp_profile);
+        const backendDevice = state.devices && state.devices[0];
+        status = await connectNativeSpp(backendDevice, profile);
+      }
+    }
+    const result = await plugin.sendLegacyFrame({
+      sendable: true,
+      wireText: frame.wire_text,
+      messageType: frame.json && frame.json.type,
+      controlBoundary: "android_spp_transport_only_m33_final_authority"
+    });
+    const nextState = { ...readState(), nativeSpp: status, lastLegacySppSend: result };
+    writeState(nextState);
+    appendLegacySppLog("TX", frame.wire_text.trim());
+    renderBluetoothDebugPage(nextState);
+    return result;
   }
 
   async function uploadLegacySppInbound(event) {
@@ -642,7 +739,97 @@
       })
     });
     writeState({ ...readState(), lastLegacySppInbound: result, nativeSpp: await readNativeSppStatus() });
+    appendLegacySppLog("API", result.status || "inbound_uploaded");
     return result;
+  }
+
+  function renderBluetoothDebugPage(state) {
+    if (pageName() !== "bluetooth-debug.html") return;
+    const nativeSpp = state.nativeSpp || {};
+    const connected = Boolean(nativeSpp.connected);
+    const frame = state.lastBleMessage && state.lastBleMessage.payload ? state.lastBleMessage.payload.legacy_transport_frame : null;
+    const inbound = state.lastLegacySppInbound || {};
+    const lastSend = state.lastLegacySppSend || {};
+    const logs = Array.isArray(state.legacySppLogs) ? state.legacySppLogs : [];
+    renderStatusPill(connected ? "SPP 已连接" : nativeSpp.available ? "SPP 待连接" : "仅 Web/无权限", connected);
+    setText("[data-role='spp-device-name']", nativeSpp.deviceName || (state.selectedSppDevice && state.selectedSppDevice.name) || "未连接");
+    setText("[data-role='spp-device-address']", nativeSpp.deviceAddress || (state.selectedSppDevice && state.selectedSppDevice.address) || "-");
+    setText("[data-role='spp-uuid']", nativeSpp.uuid || "00001101-0000-1000-8000-00805F9B34FB");
+    setText("[data-role='spp-permission']", nativeSpp.permission || "等待读取");
+    setText("[data-role='spp-frame-state']", frame && frame.sendable ? "sendable=true" : "等待后端批准帧");
+    setText("[data-role='spp-frame-preview']", frame && frame.wire_text ? frame.wire_text.trim() : "只有后端生成并标记 sendable=true 的 legacy_transport_frame 会出现在这里。");
+    setText("[data-role='spp-last-send']", lastSend.sent ? `sent ${lastSend.byteLength || 0} bytes` : (lastSend.reason || "-"));
+    setText("[data-role='spp-last-inbound']", inbound.raw_text || inbound.message_type || inbound.status || "-");
+    setText("[data-role='spp-last-api']", inbound.status || "-");
+    setText("[data-role='spp-sensor-snapshot']", sensorSnapshot(inbound));
+    const sendButton = document.querySelector("[data-arm-spp-send-frame]");
+    if (sendButton) sendButton.disabled = !(frame && frame.sendable && frame.wire_text);
+    const logNode = document.querySelector("[data-role='spp-log-stream']");
+    if (logNode) {
+      logNode.innerHTML = logs.length
+        ? logs.map((item) => `<div class="log-line"><span class="text-primary">${escapeHtml(item.direction)}</span> ${escapeHtml(item.at)}<br/>${escapeHtml(item.detail)}</div>`).join("")
+        : '<div class="log-line">等待真实蓝牙事件。</div>';
+    }
+  }
+
+  function setText(selector, value) {
+    const node = document.querySelector(selector);
+    if (node) node.textContent = value == null || value === "" ? "-" : String(value);
+  }
+
+  function renderStatusPill(label, connected) {
+    const node = document.querySelector("[data-role='spp-status-pill']");
+    if (!node) return;
+    node.setAttribute("class", connected ? "px-2 py-1 bg-green-100 text-green-800 text-data-viz font-data-viz rounded flex items-center gap-1" : "px-2 py-1 bg-surface-container-high text-on-surface-variant text-data-viz font-data-viz rounded flex items-center gap-1");
+    node.innerHTML = `<span class="${connected ? "w-2 h-2 rounded-full bg-green-500 animate-pulse" : "w-2 h-2 rounded-full bg-outline"}" data-role="spp-status-dot"></span>${escapeHtml(label)}`;
+  }
+
+  function setClass(selector, value) {
+    const node = document.querySelector(selector);
+    if (node) node.setAttribute("class", value);
+  }
+
+  function sensorSnapshot(inbound) {
+    const payload = inbound && (inbound.parsed || inbound.payload || inbound.legacy_payload);
+    if (!payload || typeof payload !== "object") return "等待 sensor JSON";
+    if (payload.type && payload.type !== "sensor") return payload.type;
+    const parts = [];
+    ["position", "angle", "emg", "battery", "status"].forEach((key) => {
+      if (payload[key] !== undefined) parts.push(`${key}=${JSON.stringify(payload[key])}`);
+    });
+    return parts.length ? parts.join(" / ") : JSON.stringify(payload).slice(0, 120);
+  }
+
+  async function refreshBluetoothDebugStatus() {
+    const nativeSpp = await readNativeSppStatus();
+    const nextState = { ...readState(), nativeSpp };
+    writeState(nextState);
+    renderBluetoothDebugPage(nextState);
+    return nextState;
+  }
+
+  async function refreshBluetoothDebugDevices() {
+    const result = await listNativeSppDevices();
+    const devices = result.devices || [];
+    const nextState = { ...readState(), nativeSpp: result, nativeSppBondedDevices: devices };
+    writeState(nextState);
+    setText("[data-role='spp-device-count']", `${devices.length} 台已配对`);
+    const list = document.querySelector("[data-role='spp-device-list']");
+    if (list) {
+      list.innerHTML = devices.length
+        ? devices.map((device) => [
+            '<div class="flex justify-between items-center border border-outline-variant rounded-lg p-3 bg-surface-container-lowest">',
+            '<div>',
+            `<div class="font-label-md text-label-md">${escapeHtml(device.name || "未命名 SPP 设备")}</div>`,
+            `<div class="text-data-viz text-on-surface-variant">${escapeHtml(device.address || "")}</div>`,
+            "</div>",
+            `<button class="bg-primary text-on-primary px-4 py-2 rounded text-label-md font-label-md hover:opacity-90 transition-opacity" data-arm-spp-connect="${escapeHtml(device.address || device.name || "")}" type="button">连接</button>`,
+            "</div>"
+          ].join(""))
+        : '<div class="border border-outline-variant rounded-lg p-3 bg-surface-container-lowest text-data-viz text-on-surface-variant">没有读取到已配对设备，请先去 Android 系统蓝牙设置配对 M33/PSoC SPP。</div>';
+    }
+    renderBluetoothDebugPage(nextState);
+    return devices;
   }
 
   function setupNativeSppInboundListener() {
@@ -651,6 +838,7 @@
     if (!plugin || !plugin.addListener) return;
     window.__rehabArmSppInboundBound = true;
     plugin.addListener("legacySppData", (event) => {
+      appendLegacySppLog("RX", event && event.wireText ? event.wireText.trim() : event);
       uploadLegacySppInbound(event)
         .then((result) => {
           if (result && result.status === "matched") toast("已收到 M33 SPP 回包并记录为后端证据。");
@@ -659,6 +847,7 @@
     });
     plugin.addListener("legacySppDisconnected", (event) => {
       writeState({ ...readState(), nativeSpp: event || { connected: false } });
+      appendLegacySppLog("DISCONNECT", "Native SPP disconnected");
     });
   }
 
@@ -708,12 +897,45 @@
 
   function bindActions() {
     document.addEventListener("click", (event) => {
+      const sppRefresh = event.target && event.target.closest ? event.target.closest("[data-arm-spp-refresh]") : null;
+      if (sppRefresh) {
+        event.preventDefault();
+        refreshBluetoothDebugStatus().then(() => toast("SPP 状态已刷新")).catch((error) => toast(error.message, "warn"));
+        return;
+      }
+      const sppList = event.target && event.target.closest ? event.target.closest("[data-arm-spp-list-devices]") : null;
+      if (sppList) {
+        event.preventDefault();
+        refreshBluetoothDebugDevices().catch((error) => toast(error.message, "warn"));
+        return;
+      }
+      const sppConnect = event.target && event.target.closest ? event.target.closest("[data-arm-spp-connect]") : null;
+      if (sppConnect) {
+        event.preventDefault();
+        const key = sppConnect.getAttribute("data-arm-spp-connect") || "";
+        const device = ((readState().nativeSppBondedDevices || []).find((item) => item.address === key || item.name === key)) || { address: key };
+        connectSelectedNativeSpp(device).then(() => toast("SPP 已连接，等待 M33 回包。")).catch((error) => toast(error.message, "warn"));
+        return;
+      }
+      const sppDisconnect = event.target && event.target.closest ? event.target.closest("[data-arm-spp-disconnect]") : null;
+      if (sppDisconnect) {
+        event.preventDefault();
+        disconnectNativeSpp().then(() => toast("SPP 已断开")).catch((error) => toast(error.message, "warn"));
+        return;
+      }
+      const sppSendFrame = event.target && event.target.closest ? event.target.closest("[data-arm-spp-send-frame]") : null;
+      if (sppSendFrame) {
+        event.preventDefault();
+        sendDebugLegacyFrame().then(() => toast("已发送后端批准帧，等待 M33 ACK。")).catch((error) => toast(error.message, "warn"));
+        return;
+      }
       const button = event.target && event.target.closest ? event.target.closest("[data-arm-workflow-action]") : null;
       if (!button) return;
       event.preventDefault();
       executeWorkflowAction(button.getAttribute("data-arm-workflow-action")).catch((error) => toast(error.message, "warn"));
     });
     document.querySelectorAll("button").forEach((button) => {
+      if (button.matches("[data-arm-spp-refresh], [data-arm-spp-list-devices], [data-arm-spp-connect], [data-arm-spp-disconnect], [data-arm-spp-send-frame]")) return;
       button.addEventListener("click", () => {
         const label = (button.textContent || button.innerText || "").trim();
         handlePrimaryAction(label).catch((error) => toast(error.message, "warn"));

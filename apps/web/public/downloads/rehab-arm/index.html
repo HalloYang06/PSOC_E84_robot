@@ -182,16 +182,16 @@
           <dt>包名</dt>
           <dd>com.lingdong.rehabarm</dd>
           <dt>版本</dt>
-          <dd>1.0.7 debug</dd>
+          <dd>1.0.8 debug</dd>
           <dt>大小</dt>
-          <dd>4,181,238 bytes</dd>
+          <dd>4,188,454 bytes</dd>
           <dt>SHA256</dt>
-          <dd>386309ED8FF507A878817C7744AB4E69E944D1C22FEC32BD16DD34B229897802</dd>
+          <dd>772B5D618CA4553C25E2A10B6F79254DDE968D143B3E1BE1F8F21D6604D3705C</dd>
         </dl>
       </section>
 
       <section>
-        <h2>1.0.7 更新</h2>
+        <h2>1.0.8 更新</h2>
         <ol>
           <li>内置云端 API：<code>http://106.55.62.122:8011</code>。</li>
           <li>启动后读取 <code>public-config</code> 和 <code>catalog</code>，不再静默只显示本地预览数据。</li>
@@ -204,12 +204,13 @@
           <li>蓝牙发送只接受后端标记 <code>sendable=true</code> 的旧协议帧；App 不伪造 M33 ACK，也不释放急停。</li>
           <li>新增 M33 旧协议回包上传：Android 收到 <code>memory_ack</code>、<code>execute_ack</code>、<code>sensor</code> 或 <code>error</code> 后会提交到后端作为证据。</li>
           <li>SPP 回包只证明传输/设备回包，不会自动把计划改成 <code>m33_accepted</code>；正式执行仍等待 M33 决策链路。</li>
+          <li>新增 Stitch 设计的“蓝牙调试 / 实机验证”页面：从设备页进入，可读取 Android 已配对 SPP 设备、连接/断开、显示最新后端 <code>legacy_transport_frame</code>、发送 backend-approved frame，并展示 TX/RX/API/sensor 证据。</li>
           <li>内部测试账号：<code>3245056131@qq.com</code> / <code>1234</code>。</li>
         </ol>
       </section>
 
       <section>
-        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.7 已加入旧 SPP 发送和回包证据上传；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
+        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.8 已加入 Stitch 蓝牙调试 / 实机验证页、已配对设备列表、SPP 连接/断开、后端批准帧发送和 ACK/sensor 证据显示；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
       </section>
     </main>
   </body>
