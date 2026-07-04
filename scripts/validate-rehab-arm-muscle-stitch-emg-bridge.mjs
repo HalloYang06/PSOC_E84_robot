@@ -17,6 +17,18 @@ const requiredPatterns = [
     pattern: /data-codex-emg-channel/,
   },
   {
+    label: "bottom EMG panel is selected by waveform structure",
+    pattern: /node\.querySelector\("\.waveform-container"\)/,
+  },
+  {
+    label: "waveform labels are updated without Tailwind selector escaping",
+    pattern: /classList\.contains\("top-2"\)/,
+  },
+  {
+    label: "feature monitor stale threshold text is overwritten",
+    pattern: /Feature Extraction Monitor/,
+  },
+  {
     label: "CH1 stale baseline value is overwritten",
     pattern: /\["基线 15µV",\s*emgChannelTexts\[0\]\]/,
   },

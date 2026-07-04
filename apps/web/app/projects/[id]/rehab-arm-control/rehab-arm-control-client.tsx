@@ -5778,7 +5778,10 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       };
       const syncStitchMuscleTelemetry = () => {
         const panel = Array.from(doc.querySelectorAll<HTMLElement>(".glass-panel"))
-          .find((node) => text(node.textContent, "").includes("实时肌电摘要"));
+          .find((node) => (
+            !!node.querySelector(".waveform-container")
+            && !!node.querySelector('[data-role="muscle-refresh"]')
+          ));
         const channelCards = Array.from(
           panel?.querySelectorAll<HTMLElement>(".grid.grid-cols-4.gap-4.mb-4 > div") ?? [],
         ).slice(0, 4);
