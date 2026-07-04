@@ -26,5 +26,7 @@ void can_transport_poll_rx(void);
 int32_t can_rx_dispatch(const can_message_t *message);
 uint16_t can_transport_error_count(void);
 uint8_t can_transport_queue_fill(void);
+uint16_t can_transport_rx_count(void);
+uint16_t can_transport_tx_count(void);
 
 #endif

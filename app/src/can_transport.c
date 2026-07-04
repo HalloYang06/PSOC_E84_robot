@@ -6,7 +6,7 @@
 #include "usart.h"
 
 #ifndef CAN_TRANSPORT_DEBUG_UART
-#define CAN_TRANSPORT_DEBUG_UART 0
+#define CAN_TRANSPORT_DEBUG_UART 1
 #endif
 
 enum
@@ -35,12 +35,24 @@ typedef struct
 static CAN_HandleTypeDef *s_hcan;
 static uint32_t s_order_counter;
 static uint16_t s_error_count;
+static uint16_t s_rx_count;
+static uint16_t s_tx_count;
 static can_command_handler_t s_handler;
 static void *s_handler_user;
 static can_tx_slot_t s_tx_slots[CAN_TX_QUEUE_CAP];
 static can_ack_cache_t s_ack_cache;
 
 #if CAN_TRANSPORT_DEBUG_UART
+static void can_uart_debug_write(const char *line, int len, uint32_t timeout_ms)
+{
+    if ((line == 0) || (len <= 0))
+    {
+        return;
+    }
+
+    (void)HAL_UART_Transmit(&huart1, (uint8_t *)line, (uint16_t)len, timeout_ms);
+}
+
 static void can_uart_debug_init_fail(const char *stage, const CAN_HandleTypeDef *hcan)
 {
     char line[128];
@@ -68,36 +80,40 @@ static void can_uart_debug_init_fail(const char *stage, const CAN_HandleTypeDef 
         len = (int)sizeof(line) - 1;
     }
 
-    (void)HAL_UART_Transmit(&huart1, (uint8_t *)line, (uint16_t)len, 100U);
+    can_uart_debug_write(line, len, 100U);
 }
 
-static void can_uart_debug_rx_frame(const CAN_RxHeaderTypeDef *rx_header, const uint8_t *data, uint8_t matched)
+static void can_uart_debug_init_ok(void)
+{
+    static const char line[] = "CAN INIT OK filter=7C0 std data\r\n";
+    can_uart_debug_write(line, (int)(sizeof(line) - 1U), 100U);
+}
+
+static void can_uart_debug_frame(const char *prefix, uint32_t id, uint8_t dlc, const uint8_t *data)
 {
     char line[128];
     int len;
     uint8_t i;
 
-    if ((rx_header == 0) || (data == 0))
+    if ((prefix == 0) || (data == 0))
     {
         return;
     }
 
     len = snprintf(line,
                    sizeof(line),
-                   "CAN RX id=%03lX ide=%u rtr=%u dlc=%u match=%u data=",
-                   (unsigned long)(rx_header->StdId & 0x7FFU),
-                   (unsigned int)rx_header->IDE,
-                   (unsigned int)rx_header->RTR,
-                   (unsigned int)rx_header->DLC,
-                   (unsigned int)matched);
+                   "%s id=%03lX dlc=%u data=",
+                   prefix,
+                   (unsigned long)(id & 0x7FFU),
+                   (unsigned int)dlc);
     if (len < 0)
     {
         return;
     }
 
-    for (i = 0U; (i < rx_header->DLC) && (i < 8U); ++i)
+    for (i = 0U; (i < dlc) && (i < 8U); ++i)
     {
-        int wrote = snprintf(line + len, sizeof(line) - (size_t)len, "%02X%s", data[i], (i + 1U < rx_header->DLC) ? " " : "");
+        int wrote = snprintf(line + len, sizeof(line) - (size_t)len, "%02X%s", data[i], (i + 1U < dlc) ? " " : "");
         if (wrote < 0)
         {
             return;
@@ -114,8 +130,137 @@ static void can_uart_debug_rx_frame(const CAN_RxHeaderTypeDef *rx_header, const 
         line[len++] = '\r';
         line[len++] = '\n';
         line[len] = '\0';
-        (void)HAL_UART_Transmit(&huart1, (uint8_t *)line, (uint16_t)len, 20U);
+        can_uart_debug_write(line, len, 20U);
     }
+}
+
+static void can_uart_debug_rx_frame(const CAN_RxHeaderTypeDef *rx_header, const uint8_t *data, uint8_t matched)
+{
+    char prefix[32];
+    int len;
+
+    if ((rx_header == 0) || (data == 0))
+    {
+        return;
+    }
+
+    len = snprintf(prefix,
+                   sizeof(prefix),
+                   "CAN RX match=%u",
+                   (unsigned int)matched);
+    if (len <= 0)
+    {
+        return;
+    }
+    if ((size_t)len >= sizeof(prefix))
+    {
+        len = (int)sizeof(prefix) - 1;
+        prefix[len] = '\0';
+    }
+
+    can_uart_debug_frame(prefix, rx_header->StdId, (uint8_t)rx_header->DLC, data);
+}
+
+static void can_uart_debug_tx_frame(const can_message_t *message, int32_t rc)
+{
+    char prefix[32];
+    int len;
+    static uint16_t sensor_tx_log_div;
+
+    if (message == 0)
+    {
+        return;
+    }
+    if ((message->id == F103_CAN_ID_SENSOR_TX) && (rc == 0))
+    {
+        sensor_tx_log_div++;
+        if (sensor_tx_log_div < 50U)
+        {
+            return;
+        }
+        sensor_tx_log_div = 0U;
+    }
+
+    len = snprintf(prefix,
+                   sizeof(prefix),
+                   "CAN TX rc=%ld",
+                   (long)rc);
+    if (len <= 0)
+    {
+        return;
+    }
+    if ((size_t)len >= sizeof(prefix))
+    {
+        len = (int)sizeof(prefix) - 1;
+        prefix[len] = '\0';
+    }
+
+    can_uart_debug_frame(prefix, message->id, message->dlc, message->data);
+}
+
+static void can_uart_debug_ctrl_result(const can_proto_command_t *command,
+                                       uint8_t status,
+                                       uint8_t duplicate,
+                                       int32_t ack_rc)
+{
+    char line[128];
+    int len;
+
+    if (command == 0)
+    {
+        return;
+    }
+
+    len = snprintf(line,
+                   sizeof(line),
+                   "CAN CMD cmd=%02X seq=%u status=%u dup=%u ack_rc=%ld q=%u err=%u rx=%u tx=%u\r\n",
+                   (unsigned int)command->cmd_id,
+                   (unsigned int)command->seq,
+                   (unsigned int)status,
+                   (unsigned int)duplicate,
+                   (long)ack_rc,
+                   (unsigned int)can_transport_queue_fill(),
+                   (unsigned int)can_transport_error_count(),
+                   (unsigned int)can_transport_rx_count(),
+                   (unsigned int)can_transport_tx_count());
+    if (len <= 0)
+    {
+        return;
+    }
+    if ((size_t)len >= sizeof(line))
+    {
+        len = (int)sizeof(line) - 1;
+    }
+
+    can_uart_debug_write(line, len, 20U);
+}
+
+static void can_uart_debug_ctrl_drop(const can_message_t *message)
+{
+    char line[80];
+    int len;
+
+    if (message == 0)
+    {
+        return;
+    }
+
+    len = snprintf(line,
+                   sizeof(line),
+                   "CAN CMD DROP id=%03lX dlc=%u err=%u\r\n",
+                   (unsigned long)(message->id & 0x7FFU),
+                   (unsigned int)message->dlc,
+                   (unsigned int)can_transport_error_count());
+    if (len <= 0)
+    {
+        return;
+    }
+    if ((size_t)len >= sizeof(line))
+    {
+        len = (int)sizeof(line) - 1;
+    }
+
+    can_uart_debug_write(line, len, 20U);
 }
 #endif
 
@@ -127,10 +272,16 @@ static int32_t can_low_level_send(const can_message_t *message)
 
     if ((s_hcan == 0) || (message == 0))
     {
+#if CAN_TRANSPORT_DEBUG_UART
+        can_uart_debug_tx_frame(message, -1);
+#endif
         return -1;
     }
     if ((message->id > 0x7FFU) || (HAL_CAN_GetTxMailboxesFreeLevel(s_hcan) == 0U))
     {
+#if CAN_TRANSPORT_DEBUG_UART
+        can_uart_debug_tx_frame(message, -1);
+#endif
         return -1;
     }
 
@@ -149,8 +300,15 @@ static int32_t can_low_level_send(const can_message_t *message)
 
     if (HAL_CAN_AddTxMessage(s_hcan, &tx_header, (uint8_t *)message->data, &mailbox) != HAL_OK)
     {
+#if CAN_TRANSPORT_DEBUG_UART
+        can_uart_debug_tx_frame(message, -1);
+#endif
         return -1;
     }
+    s_tx_count++;
+#if CAN_TRANSPORT_DEBUG_UART
+    can_uart_debug_tx_frame(message, 0);
+#endif
     return 0;
 }
 
@@ -248,6 +406,8 @@ int32_t can_transport_init(CAN_HandleTypeDef *hcan)
     s_hcan = hcan;
     s_order_counter = 0U;
     s_error_count = 0U;
+    s_rx_count = 0U;
+    s_tx_count = 0U;
     s_handler = 0;
     s_handler_user = 0;
     (void)memset(s_tx_slots, 0, sizeof(s_tx_slots));
@@ -293,6 +453,9 @@ int32_t can_transport_init(CAN_HandleTypeDef *hcan)
 #endif
         return -1;
     }
+#if CAN_TRANSPORT_DEBUG_UART
+    can_uart_debug_init_ok();
+#endif
     return 0;
 }
 
@@ -337,20 +500,54 @@ void can_transport_poll_rx(void)
 {
     CAN_RxHeaderTypeDef rx_header;
     can_message_t message;
+    CAN_TypeDef *can;
+    uint32_t rir;
+    uint32_t rdtr;
+    uint32_t rdlr;
+    uint32_t rdhr;
 
     if (s_hcan == 0)
     {
         return;
     }
+    can = s_hcan->Instance;
+    if (can == 0)
+    {
+        return;
+    }
 
-    while (HAL_CAN_GetRxFifoFillLevel(s_hcan, CAN_RX_FIFO0) > 0U)
+    while ((can->RF0R & CAN_RF0R_FMP0) > 0U)
     {
         (void)memset(&message, 0, sizeof(message));
-        if (HAL_CAN_GetRxMessage(s_hcan, CAN_RX_FIFO0, &rx_header, message.data) != HAL_OK)
+
+        rir = can->sFIFOMailBox[CAN_RX_FIFO0].RIR;
+        rdtr = can->sFIFOMailBox[CAN_RX_FIFO0].RDTR;
+        rdlr = can->sFIFOMailBox[CAN_RX_FIFO0].RDLR;
+        rdhr = can->sFIFOMailBox[CAN_RX_FIFO0].RDHR;
+
+        rx_header.IDE = rir & CAN_RI0R_IDE;
+        rx_header.RTR = rir & CAN_RI0R_RTR;
+        rx_header.StdId = (rir & CAN_RI0R_STID) >> CAN_RI0R_STID_Pos;
+        rx_header.DLC = (rdtr & CAN_RDT0R_DLC) >> CAN_RDT0R_DLC_Pos;
+        if (rx_header.DLC > 8U)
         {
-            s_error_count++;
-            return;
+            rx_header.DLC = 8U;
         }
+        rx_header.ExtId = 0U;
+        rx_header.Timestamp = 0U;
+        rx_header.FilterMatchIndex = (rdtr & CAN_RDT0R_FMI) >> CAN_RDT0R_FMI_Pos;
+
+        message.data[0] = (uint8_t)(rdlr & 0xFFU);
+        message.data[1] = (uint8_t)((rdlr >> 8U) & 0xFFU);
+        message.data[2] = (uint8_t)((rdlr >> 16U) & 0xFFU);
+        message.data[3] = (uint8_t)((rdlr >> 24U) & 0xFFU);
+        message.data[4] = (uint8_t)(rdhr & 0xFFU);
+        message.data[5] = (uint8_t)((rdhr >> 8U) & 0xFFU);
+        message.data[6] = (uint8_t)((rdhr >> 16U) & 0xFFU);
+        message.data[7] = (uint8_t)((rdhr >> 24U) & 0xFFU);
+
+        SET_BIT(can->RF0R, CAN_RF0R_RFOM0);
+
         if ((rx_header.IDE != CAN_ID_STD) || (rx_header.RTR != CAN_RTR_DATA))
         {
             continue;
@@ -361,11 +558,18 @@ void can_transport_poll_rx(void)
         {
             message.dlc = 8U;
         }
+        s_rx_count++;
 #if CAN_TRANSPORT_DEBUG_UART
         can_uart_debug_rx_frame(&rx_header, message.data, (uint8_t)(message.id == F103_CAN_ID_CTRL_RX));
 #endif
         (void)can_rx_dispatch(&message);
     }
+
+    if ((can->RF0R & (CAN_RF0R_FULL0 | CAN_RF0R_FOVR0)) != 0U)
+    {
+        SET_BIT(can->RF0R, CAN_RF0R_FULL0 | CAN_RF0R_FOVR0);
+    }
+    __HAL_CAN_ENABLE_IT(s_hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
 }
 
 int32_t can_rx_dispatch(const can_message_t *message)
@@ -383,6 +587,9 @@ int32_t can_rx_dispatch(const can_message_t *message)
     }
     if (can_proto_decode_control(message, &command) != 0)
     {
+#if CAN_TRANSPORT_DEBUG_UART
+        can_uart_debug_ctrl_drop(message);
+#endif
         return 0;
     }
 
@@ -398,7 +605,10 @@ int32_t can_rx_dispatch(const can_message_t *message)
                                  s_ack_cache.payload_len,
                                  &ack) == 0)
         {
-            (void)can_tx_submit(&ack, CAN_TX_PRIO_HIGH);
+            int32_t ack_rc = can_tx_submit(&ack, CAN_TX_PRIO_HIGH);
+#if CAN_TRANSPORT_DEBUG_UART
+            can_uart_debug_ctrl_result(&command, s_ack_cache.status, 1U, ack_rc);
+#endif
         }
         return 0;
     }
@@ -418,7 +628,11 @@ int32_t can_rx_dispatch(const can_message_t *message)
 
     if (can_proto_encode_ack(command.cmd_id, command.seq, status, resp_payload, resp_len, &ack) == 0)
     {
-        if (can_tx_submit(&ack, CAN_TX_PRIO_HIGH) != 0)
+        int32_t ack_rc = can_tx_submit(&ack, CAN_TX_PRIO_HIGH);
+#if CAN_TRANSPORT_DEBUG_UART
+        can_uart_debug_ctrl_result(&command, status, 0U, ack_rc);
+#endif
+        if (ack_rc != 0)
         {
             s_error_count++;
         }
@@ -450,4 +664,14 @@ uint8_t can_transport_queue_fill(void)
         }
     }
     return used;
+}
+
+uint16_t can_transport_rx_count(void)
+{
+    return s_rx_count;
+}
+
+uint16_t can_transport_tx_count(void)
+{
+    return s_tx_count;
 }

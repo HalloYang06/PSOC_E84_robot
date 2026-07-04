@@ -16,7 +16,7 @@
 #include "node_cfg.h"
 
 #ifndef APP_CAN_DEBUG_UART
-#define APP_CAN_DEBUG_UART 0
+#define APP_CAN_DEBUG_UART 1
 #endif
 
 typedef struct
@@ -45,6 +45,11 @@ typedef struct
 } app_runtime_t;
 
 static app_runtime_t s_app;
+
+static uint16_t app_total_error_count(void)
+{
+    return (uint16_t)(s_app.error_count + can_transport_error_count());
+}
 
 #if APP_CAN_DEBUG_UART
 static void app_uart_debug_init_step(const char *msg)
@@ -145,12 +150,15 @@ static bool app_handle_can_command(const can_proto_command_t *command,
         return true;
 
     case CAN_CMD_GET_STATUS:
+    {
+        uint16_t error_count = app_total_error_count();
         resp_payload[0] = (uint8_t)app->state;
-        resp_payload[1] = (uint8_t)(app->error_count & 0xFFU);
-        resp_payload[2] = (uint8_t)((app->error_count >> 8) & 0xFFU);
+        resp_payload[1] = (uint8_t)(error_count & 0xFFU);
+        resp_payload[2] = (uint8_t)((error_count >> 8) & 0xFFU);
         resp_payload[3] = can_transport_queue_fill();
         *resp_len = 4U;
         return true;
+    }
 
     case CAN_CMD_SET_STATE:
         if ((command->payload_len < 1U) || (command->payload[0] > (uint8_t)NODE_STATE_FAULT))
@@ -170,28 +178,43 @@ static bool app_handle_can_command(const can_proto_command_t *command,
 #if APP_CAN_DEBUG_UART
 static void app_uart_debug_telemetry(const can_message_t *message, int32_t can_rc)
 {
-    char line[96];
-    uint16_t emg_raw;
-    int16_t emg_filtered;
+    char line[128];
+    uint16_t adc0;
+    uint16_t adc1;
+    uint16_t adc2;
+    uint16_t adc3;
     int len;
+    static uint16_t telemetry_log_div;
 
     if (message == 0)
     {
         return;
     }
+    if (can_rc == 0)
+    {
+        telemetry_log_div++;
+        if (telemetry_log_div < 50U)
+        {
+            return;
+        }
+        telemetry_log_div = 0U;
+    }
 
-    emg_raw = (uint16_t)((uint16_t)message->data[0] | ((uint16_t)message->data[1] << 8U));
-    emg_filtered = (int16_t)((uint16_t)message->data[2] | ((uint16_t)message->data[3] << 8U));
+    adc0 = (uint16_t)((uint16_t)message->data[0] | ((uint16_t)message->data[1] << 8U));
+    adc1 = (uint16_t)((uint16_t)message->data[2] | ((uint16_t)message->data[3] << 8U));
+    adc2 = (uint16_t)((uint16_t)message->data[4] | ((uint16_t)message->data[5] << 8U));
+    adc3 = (uint16_t)((uint16_t)message->data[6] | ((uint16_t)message->data[7] << 8U));
 
     len = snprintf(line,
                    sizeof(line),
-                   "EMG raw=%u filt=%d flags=%02X can_rc=%ld q=%u err=%u\r\n",
-                   (unsigned int)emg_raw,
-                   (int)emg_filtered,
-                   (unsigned int)message->data[7],
+                   "ADC ch0=%u ch1=%u ch2=%u ch3=%u can_rc=%ld q=%u err=%u\r\n",
+                   (unsigned int)adc0,
+                   (unsigned int)adc1,
+                   (unsigned int)adc2,
+                   (unsigned int)adc3,
                    (long)can_rc,
                    (unsigned int)can_transport_queue_fill(),
-                   (unsigned int)(s_app.error_count + can_transport_error_count()));
+                   (unsigned int)app_total_error_count());
     if (len <= 0)
     {
         return;
@@ -206,14 +229,16 @@ static void app_uart_debug_telemetry(const can_message_t *message, int32_t can_r
 
 static void app_uart_debug_can_rx_pending(void)
 {
-    char line[48];
+    char line[64];
     int len;
 
     len = snprintf(line,
                    sizeof(line),
-                   "CAN RX pending q=%u err=%u\r\n",
+                   "CAN RX pending q=%u err=%u rx=%u tx=%u\r\n",
                    (unsigned int)can_transport_queue_fill(),
-                   (unsigned int)(s_app.error_count + can_transport_error_count()));
+                   (unsigned int)app_total_error_count(),
+                   (unsigned int)can_transport_rx_count(),
+                   (unsigned int)can_transport_tx_count());
     if (len <= 0)
     {
         return;
@@ -292,8 +317,10 @@ static void app_send_health(void)
     can_message_t message;
 
     if (can_proto_encode_health(s_app.state,
-                                s_app.error_count,
+                                app_total_error_count(),
                                 can_transport_queue_fill(),
+                                can_transport_rx_count(),
+                                can_transport_tx_count(),
                                 &message) == 0)
     {
         (void)can_tx_submit(&message, CAN_TX_PRIO_HIGH);
@@ -303,6 +330,7 @@ static void app_send_health(void)
 static void app_handle_event(const event_t *event)
 {
     uint16_t raw;
+    uint16_t adc_samples[FUSION_ADC_CHANNEL_COUNT];
     float filtered;
     uint16_t period_tx_ms;
     uint16_t period_hr_poll_ms;
@@ -341,10 +369,9 @@ static void app_handle_event(const event_t *event)
         break;
 
     case EVENT_EMG_SAMPLE_READY:
-        if ((s_app.emg_sensor != 0) && (s_app.emg_sensor->read(s_app.emg_sensor, &raw) == 0))
+        if ((s_app.emg_sensor != 0) && (sensor_factory_read_emg_channels(adc_samples) == 0))
         {
-            filtered = filter_chain_process(&s_app.emg_filter_chain, (float)raw);
-            data_fusion_update_emg(&s_app.fusion, s_app.ms_now, raw, filtered);
+            data_fusion_update_adc4(&s_app.fusion, s_app.ms_now, adc_samples);
             s_app.state = NODE_STATE_RUN;
         }
         else
@@ -454,7 +481,12 @@ int32_t app_service_init(void)
     }
     can_transport_register_command_handler(app_handle_can_command, &s_app);
 
-    if (can_proto_encode_health(s_app.state, s_app.error_count, can_transport_queue_fill(), &boot_can) == 0)
+    if (can_proto_encode_health(s_app.state,
+                                app_total_error_count(),
+                                can_transport_queue_fill(),
+                                can_transport_rx_count(),
+                                can_transport_tx_count(),
+                                &boot_can) == 0)
     {
         (void)can_tx_submit(&boot_can, CAN_TX_PRIO_HIGH);
         can_transport_process(0U);
@@ -472,6 +504,9 @@ int32_t app_service_init(void)
 void app_service_run_once(void)
 {
     event_t event;
+
+    can_transport_poll_rx();
+
     if (event_queue_pop(&s_app.queue, &event))
     {
         app_handle_event(&event);
@@ -490,7 +525,7 @@ node_state_t app_service_get_state(void)
 
 uint16_t app_service_get_error_count(void)
 {
-    return s_app.error_count + can_transport_error_count();
+    return app_total_error_count();
 }
 
 void app_service_on_systick_isr(void)
@@ -524,6 +559,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan_cb)
 {
     if ((hcan_cb != 0) && (hcan_cb->Instance == CAN1))
     {
+        __HAL_CAN_DISABLE_IT(hcan_cb, CAN_IT_RX_FIFO0_MSG_PENDING);
         app_push_event_from_isr(EVENT_CAN_RX_PENDING, 0U, 0U);
     }
 }

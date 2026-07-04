@@ -2,68 +2,32 @@
 
 #include <string.h>
 
-static uint8_t clamp_u8(float x)
-{
-    if (x < 0.0f)
-    {
-        return 0U;
-    }
-    if (x > 255.0f)
-    {
-        return 255U;
-    }
-    return (uint8_t)x;
-}
-
-static int16_t clamp_i16(float x)
-{
-    if (x < -32768.0f)
-    {
-        return -32768;
-    }
-    if (x > 32767.0f)
-    {
-        return 32767;
-    }
-    return (int16_t)x;
-}
-
 int32_t can_proto_encode_sensor(const fusion_snapshot_t *snapshot, can_message_t *message)
 {
-    int16_t emg_filtered;
-    uint8_t hr_filtered;
-    uint8_t flags = 0U;
+    uint8_t i;
 
     if ((snapshot == 0) || (message == 0))
     {
         return -1;
     }
 
-    emg_filtered = clamp_i16(snapshot->emg_filtered);
-    hr_filtered = clamp_u8(snapshot->hr_filtered);
-    if (snapshot->emg_valid != 0U)
-    {
-        flags |= 0x01U;
-    }
-    if (snapshot->hr_valid != 0U)
-    {
-        flags |= 0x02U;
-    }
-
     message->id = F103_CAN_ID_SENSOR_TX;
     message->dlc = 8U;
-    message->data[0] = (uint8_t)(snapshot->emg_raw & 0xFFU);
-    message->data[1] = (uint8_t)((snapshot->emg_raw >> 8) & 0xFFU);
-    message->data[2] = (uint8_t)(emg_filtered & 0xFF);
-    message->data[3] = (uint8_t)((emg_filtered >> 8) & 0xFF);
-    message->data[4] = (uint8_t)(snapshot->hr_raw & 0xFFU);
-    message->data[5] = (uint8_t)((snapshot->hr_raw >> 8) & 0xFFU);
-    message->data[6] = hr_filtered;
-    message->data[7] = flags;
+    for (i = 0U; i < FUSION_ADC_CHANNEL_COUNT; ++i)
+    {
+        const uint16_t sample = snapshot->adc_raw[i];
+        message->data[i * 2U] = (uint8_t)(sample & 0xFFU);
+        message->data[(i * 2U) + 1U] = (uint8_t)((sample >> 8) & 0xFFU);
+    }
     return 0;
 }
 
-int32_t can_proto_encode_health(node_state_t state, uint16_t error_count, uint8_t q_fill, can_message_t *message)
+int32_t can_proto_encode_health(node_state_t state,
+                                uint16_t error_count,
+                                uint8_t q_fill,
+                                uint16_t rx_count,
+                                uint16_t tx_count,
+                                can_message_t *message)
 {
     if (message == 0)
     {
@@ -76,10 +40,10 @@ int32_t can_proto_encode_health(node_state_t state, uint16_t error_count, uint8_
     message->data[1] = (uint8_t)(error_count & 0xFFU);
     message->data[2] = (uint8_t)((error_count >> 8) & 0xFFU);
     message->data[3] = q_fill;
-    message->data[4] = 0U;
-    message->data[5] = 0U;
-    message->data[6] = 0U;
-    message->data[7] = 0U;
+    message->data[4] = (uint8_t)(rx_count & 0xFFU);
+    message->data[5] = (uint8_t)((rx_count >> 8) & 0xFFU);
+    message->data[6] = (uint8_t)(tx_count & 0xFFU);
+    message->data[7] = (uint8_t)((tx_count >> 8) & 0xFFU);
     return 0;
 }
 

@@ -37,7 +37,12 @@ typedef struct
 } can_proto_command_t;
 
 int32_t can_proto_encode_sensor(const fusion_snapshot_t *snapshot, can_message_t *message);
-int32_t can_proto_encode_health(node_state_t state, uint16_t error_count, uint8_t q_fill, can_message_t *message);
+int32_t can_proto_encode_health(node_state_t state,
+                                uint16_t error_count,
+                                uint8_t q_fill,
+                                uint16_t rx_count,
+                                uint16_t tx_count,
+                                can_message_t *message);
 int32_t can_proto_decode_control(const can_message_t *message, can_proto_command_t *command);
 int32_t can_proto_encode_ack(uint8_t cmd_id,
                              uint8_t seq,
