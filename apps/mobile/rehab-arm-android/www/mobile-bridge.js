@@ -369,7 +369,7 @@
   function timelineTarget(item) {
     const action = item.primary_action || {};
     const code = action.code || "";
-    if (code.includes("AI_DRAFT")) return "ai-plan.html";
+    if (code.includes("AI_DRAFT") || item.kind === "ai_training_draft") return "ai-plan.html";
     if (code.includes("REPORT") || item.kind === "training_report") return "report.html";
     if (code.includes("SESSION") || item.kind === "training_session") return "report.html";
     if (item.kind === "offline_queue_item") return "device.html";
@@ -670,7 +670,7 @@
       replaceAll(["ID: 8829"], profile && profile.id ? `ID: ${String(profile.id).slice(0, 8)}` : "ID: 待同步");
       replaceAll(["第二阶段康复中"], profile && profile.rehab_stage ? `康复阶段：${profile.rehab_stage}` : "康复阶段待完善");
       replaceAll(["避免过度伸展 > 120°"], profile && (profile.medical_constraints || []).length ? (profile.medical_constraints || []).join("；") : "暂无后端医疗约束记录");
-      replaceAll(["System OK"], state.authenticated ? "已同步" : "待登录");
+      replaceAll(["System OK", "待登录"], state.authenticated ? "已同步" : "待登录");
       replaceAll(["M33 康复机械臂"], devices[0] ? devices[0].ble_name || devices[0].m33_device_id : "等待绑定康复设备");
       replaceAll(["M55 肌电传感器"], state.latestEmg ? "M55 肌电最近记录" : "等待肌电记录");
       replaceAll(["EXO-L-01"], devices[0] ? devices[0].m33_device_id || devices[0].id : "未绑定设备");
