@@ -1,0 +1,41 @@
+{
+  "url": "http://106.55.62.122:3001/rehab-arm-mobile/ai-plan.html?finalok=1783161275964",
+  "generatedDraftId": "fd4ae7ca-c363-48a3-9574-b2c32c6925a0",
+  "acceptedPlanId": "f7e05831-0fd2-4860-a338-7a45cb4eaeec",
+  "planner": {
+    "schema_version": "rehab_app_ai_planner_call_v1",
+    "relay_channel": "app_training_planner",
+    "client_type": "app",
+    "purpose": "training_plan_draft",
+    "scope": "rehab_training_planning",
+    "shared_model_relay_config": true,
+    "does_not_touch_xiaozhi_l": true,
+    "provider": "qwen",
+    "model": "qwen-plus",
+    "external_enabled": true,
+    "status": "external_used",
+    "api_key_exposed_to_app": false,
+    "control_boundary": "ai_planner_call_evidence_only_not_motion_permission",
+    "risk_notes": []
+  },
+  "generated": {
+    "title": "康复智能体 - 灵动康复 ArmControl",
+    "hasHorizontalOverflow": false,
+    "draftTitle": "疼痛缓解期安全肘关节屈曲（低负荷）",
+    "draftSetsReps": "2 组 x 3 次",
+    "draftAssist": "25% / very_slow",
+    "draftExplain": "模型已调用：qwen-plus。在无痛前提下维持关节活动度，避免诱发或加重屈肘后疼痛（昨日3分） AI 只生成草稿，不代表执行许可",
+    "acceptDisabled": false,
+    "safetyTextPresent": true,
+    "minButtonHeight": 48
+  },
+  "accepted": {
+    "draftTitle": "疼痛缓解期安全肘关节屈曲（低负荷）",
+    "draftSetsReps": "2 组 x 3 次",
+    "draftAssist": "25% / very_slow",
+    "draftExplain": "已接受为普通训练计划。下一步请同步到设备，等待 M33 accepted，并通过 preflight 后再开始训练记录。",
+    "acceptDisabled": true,
+    "hasHorizontalOverflow": false
+  },
+  "consoleEvents": []
+}

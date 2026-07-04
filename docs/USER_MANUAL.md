@@ -169,6 +169,7 @@ Phone UI:
 - Set pain and fatigue. The page sends these values through `data-arm-ai-input`, `data-arm-ai-pain`, and `data-arm-ai-fatigue` to the App backend.
 - Tap `生成 AI 草稿`. The page binds the returned draft into `ai-draft-title`, `ai-draft-sets-reps`, `ai-draft-assist`, and `ai-draft-explain`.
 - Tap `接受为训练计划` only after review. This creates a normal training plan and does not grant motion permission.
+- During generation, the page disables accepting any previous draft so the user cannot accidentally approve stale history. After accepting, the page keeps showing the accepted plan and the next safety step instead of jumping to another open draft.
 - Continue through device sync, M33 acceptance, and preflight before starting a training session record.
 
 Call flow:
