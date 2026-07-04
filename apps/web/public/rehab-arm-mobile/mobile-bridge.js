@@ -649,7 +649,7 @@
       replaceAll(["M33 状态：准备就绪，允许安全训练"], "设备状态：等待绑定与审核");
       replaceAll(["需 M33 审核：计划必须先同步并经由 M33 审核后方可执行。"], "训练前需要先同步到设备，并完成设备审核与训练前检查。");
       replaceAll(["急停已就绪"], "急停状态待硬件上报");
-      replaceAll(["已连接"], devices.length ? "已绑定" : "待绑定");
+      replaceAll(["设备已连接", "蓝牙已连接"], devices.length ? "已绑定" : "待绑定");
       replaceAll(["已扫描蓝牙"], devices.length ? "已绑定设备" : "等待绑定设备");
       replaceAll(["M33 康复机械臂"], devices[0] ? devices[0].ble_name || devices[0].m33_device_id : "等待绑定康复设备");
       replaceAll(["准备就绪"], "等待设备审核");
