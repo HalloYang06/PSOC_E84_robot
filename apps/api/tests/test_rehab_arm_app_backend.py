@@ -143,10 +143,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert empty_mobile_readiness["required_frontend_contract"]["bootstrap_endpoint"] == "/api/rehab-arm/app/v1/me"
     assert empty_mobile_readiness["required_frontend_contract"]["required_header"] == "Authorization: Bearer {access_token}"
     assert {item["code"] for item in empty_mobile_readiness["blockers"]}.issuperset(
-        {"apk_frontend_api_wiring", "hardware_protocol_packet_map_missing", "onboarding_incomplete"}
+        {"apk_frontend_api_wiring", "current_m33_firmware_confirmation_pending", "phone_native_bluetooth_bridge_pending", "onboarding_incomplete"}
     )
     assert {item["code"]: item["status"] for item in empty_mobile_readiness["checks"]}["APK_FRONTEND_API_WIRING"] == "blocked"
-    assert {item["code"]: item["status"] for item in empty_mobile_readiness["checks"]}["HARDWARE_PROTOCOL_PACKET_MAP"] == "awaiting_protocol"
+    assert {item["code"]: item["status"] for item in empty_mobile_readiness["checks"]}["HARDWARE_PROTOCOL_PACKET_MAP"] == "legacy_spp_profile_available"
+    assert {item["code"]: item["status"] for item in empty_mobile_readiness["checks"]}["PHONE_NATIVE_BLUETOOTH_BRIDGE"] == "pending"
 
     public_config = client.get("/api/rehab-arm/app/v1/public-config")
     assert public_config.status_code == 200
@@ -161,6 +162,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert config_data["rehab_app"]["workflow_endpoint"] == "/api/rehab-arm/app/v1/me/workflow"
     assert config_data["rehab_app"]["workflow_action_endpoint"] == "/api/rehab-arm/app/v1/me/workflow/actions"
     assert config_data["rehab_app"]["catalog_endpoint"] == "/api/rehab-arm/app/v1/catalog"
+    assert config_data["rehab_app"]["m33_legacy_spp_profile_path"] == "data.m33_legacy_spp_profile"
+    assert config_data["m33_legacy_spp_profile"]["transport"] == "bluetooth_classic_spp_rfcomm"
+    assert config_data["m33_legacy_spp_profile"]["standard_uuid"] == "00001101-0000-1000-8000-00805F9B34FB"
     assert [item["step"] for item in config_data["mobile_boot_flow"]] == [
         "load_public_config",
         "login",
@@ -175,11 +179,12 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["PUBLIC_CONFIG_AVAILABLE"]["status"] == "pass"
     assert release_checks["TOKEN_AUTH_CONTRACT"]["status"] == "pass"
     assert release_checks["APK_FRONTEND_API_WIRING"]["status"] == "pass"
-    assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "awaiting_protocol"
+    assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "legacy_spp_profile_available"
+    assert release_checks["PHONE_NATIVE_BLUETOOTH_BRIDGE"]["status"] == "pending"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
     assert config_data["downloads"]["debug_apk_version"] == "1.0.5"
     assert config_data["downloads"]["debug_apk_sha256"] == "D29649F38FA7684ED87EE9F42139DFED3C93FC38C6D8933ABC62650285DBF45C"
-    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_timeline_debug_build_hardware_protocol_pending"
+    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_timeline_legacy_spp_contract_debug_build_current_m33_confirmation_pending"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
     catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
     assert catalog_response.status_code == 200
@@ -189,6 +194,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     shoulder_catalog_item = next(item for item in catalog["training_movements"] if item["movement_type"] == "shoulder_overhead_reach")
     assert shoulder_catalog_item["requires_therapist_review"] is True
     assert catalog["unsupported_policy"]["error_code"] == "TRAINING_MOVEMENT_UNSUPPORTED"
+    assert catalog["m33_legacy_spp_profile"]["packet_delimiter"] == "\\n"
     assert catalog["control_boundary"] == "rehab_app_catalog_options_only_not_medical_diagnosis_or_motion_permission"
     cors_preflight = client.options(
         "/api/rehab-arm/app/v1/public-config",
@@ -509,6 +515,12 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert ble_message["payload"]["plan_version"] == 1
     assert ble_message["payload"]["movement_type"] == "elbow_flexion"
     assert ble_message["payload"]["control_boundary"] == "ble_message_contract_only_not_motor_command"
+    assert ble_message["payload"]["transport_profile"]["transport"] == "bluetooth_classic_spp_rfcomm"
+    assert ble_message["payload"]["legacy_transport_frame"]["uuid"] == "00001101-0000-1000-8000-00805F9B34FB"
+    assert ble_message["payload"]["legacy_transport_frame"]["json"]["type"] == "memory"
+    assert ble_message["payload"]["legacy_transport_frame"]["json"]["action_id"] == f"{plan['id']}:v1"
+    assert ble_message["payload"]["legacy_transport_frame"]["wire_text"].endswith("\n")
+    assert ble_message["payload"]["legacy_transport_frame"]["sendable"] is True
 
     ble_ack = client.post(
         f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages/{ble_message['id']}/ack",
@@ -2278,6 +2290,28 @@ def test_rehab_arm_app_workflow_action_endpoint_executes_safe_loop_actions(tmp_p
     assert active_actions["RECORD_PROGRESS"]["payload_schema"]["schema_version"] == "rehab_app_workflow_action_payload_schema_v1"
     assert "completion_rate" in {field["name"] for field in active_actions["RECORD_PROGRESS"]["payload_schema"]["fields"]}
     assert active_actions["FINISH_SESSION"]["payload_schema"]["title"] == "完成训练记录"
+
+    ble_start_message = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
+        headers=headers,
+        json={"message_type": "training_session_start_request", "session_id": start_data["result"]["id"]},
+    )
+    assert ble_start_message.status_code == 200
+    legacy_start_frame = ble_start_message.json()["data"]["payload"]["legacy_transport_frame"]
+    assert legacy_start_frame["json"]["type"] == "execute_memory"
+    assert legacy_start_frame["json"]["action_id"] == f"{plan['id']}:v1"
+    assert legacy_start_frame["control_boundary"] == "legacy_spp_frame_evidence_only_m33_final_authority"
+
+    app_hello_message = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
+        headers=headers,
+        json={"message_type": "app_hello"},
+    )
+    assert app_hello_message.status_code == 200
+    legacy_hello_frame = app_hello_message.json()["data"]["payload"]["legacy_transport_frame"]
+    assert legacy_hello_frame["sendable"] is False
+    assert legacy_hello_frame["wire_text"] is None
+    assert legacy_hello_frame["json"] is None
 
     finish_action = client.post(
         "/api/rehab-arm/app/v1/me/workflow/actions",

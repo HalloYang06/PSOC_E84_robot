@@ -126,7 +126,7 @@ POST /offline-queue
 POST /offline-queue/replay
 ```
 
-BLE messages are structured App-to-M33 contract records. They can prepare App hello, device status request, training plan push, training session start/progress/pause/stop request, and diagnostic snapshot request payloads. They are not CAN or motor commands, and M33 ACKs are evidence only.
+BLE messages are structured App-to-M33 contract records. They can prepare App hello, device status request, training plan push, training session start/progress/pause/stop request, and diagnostic snapshot request payloads. For the old tested Android transport, public config/catalog expose `m33_legacy_spp_profile`: Bluetooth Classic SPP/RFCOMM UUID `00001101-0000-1000-8000-00805F9B34FB`, UTF-8 JSON, newline delimiter. BLE-message payloads include `legacy_transport_frame`; phone native code should write `legacy_transport_frame.wire_text` only when `sendable=true`. They are not CAN or motor commands, and M33 ACKs are evidence only.
 
 Training reports summarize session completion, EMG overview, M55 intent overview, M33 safety evidence, and review recommendations. Report reviews can record patient/therapist notes, next-step intent, and a request-new-plan flag. They are review records only and return `training_report_review_only_not_medical_diagnosis_or_motion_permission`.
 
@@ -297,9 +297,9 @@ When the action queue exposes `PREFLIGHT_CHECK_REQUIRED`, the phone may call `/m
 Current user-release gate:
 
 ```text
-status: blocked_for_hardware_protocol
-reason: APK 1.0.5 connects to cloud public-config/catalog/login/me/workflow, executes backend-allowed safe workflow actions, renders backend care timeline evidence, and displays backend workflow evidence, but BLE/M33/M55 packet maps are still required before motion-adjacent UX can be certified.
-hardware_protocol: awaiting BLE/M33/M55 packet maps
+status: blocked
+reason: APK 1.0.5 connects to backend public-config/catalog/bootstrap/workflow, renders backend care timeline/daily workflow state, can execute safe workflow actions, and now receives the old verified SPP protocol contract, but current M33 firmware compatibility and the Android native Bluetooth Classic bridge are still pending.
+hardware_protocol: legacy SPP profile available; current M33 confirmation and phone native RFCOMM bridge required before motion-adjacent UX can be certified.
 ```
 
 Backend readiness endpoints:
@@ -310,7 +310,7 @@ GET /api/rehab-arm/app/v1/me
 GET /api/rehab-arm/app/v1/me/workflow
 ```
 
-`public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, and hardware-protocol blockers. Authenticated `/me/workflow` is the phone workflow contract for `phase`, `next_action`, `action_queue`, `blockers`, primary entity ids, and `forbidden_actions`. These responses are workflow/evidence guidance only and do not grant BLE, CAN, motor, or M33 override authority.
+`public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, old SPP protocol availability, and native phone-bridge blockers. Authenticated `/me/workflow` is the phone workflow contract for `phase`, `next_action`, `action_queue`, `blockers`, primary entity ids, and `forbidden_actions`. These responses are workflow/evidence guidance only and do not grant Bluetooth send authority, CAN, motor, or M33 override authority.
 
 Authenticated `/me.daily_care_plan` is the phone home source for the user's current daily checklist. It includes the primary task, next action, blocker details, progress totals, counts, and a short care-timeline preview. Frontend shells should render this field instead of using demo progress cards or recomputing the task order.
 

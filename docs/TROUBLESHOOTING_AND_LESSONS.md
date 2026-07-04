@@ -2,6 +2,8 @@
 
 ## 2026-07-04
 
+- Legacy Bluetooth lesson: the old tested rehab-arm App protocol is Bluetooth Classic SPP/RFCOMM, not BLE GATT. It uses UUID `00001101-0000-1000-8000-00805F9B34FB`, UTF-8 JSON, and `\n` packet framing. A browser/PWA cannot open this RFCOMM link directly, so the Android package needs a native Capacitor/Kotlin bridge before phone-to-M33 communication is real.
+- Protocol safety lesson: do not convert App hello/status/diagnostic requests into guessed old-protocol packets. The old protocol formally defines `mode`, `control`, `memory`, `execute_memory`, and `stop`; only send compatible frames with `sendable=true`, and keep unsupported status-like messages as backend evidence until M33 firmware confirms a command.
 - Workflow-form lesson: phone workflow buttons are not closed-loop if each frontend shell guesses the payload shape. Return `payload_schema` and `form_contract` with each `/me/workflow.action_queue` item so Stitch/PWA/APK can render fields from backend-authored rules and submit through `/me/workflow/actions`.
 - Workflow-preflight lesson: `PREFLIGHT_CHECK_REQUIRED` can be App-executable only after the current plan version has real `m33_accepted` evidence. Execute it by reusing the normal preflight service so pain thresholds, checklist completeness, sync id, and plan-version gates stay centralized.
 - CORS QA lesson: local static QA from `127.0.0.1` can fail against the cloud API preflight even when the same APK/PWA works from the deployed `106.55.62.122:3001` origin. For workflow-panel QA, use the cloud PWA route after deploying static assets, or explicitly configure a matching allowed origin; do not treat local `Failed to fetch` as a workflow contract failure.

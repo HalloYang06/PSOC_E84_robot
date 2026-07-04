@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -129,6 +130,75 @@ REHAB_APP_MOVEMENT_CATALOG = {
 }
 
 
+LEGACY_M33_SPP_PROFILE = {
+    "schema_version": "rehab_app_legacy_m33_spp_profile_v1",
+    "source": {
+        "kind": "old_android_app_verified_protocol",
+        "path": "D:/app/RehabRobotArm/RehabRobotArm/PROTOCOL.md",
+        "android_manager": "D:/app/RehabRobotArm/RehabRobotArm/app/src/main/java/com/rehab/robotarm/data/communication/BluetoothManager.kt",
+        "android_parser": "D:/app/RehabRobotArm/RehabRobotArm/app/src/main/java/com/rehab/robotarm/data/communication/ProtocolParser.kt",
+    },
+    "transport": "bluetooth_classic_spp_rfcomm",
+    "standard_uuid": "00001101-0000-1000-8000-00805F9B34FB",
+    "device_name_hint": "RehabRobotArm",
+    "encoding": "utf-8",
+    "packet_delimiter": "\\n",
+    "message_format": "newline_delimited_json",
+    "default_baud_rate": 115200,
+    "device_to_app_messages": {
+        "sensor": {
+            "type": "sensor",
+            "fields": [
+                "timestamp",
+                "mode",
+                "shoulder_angle",
+                "elbow_angle",
+                "lateral_position",
+                "lateral_pos",
+                "shoulder_torque",
+                "elbow_torque",
+                "shoulder_force",
+                "elbow_force",
+                "emg_ch1",
+                "emg_ch2",
+                "shoulder_accel_x",
+                "shoulder_accel_y",
+                "shoulder_accel_z",
+                "elbow_accel_x",
+                "elbow_accel_y",
+                "elbow_accel_z",
+                "temperature",
+                "shoulder_temp",
+                "elbow_temp",
+                "lateral_temp",
+            ],
+        },
+        "acks": ["mode_ack", "control_ack", "memory_ack", "execute_ack", "stop_ack", "error"],
+    },
+    "app_to_device_command_types": ["mode", "control", "memory", "execute_memory", "stop", "stop_memory"],
+    "allowed_current_app_mapping": {
+        "app_hello": "backend_handshake_only_no_legacy_wire_frame",
+        "device_status_request": "backend_status_only_no_legacy_wire_frame",
+        "training_plan_push": "memory_upload_evidence_only_requires_m33_review",
+        "training_session_start_request": "execute_memory_request_after_m33_acceptance",
+        "training_progress_notify": "backend_status_only_no_legacy_wire_frame",
+        "training_pause_request": "stop_memory_request",
+        "training_stop_request": "stop_request",
+        "diagnostic_snapshot_request": "backend_diagnostic_only_no_legacy_wire_frame",
+    },
+    "forbidden_current_app_mapping": [
+        "raw_motor_current",
+        "raw_motor_torque",
+        "raw_motor_position",
+        "raw_motor_velocity",
+        "can_frame",
+        "m33_override",
+        "emergency_stop_release",
+    ],
+    "control_boundary": "legacy_spp_profile_from_old_app_not_app_granted_motion_permission",
+}
+
+
 def get_app_catalog() -> dict:
     movements = []
     for movement in REHAB_APP_MOVEMENT_CATALOG.values():
@@ -156,6 +226,7 @@ def get_app_catalog() -> dict:
             "error_code": "TRAINING_MOVEMENT_UNSUPPORTED",
             "message": "前端必须从 catalog.training_movements 选择动作；不要提交演示或自造 movement_type。",
         },
+        "m33_legacy_spp_profile": LEGACY_M33_SPP_PROFILE,
         "control_boundary": "rehab_app_catalog_options_only_not_medical_diagnosis_or_motion_permission",
     }
 
@@ -2208,9 +2279,15 @@ def _app_mobile_readiness_guide(
         },
         {
             "code": "HARDWARE_PROTOCOL_PACKET_MAP",
-            "status": "awaiting_protocol",
-            "title": "等待 BLE/M33 硬件协议",
-            "detail": "后端不会虚构蓝牙、M33、M55 或电机报文；协议补齐前只开放计划、证据、诊断和门禁状态。",
+            "status": "legacy_spp_profile_available",
+            "title": "已找到旧 App 蓝牙串口协议",
+            "detail": "旧 Android App 使用 Bluetooth Classic SPP/RFCOMM 标准 UUID 00001101-0000-1000-8000-00805F9B34FB，UTF-8 JSON 加换行分包；当前 M33 固件仍需确认兼容。",
+        },
+        {
+            "code": "PHONE_NATIVE_BLUETOOTH_BRIDGE",
+            "status": "pending",
+            "title": "等待手机原生蓝牙桥",
+            "detail": "PWA JavaScript 不能直接打开 Bluetooth Classic RFCOMM，安装包需要 Capacitor/Android 原生桥接后才能真正连 M33。",
         },
     ]
 
@@ -2225,10 +2302,19 @@ def _app_mobile_readiness_guide(
     )
     blockers.append(
         {
-            "code": "hardware_protocol_packet_map_missing",
+            "code": "current_m33_firmware_confirmation_pending",
             "severity": "warning",
-            "title": "硬件运动协议待补充",
-            "clear_condition": "补齐 BLE/M33/M55 协议后，才能把硬件状态从证据记录推进到受控训练执行闭环。",
+            "title": "当前 M33 固件协议待确认",
+            "clear_condition": "用当前 M33 固件确认旧 SPP JSON 协议仍可用，并保留 M33 final safety authority 后才能进入受控训练执行闭环。",
+            "related_action_codes": ["BIND_TRUSTED_DEVICE", "UPLOAD_DEVICE_DIAGNOSTIC"],
+        }
+    )
+    blockers.append(
+        {
+            "code": "phone_native_bluetooth_bridge_pending",
+            "severity": "warning",
+            "title": "手机原生蓝牙桥待接入",
+            "clear_condition": "安装包需要 Android/Capacitor 原生层打开 Bluetooth Classic SPP，并写入后端生成的 legacy_transport_frame.wire_text。",
             "related_action_codes": ["BIND_TRUSTED_DEVICE", "UPLOAD_DEVICE_DIAGNOSTIC"],
         }
     )
@@ -3823,6 +3909,53 @@ def _ble_base_payload(device: RehabAppDeviceBinding, message_type: str, message_
     }
 
 
+def _legacy_spp_frame_from_ble_payload(message_type: str, ble_payload: dict) -> dict:
+    command: dict[str, object] | None
+    if message_type == "training_plan_push":
+        action_id = f"{ble_payload.get('plan_id', '')}:v{ble_payload.get('plan_version', '')}"
+        angle_range = ble_payload.get("target_angle_range") or {}
+        min_deg = float(angle_range.get("min_deg") or 0)
+        max_deg = float(angle_range.get("max_deg") or min_deg)
+        reps = max(int(ble_payload.get("reps") or 1), 1)
+        keyframes = []
+        for index in range(reps + 1):
+            ratio = index / reps
+            angle = min_deg + (max_deg - min_deg) * ratio
+            keyframes.append(
+                {
+                    "time": index * 1000,
+                    "shoulder": angle if str(ble_payload.get("movement_type") or "").startswith("shoulder") else 0.0,
+                    "elbow": angle if str(ble_payload.get("movement_type") or "") == "elbow_flexion" else 0.0,
+                    "lateral": 0.0,
+                }
+            )
+        command = {"type": "memory", "action_id": action_id, "keyframes": keyframes}
+    elif message_type == "training_session_start_request":
+        plan_id = str(ble_payload.get("plan_id") or "")
+        plan_version = str(ble_payload.get("plan_version") or "")
+        command = {"type": "execute_memory", "action_id": f"{plan_id}:v{plan_version}" if plan_version else plan_id}
+    elif message_type == "training_pause_request":
+        command = {"type": "stop_memory"}
+    elif message_type == "training_stop_request":
+        command = {"type": "stop"}
+    else:
+        command = None
+    line = json.dumps(command, ensure_ascii=False, separators=(",", ":")) + "\n" if command is not None else None
+    return {
+        "profile": "legacy_m33_bluetooth_classic_spp_json_v1",
+        "transport": LEGACY_M33_SPP_PROFILE["transport"],
+        "uuid": LEGACY_M33_SPP_PROFILE["standard_uuid"],
+        "encoding": "utf-8",
+        "delimiter": "\\n",
+        "json": command,
+        "wire_text": line,
+        "byte_length": len(line.encode("utf-8")) if line is not None else 0,
+        "sendable": command is not None,
+        "source_boundary": "generated_from_backend_safe_ble_message_contract",
+        "control_boundary": "legacy_spp_frame_evidence_only_m33_final_authority",
+    }
+
+
 def create_ble_message(db: Session, user_id: str, device_id: str, payload: RehabAppBleMessageCreate) -> dict:
     if payload.message_type not in BLE_MESSAGE_TYPES:
         raise AppError("BLE_MESSAGE_TYPE_NOT_ALLOWED", "BLE message type is not allowed", status_code=422)
@@ -3869,10 +4002,12 @@ def create_ble_message(db: Session, user_id: str, device_id: str, payload: Rehab
             raise AppError("TRAINING_SESSION_DEVICE_MISMATCH", "training session does not belong to this device", status_code=409)
         related_session_id = session.id
         related_plan_id = session.plan_id
+        plan = db.get(RehabAppTrainingPlan, session.plan_id)
         ble_payload.update(
             {
                 "session_id": session.id,
                 "plan_id": session.plan_id,
+                "plan_version": plan.version if plan is not None else None,
                 "session_status": session.status,
                 "completion_rate": session.completion_rate,
                 "interruption_count": session.interruption_count,
@@ -3880,7 +4015,6 @@ def create_ble_message(db: Session, user_id: str, device_id: str, payload: Rehab
             }
         )
         if payload.message_type == "training_session_start_request":
-            plan = db.get(RehabAppTrainingPlan, session.plan_id)
             sync = _latest_plan_device_sync(db, session.plan_id, device.id)
             if plan is None or sync is None or sync.sync_status != "m33_accepted" or sync.plan_version != plan.version:
                 raise AppError(
@@ -3890,6 +4024,8 @@ def create_ble_message(db: Session, user_id: str, device_id: str, payload: Rehab
                     details={"control_boundary": "ble_message_contract_only_not_motor_command"},
                 )
     ble_payload.update(payload.extra_payload)
+    ble_payload["transport_profile"] = LEGACY_M33_SPP_PROFILE
+    ble_payload["legacy_transport_frame"] = _legacy_spp_frame_from_ble_payload(payload.message_type, ble_payload)
     message = RehabAppBleMessage(
         user_id=user_id,
         device_id=device.id,

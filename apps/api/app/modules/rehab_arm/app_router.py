@@ -42,6 +42,7 @@ from .app_schemas import (
     RehabAppWorkflowActionRequest,
 )
 from .app_service import (
+    LEGACY_M33_SPP_PROFILE,
     accept_ai_training_draft,
     archive_training_plan,
     bind_device,
@@ -169,13 +170,15 @@ def api_public_config(request: Request):
                 "profile_endpoint": "/api/rehab-arm/app/v1/me/profile",
                 "catalog_endpoint": "/api/rehab-arm/app/v1/catalog",
                 "daily_care_plan_path": "data.daily_care_plan",
+                "m33_legacy_spp_profile_path": "data.m33_legacy_spp_profile",
                 "public_config_endpoint": "/api/rehab-arm/app/v1/public-config",
             },
+            "m33_legacy_spp_profile": LEGACY_M33_SPP_PROFILE,
             "downloads": {
                 "debug_apk_url": _download_url(api_base),
                 "debug_apk_version": "1.0.5",
                 "debug_apk_sha256": "D29649F38FA7684ED87EE9F42139DFED3C93FC38C6D8933ABC62650285DBF45C",
-                "debug_apk_status": "backend_connected_workflow_action_timeline_debug_build_hardware_protocol_pending",
+                "debug_apk_status": "backend_connected_workflow_action_timeline_legacy_spp_contract_debug_build_current_m33_confirmation_pending",
             },
             "mobile_boot_flow": [
                 {"step": "load_public_config", "endpoint": "/api/rehab-arm/app/v1/public-config", "auth_required": False},
@@ -187,7 +190,7 @@ def api_public_config(request: Request):
             ],
             "release_gate": {
                 "status": "blocked",
-                "reason": "debug_apk_connects_backend_but_hardware_protocol_packet_map_is_still_missing",
+                "reason": "debug_apk_connects_backend_and_has_legacy_spp_contract_but_current_m33_firmware_confirmation_and_native_phone_bridge_are_still_required",
                 "checks": [
                     {
                         "code": "PUBLIC_CONFIG_AVAILABLE",
@@ -206,14 +209,20 @@ def api_public_config(request: Request):
                     },
                     {
                         "code": "HARDWARE_PROTOCOL_PACKET_MAP",
-                        "status": "awaiting_protocol",
-                        "description": "BLE/M33 packet details are intentionally not invented; hardware protocol must be supplied before motion-adjacent UX can be certified.",
+                        "status": "legacy_spp_profile_available",
+                        "description": "Old verified Android app protocol is Bluetooth Classic SPP RFCOMM UUID 00001101-0000-1000-8000-00805F9B34FB with newline-delimited UTF-8 JSON. Current M33 firmware still must confirm support before user release.",
+                    },
+                    {
+                        "code": "PHONE_NATIVE_BLUETOOTH_BRIDGE",
+                        "status": "pending",
+                        "description": "Capacitor/PWA shell needs a native Bluetooth Classic SPP bridge; browser JavaScript cannot open RFCOMM directly.",
                     },
                 ],
                 "required_frontend_work": [
                     "replace the temporary bridge login panel with Stitch-designed screens",
                     "render catalog/profile/device/plan/readiness/daily_care_plan fields inside Stitch pages",
                     "preserve Authorization: Bearer {access_token} on rehab app API calls",
+                    "use the legacy SPP profile for phone-to-M33 Bluetooth Classic transport instead of Web Bluetooth GATT",
                 ],
             },
             "required_profile_fields": ["affected_side", "rehab_stage", "pain_baseline"],

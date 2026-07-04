@@ -102,6 +102,7 @@ Phone target:
 - First runnable target is a mobile Web/PWA at `apps/web/public/rehab-arm-mobile/index.html`.
 - The phone App is not Python. Python/FastAPI owns the backend API only.
 - A later Android package can wrap the same PWA surface with Capacitor or a native shell.
+- Real phone-to-M33 transport uses the old verified Android App protocol when enabled: Bluetooth Classic SPP/RFCOMM UUID `00001101-0000-1000-8000-00805F9B34FB`, UTF-8 newline-delimited JSON. Browser/PWA JavaScript cannot open RFCOMM directly, so the Android package needs a native bridge before this becomes a usable hardware path.
 
 Frontend ownership:
 
@@ -124,6 +125,8 @@ Safety boundary:
 
 - App profile, device binding, training library, plan sync, sessions, EMG summaries, and M55 intent summaries are evidence/service data.
 - Training-plan sync means a structured plan was submitted to M33 review. It is not motion permission.
+- The backend exposes `m33_legacy_spp_profile` and may generate `legacy_transport_frame` records from the safe App BLE-message contract. The phone native bridge may send only frames with `sendable=true`; status/hello/diagnostic messages that are not part of the old SPP command set have `wire_text=null`.
+- Old SPP frames are compatibility transport, not App-granted motion permission. `training_session_start_request` still requires current-version `m33_accepted`, and M33/firmware remains responsible for final hardware safety.
 - The App and API must not expose CAN frames, raw motor setpoints, torque/current commands, raw motor position/velocity commands, M33 overrides, or emergency-stop release commands.
 - M33 remains the final safety authority before any real motion.
 
@@ -149,6 +152,6 @@ Closed-loop backend contract:
 - Training report endpoints close the post-session review loop: `POST /training-sessions/{session_id}/report`, `GET /training-sessions/{session_id}/report`, `GET /training-reports`, and `GET /training-reports/{report_id}`. Reports can only be generated after a session is `finished`, aggregate session/EMG/M55/safety evidence, and carry `training_report_review_only_not_medical_diagnosis_or_motion_permission`.
 - Training report review endpoints close the human review step after a report exists: `POST /training-reports/{report_id}/reviews` and `GET /training-reports/{report_id}/reviews`. Reviews can record patient/therapist/family/engineer notes, next-step intent, and whether a new plan is requested; they remain review evidence and do not create motion permission.
 - Report-to-next-plan drafting closes the review feedback loop without granting control: `POST /training-reports/{report_id}/draft-next-plan` reads the finished report, latest review, EMG/intent overview, and source plan, then creates an AI training draft only. The accepted draft becomes a new normal training plan and still requires current-version `sync-to-device` plus `m33_accepted` before a session record can start.
-- BLE message endpoints prepare and audit structured App-to-M33 messages without sending motor commands: `POST /devices/{device_id}/ble/messages`, `GET /devices/{device_id}/ble/messages`, and `POST /devices/{device_id}/ble/messages/{message_id}/ack`. The allowed message types are App hello, device status request, training plan push, training session start/progress/pause/stop request, and diagnostic snapshot request. Payloads and ACKs reject motor/CAN/raw motion/M33 override/emergency-stop release fields.
+- BLE message endpoints prepare and audit structured App-to-M33 messages without sending motor commands: `POST /devices/{device_id}/ble/messages`, `GET /devices/{device_id}/ble/messages`, and `POST /devices/{device_id}/ble/messages/{message_id}/ack`. The allowed message types are App hello, device status request, training plan push, training session start/progress/pause/stop request, and diagnostic snapshot request. Payloads and ACKs reject motor/CAN/raw motion/M33 override/emergency-stop release fields. For the old Android transport, `training_plan_push` generates a newline JSON `memory` frame, `training_session_start_request` generates `execute_memory`, pause/stop generate `stop_memory` / `stop`, and unsupported status-like messages remain non-sendable.
 - Platform sync summarizes training plans, sessions, reports, report reviews, AI training drafts, EMG summaries, and M33 decisions as evidence-only resource counts.
 - `GET /safety-audit` returns rehab-arm App audit events for the user and bound M33 device identities so M33 accept/reject decisions are visible to the phone workflow.
