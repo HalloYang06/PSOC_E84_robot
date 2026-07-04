@@ -23,10 +23,10 @@ static const voice_mode_keyword_t kModeKeywords[] = {
     {"active", CONTROL_MODE_ACTIVE, "active"},
     {"记忆", CONTROL_MODE_MEMORY, "memory"},
     {"memory", CONTROL_MODE_MEMORY, "memory"},
-    {"助力", CONTROL_MODE_ASSIST, "assist"},
-    {"辅助", CONTROL_MODE_ASSIST, "assist"},
-    {"assist", CONTROL_MODE_ASSIST, "assist"},
-    {"ai assist", CONTROL_MODE_ASSIST, "assist"},
+    {"助力", CONTROL_MODE_AI_ASSIST, "assist"},
+    {"辅助", CONTROL_MODE_AI_ASSIST, "assist"},
+    {"assist", CONTROL_MODE_AI_ASSIST, "assist"},
+    {"ai assist", CONTROL_MODE_AI_ASSIST, "assist"},
 };
 
 static const char *const kCommandHints[] = {
