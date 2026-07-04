@@ -1,0 +1,22 @@
+{
+  "before": {
+    "text": "灵动康复 ArmControl\n\n康复机械臂手机端测试包。当前为内部 debug 版本，用于手机安装验证、后端登录和 App 闭环联调。\n\nAndroid APK\n下载 APK\n打开 PWA\n安装提示\n用安卓手机浏览器打开本页，点击“下载 APK”。\n系统提示未知来源时，允许当前浏览器安装应用。\n安装完成后，桌面应用名应显示为“灵动康复 ArmControl”。\n校验信息\n包名\ncom.lingdong.rehabarm\n版本\n1.0.10 debug\n大小\n4,198,462 bytes\nSHA256\nDB674D09F46D0CF0B8DE9717D1904A52CE042BC19E49FB1BEB45BC4548E9BB52\n1.0.10 更新\n内置云端 API：http://106.55.62.122:8011。\n启动后读取 public-config 和 catalog，不再静默只显示本地预览数据。\n未登录时显示登录面板；登录后用 Bearer token 读取 /api/rehab-arm/app/v1/me。\n首页覆盖静态成功文案，显示真实后端门禁、设备、计划和硬件协议阻塞状态。\n登录后读取 /api/rehab-arm/app/v1/me/workflow，显示康复工作流、下一步、动作队列和禁止项。\n新增 /api/rehab-arm/app/v1/me/workflow/actions：手机端可执行后端允许的安全流程动作，例如开始训练记录、生成报告、记录复盘；危险动作会被后端拒绝。\n新增真实康复历史面板：从 /me.care_timeline 渲染训练记录、报告、AI 草稿和离线证据，不再依赖本地静态历史卡片。\n新增 Android 原生 Bluetooth Classic SPP 桥：计划同步后可把后端生成的 legacy_transport_frame.wire_text 写入已配对 M33 设备。\n蓝牙发送只接受后端标记 sendable=true 的旧协议帧；App 不伪造 M33 ACK，也不释放急停。\n新增 M33 旧协议回包上传：Android 收到 memory_ack、execute_ack、sensor 或 error 后会提交到后端作为证据。\nSPP 回包只证明传输/设备回包，不会自动把计划改成 m33_accepted；正式执行仍等待 M33 决策链路。\n新增 Stitch 设计的“蓝牙调试 / 实机验证”页面：从设备页进入，可读取 Android 已配对 SPP 设备、连接/断开、显示最新后端 legacy_transport_frame、发送 backend-approved frame，并展示 TX/RX/API/sensor 证据。\n新增已配对 SPP 设备一键绑定后端可信设备：实机验证页可以先把 Android 读到的 MAC/设备名写入 /devices/bind，再继续计划同步和 SPP 发送。\nAI 规划页已接入后端 /ai-training-drafts/generate 和 /accept：生成草稿、显示模型调用/规则回退状态，接受后落成训练计划；执行前仍需设备同步、M33 accepted 和 preflight。\n训练库已绑定后端真实训练计划：AI 草稿接受后会在训练卡显示计划标题、目标角度、助力等级和 待同步 状态；点击未同步计划会进入设备同步页。\n训练库显示后端康复历史，设备页和 AI 页保持聚焦，不再被全局历史面板挤占。\n内部测试账号：3245056131@qq.com / 1234。\n\n安全边界：手机 App 是训练、设备绑定、肌电、AI 草稿和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.10 已加入 Stitch 蓝牙调试 / 实机验证页、已配对设备列表、后端可信设备绑定、SPP 连接/断开、后端批准帧发送、ACK/sensor 证据显示、AI 草稿闭环和训练库真实计划绑定；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。",
+    "overflow": 0,
+    "links": [
+      {
+        "text": "下载 APK",
+        "href": "http://106.55.62.122:3001/downloads/rehab-arm/lingdong-rehab-arm-debug.apk",
+        "download": ""
+      },
+      {
+        "text": "打开 PWA",
+        "href": "http://106.55.62.122:3001/rehab-arm-mobile/index.html",
+        "download": null
+      }
+    ]
+  },
+  "suggested": "lingdong-rehab-arm-debug.apk",
+  "downloadedBytes": 4198462,
+  "badResponses": [],
+  "consoleEvents": []
+}
