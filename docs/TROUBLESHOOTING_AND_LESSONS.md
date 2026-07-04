@@ -2,6 +2,10 @@
 
 ## 2026-07-04
 
+- Symptom: the `3D / 孪生` IK coordinate inputs still felt impossible to edit after a prior persistence fix, and the visible Stitch URDF upload area could show a new filename without changing the real Three.js/URDF model.
+- Root cause: the iframe IK panel was still rebuilt while focused because `doc.activeElement instanceof HTMLElement` fails across iframe realms; additionally, the Stitch upload input was a separate DOM control from the React `Arm3DOverview` file input, so label changes did not prove the real loader received a file.
+- Fix: detect focused iframe inputs without cross-realm `instanceof`, preserve the existing IK panel while editing, keep draft values in `ikDraftRef`, and bridge the Stitch file input into `Arm3DOverview` via an external URDF file request/nonce. QA must inspect `#codex-twin-runtime-stage`, not only the outer Stitch `body.innerText`.
+- Status: fixed and deployed. Cloud QA uploaded `codex_bridge_test.urdf`; the real portal host reported `已导入 codex_bridge_test.urdf` and listed `codex_test_joint`.
 - Legacy Bluetooth lesson: the old tested rehab-arm App protocol is Bluetooth Classic SPP/RFCOMM, not BLE GATT. It uses UUID `00001101-0000-1000-8000-00805F9B34FB`, UTF-8 JSON, and `\n` packet framing. A browser/PWA cannot open this RFCOMM link directly, so the Android package needs a native Capacitor/Kotlin bridge before phone-to-M33 communication is real.
 - Protocol safety lesson: do not convert App hello/status/diagnostic requests into guessed old-protocol packets. The old protocol formally defines `mode`, `control`, `memory`, `execute_memory`, and `stop`; only send compatible frames with `sendable=true`, and keep unsupported status-like messages as backend evidence until M33 firmware confirms a command.
 - Legacy SPP inbound lesson: an Android `legacySppData` event is device transport evidence, not M33 acceptance. Store `memory_ack` / `execute_ack` / `stop_ack` against the pending BLE message and store `sensor` as diagnostics, but keep plan sync `pending` until the formal M33 status path records `m33_accepted`.

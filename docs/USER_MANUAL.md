@@ -14,6 +14,20 @@
 5. Keep `control_boundary` set to `stereo_vision_context_only_not_motion_permission`.
 6. Use the returned `vla_vision_context` only as high-level input for the main line.
 
+## Rehab Arm 3D Twin URDF / IK Check
+
+Cloud control room:
+
+```text
+http://106.55.62.122:3001/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/rehab-arm-control
+```
+
+1. Open `3D / 孪生`.
+2. In `IK DRY-RUN EVIDENCE`, type candidate `robot_frame` coordinates. The typed values should stay in the input boxes while the page refreshes.
+3. Use the Stitch `导入 URDF / ZIP 模型包` area to upload `.urdf`, `.xml`, or `.zip`.
+4. A successful import must update both places: the Stitch label shows `当前模型: <file>` and the real Three.js portal `#codex-twin-runtime-stage` shows `已导入 <file>` plus parsed joint evidence. A label-only change is not enough.
+5. This page is still evidence/dry-run only. It must not publish CAN frames, raw motor setpoints, M33 overrides, or real motion permission.
+
 ## Rehab Arm Phone PWA Preview
 
 Cloud phone preview:

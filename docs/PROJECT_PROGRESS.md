@@ -2,6 +2,11 @@
 
 ## 2026-07-04
 
+- Repaired and redeployed the rehab-arm control-room `3D / 孪生` page after the previous fix was reported ineffective. The IK dry-run coordinate fields now preserve focus and typed values during Stitch iframe/dashboard refresh by reusing the focused panel and keeping unsent values in an iframe draft until generate/export.
+- Bridged the visible Stitch URDF upload control in `/rehab-stitch/twin.html` to the real React `Arm3DOverview` / Three.js URDF loader. Uploading from the Stitch panel now sends the selected `File` into the real loader instead of only changing the Stitch label.
+- Cloud validation passed on `http://106.55.62.122:3001/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/rehab-arm-control`: Playwright typed `0.456/-0.137/0.294` character by character with focus preserved, then uploaded `codex_bridge_test.urdf`; `#codex-twin-runtime-stage` reported `已导入 codex_bridge_test.urdf` and parsed `codex_test_joint`. Evidence is under `docs/screenshots/rehab-arm-twin-urdf-bridge-qa/`.
+- Validation commands: `npm --workspace apps/web run build` locally and cloud `npm run build:web` plus `RESTART=1 bash scripts/start-cloud-prod.sh`; both passed with only pre-existing hook/Tailwind/WebGL warnings.
+
 - Integrated the old tested Android App Bluetooth protocol into the rehab-arm App backend contract. The API now exposes `m33_legacy_spp_profile` through public config/catalog and attaches `legacy_transport_frame` records to App BLE-message payloads.
 - Protocol source: `D:\app\RehabRobotArm\RehabRobotArm\PROTOCOL.md` plus the old Android `BluetoothManager.kt` / `ProtocolParser.kt`. Transport is Bluetooth Classic SPP/RFCOMM, UUID `00001101-0000-1000-8000-00805F9B34FB`, UTF-8 JSON with `\n` packet delimiter.
 - The backend generates old-protocol frames only for supported command shapes: `training_plan_push -> memory`, `training_session_start_request -> execute_memory`, `training_pause_request -> stop_memory`, and `training_stop_request -> stop`. Status/hello/diagnostic App messages remain backend records with `sendable=false` and `wire_text=null` so the phone bridge does not send undefined M33 commands.

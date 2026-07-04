@@ -29,6 +29,7 @@ Current same-level modules:
 IK / digital-twin evidence boundary:
 
 - `3D / 孪生` now includes an IK dry-run evidence slot inside the Stitch page `apps/web/public/rehab-stitch/twin.html`.
+- The visible Stitch URDF upload control in `twin.html` is bridged into the real React `Arm3DOverview` loader through an external file request. Do not update only the Stitch label; successful import must also update the real Three.js/URDF portal host (`#codex-twin-runtime-stage`) and parse joints in the `Arm3DOverview` state.
 - The browser can submit `target_robot_frame: {x_m, y_m, z_m}`, optional `approach_vector`, optional `gripper_orientation`, and `source = vision_calibrated | manual_platform | simulation_test` to the platform API. This is for candidate generation and review only.
 - The API returns `rehab_arm_ik_candidate_evidence_v1` with `ik_status`, `candidate_joint_trajectory`, `ik_solver_report`, `joint_limit_check`, `collision_or_workspace_check`, `simulation_result`, and `control_boundary = ik_candidate_evidence_only_not_motion_permission`.
 - Current joint naming follows the MuJoCo shadow chain order: `jian_hengxiang_joint`, `jian_zongxiang_joint`, `jian_xuanzhuan_joint`, `zhou_zongxiang_joint`, `wanbu_zongxiang_joint`, `wanbu_hengxiang_joint`. Motor IDs `3/4/5/6` are wired evidence sources; wrist IDs `1/2` remain pending. When consuming older payloads, map by joint name rather than array index.

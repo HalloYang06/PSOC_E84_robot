@@ -1,0 +1,155 @@
+{
+  "pageUrl": "http://106.55.62.122:3001/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/rehab-arm-control",
+  "ik": {
+    "focusStayedDuringTyping": true,
+    "valuesTypedCompletely": true,
+    "valuesAfterWait": {
+      "x": "0.456",
+      "y": "-0.137",
+      "z": "0.294",
+      "activeRole": "ik-z"
+    },
+    "focusLog": [
+      {
+        "expected": "[data-role=\"ik-x\"]",
+        "activeRole": "ik-x",
+        "activeTag": "INPUT",
+        "value": "0"
+      },
+      {
+        "expected": "[data-role=\"ik-x\"]",
+        "activeRole": "ik-x",
+        "activeTag": "INPUT",
+        "value": "0."
+      },
+      {
+        "expected": "[data-role=\"ik-x\"]",
+        "activeRole": "ik-x",
+        "activeTag": "INPUT",
+        "value": "0.4"
+      },
+      {
+        "expected": "[data-role=\"ik-x\"]",
+        "activeRole": "ik-x",
+        "activeTag": "INPUT",
+        "value": "0.45"
+      },
+      {
+        "expected": "[data-role=\"ik-x\"]",
+        "activeRole": "ik-x",
+        "activeTag": "INPUT",
+        "value": "0.456"
+      },
+      {
+        "expected": "[data-role=\"ik-y\"]",
+        "activeRole": "ik-y",
+        "activeTag": "INPUT",
+        "value": "-"
+      },
+      {
+        "expected": "[data-role=\"ik-y\"]",
+        "activeRole": "ik-y",
+        "activeTag": "INPUT",
+        "value": "-0"
+      },
+      {
+        "expected": "[data-role=\"ik-y\"]",
+        "activeRole": "ik-y",
+        "activeTag": "INPUT",
+        "value": "-0."
+      },
+      {
+        "expected": "[data-role=\"ik-y\"]",
+        "activeRole": "ik-y",
+        "activeTag": "INPUT",
+        "value": "-0.1"
+      },
+      {
+        "expected": "[data-role=\"ik-y\"]",
+        "activeRole": "ik-y",
+        "activeTag": "INPUT",
+        "value": "-0.13"
+      },
+      {
+        "expected": "[data-role=\"ik-y\"]",
+        "activeRole": "ik-y",
+        "activeTag": "INPUT",
+        "value": "-0.137"
+      },
+      {
+        "expected": "[data-role=\"ik-z\"]",
+        "activeRole": "ik-z",
+        "activeTag": "INPUT",
+        "value": "0"
+      },
+      {
+        "expected": "[data-role=\"ik-z\"]",
+        "activeRole": "ik-z",
+        "activeTag": "INPUT",
+        "value": "0."
+      },
+      {
+        "expected": "[data-role=\"ik-z\"]",
+        "activeRole": "ik-z",
+        "activeTag": "INPUT",
+        "value": "0.2"
+      },
+      {
+        "expected": "[data-role=\"ik-z\"]",
+        "activeRole": "ik-z",
+        "activeTag": "INPUT",
+        "value": "0.29"
+      },
+      {
+        "expected": "[data-role=\"ik-z\"]",
+        "activeRole": "ik-z",
+        "activeTag": "INPUT",
+        "value": "0.294"
+      }
+    ]
+  },
+  "urdf": {
+    "stitchLabelUpdated": true,
+    "armOverviewLoaded": true,
+    "jointParsed": true,
+    "canvasCount": 1,
+    "runtimeHost": {
+      "hostExists": true,
+      "hostText": "关闭全屏URDF / Three.js 机械臂已导入 codex_bridge_test.urdf · MuJoCo shadow 米制坐标6 个关节正在匹配角度展开 3D渲染反馈2 个未知2 个限位夹紧/仿真夹紧。接线 / 温度3 路异常颜色表达温度，link 透明/灰色表达接线异常。模型匹配0/1robot_render_state_v1 套用到同名关节；mesh 0/0。关节状态流0/1 个关节有实时角度6 个只读角度来源codex_test_joint待匹配 · 等待上报等待上报原始-套用未套用速度-温度-这些数值只用于网页预览和校准核对，不会写回 NanoPi、M33 或电机驱动。模型包 / URDF 导入导入本机模型包支持 URDF zip 包或单个 URDF。页面保持导入模型的米制根坐标和比例，相机自动取景；优先用 robot_render_state_v1 的 joint_names/positions 驱动同名关节，只读预览，不下发任何运动控制。姿态映射重置映射6 个角度来源可选只影响当前浏览器预览：单位、方向和零点偏移用于把上报角度对齐到 URDF 关节。codex_test_joint角度来源待匹配jian_hengxiang_jointjian_zongxiang_jointjian_xuanzhuan_jointzhou_zongxiang_jointwanbu_zongxiang_jointwanbu_hengxiang_joint单位弧度角度方向正向反向零点偏移 rad未匹配关节角度概览1 个关节codex_test_joint: -Joint Angles4/6 新鲜jian_hengxiang_joint0.100 radjian_zongxiang_joint1.200 radjian_xuanzhuan_joint0.400 radzhou_zongxiang_joint-0.200 radwanbu_zongxiang_joint0 radwanbu_hengxiang_joint0 radROS / MuJoCoShadow Ready渲染源robot_render_state_v1安全边界只读 / dry-runEnd-Effector Pose等待末端视觉目标target_bottle动作门控等待 V 目标Target Pose等待标定VLA-A持续跟踪目标权限不授权真实运动",
+      "hostHtmlStart": "<div class=\"rehab-arm-control_stitchTwinStageOverlay__ypNeH\" data-embedded=\"true\" aria-label=\"真实 Three.js URDF 嵌入舞台\"><section class=\"rehab-arm-control_armOverviewPanel__QEIZa\" data-focus=\"false\" data-stage-mode=\"true\" aria-label=\"机械臂 3D 总览\"><button type=\"button\" class=\"rehab-arm-control_focusCloseButton__gMT_Y\">关闭全屏</button><div class=\"rehab-arm-control_panelHead__fIbaT\"><div><span>URDF / Three.js 机械臂</span><strong>已导入 codex_bridge_test.urdf · MuJoCo shadow 米制坐标</strong></div><div class=\"rehab-arm-control_panelActions__fDHwJ\"><small>6 个关节正在匹配角度</small><button type=\"button\">展开 3D</button></div></div><div class=\"rehab-arm-control_armCanvas__jDEni\"><canvas data-engine=\"three.js r184\" width=\"1528\" height=\"980\" aria-label=\"机械臂 Three.js 总览\" title=\"拖拽旋转视角，滚轮缩放，右键平移\" style=\"display: block; width: ",
+      "stageChildIds": [
+        "DIV",
+        "DIV",
+        "DIV",
+        "codex-twin-runtime-stage"
+      ]
+    },
+    "textSnippet": "VLA 控制台\nnanopi-m5\nnanopi-m55-cloud-vla-check\nnanopi-m55-cloud-vla\nnanopi-m5-isolation-check\nLIVE\nREAD ONLY\n急停\nV\nREHAB\nCMD\n总控\nV\n视觉\n3D\n孪生\nEMG\n肌电\nAI\n模型\nL\n模式\nTRN\n训练\nDATA\n数据\nA\n动作\nIO\n诊断\nLOG\n日志\nSTOP\nVLA 控制台\nnanopi-m5\neth0: 192.168.1.100\n等待末端识别\nLIVE\nvisibility\nREAD ONLY\nwarning\n安全日志\nX\nY\nZ\n模型包 / URDF 导入\nprecision_manufacturing\n6-DOF JOINT ANGLES\nJ1_Base\n12.45°\nJ2_Shoulder\n-45.12°\nJ3_Elbow\n89.01°\nJ4_Wrist1\n0.00°\nJ5_Wrist2\n90.50°\nJ6_Wrist3\n-12.33°\nSYSTEM TELEMETRY\nROS Bridge\nSYNCED\nMuJoCo Shadow\nACTIVE\n渲染源\nrobot_render_state_v1\n安全边界\nshield\nM33 最终裁决\nLatency\n12ms\nFPS\n60.0\ntune\nJoint Mapping 关节映射\nexpand_more\n姿态映射 (POSE MAP)\nMATRIX_V2\n关节来源 (JOINT SOURCE)\nStream_UDP_8890\nROS_Topic_/joint_states\nMock_Generator\n零点偏移 (ZERO OFFSET)\nCALIBRATE\nX: 0.01\nY: -0.05\nZ: 0.00\npolyline\nIK 逆解算候选\n\n输入 robot_frame 坐标后生成 dry-run 候选；候选仅用于 URDF/MuJoCo shadow 和证据导出。\n\ncontrol_boundary: ik_candidate_evidence_only_not_motion_pe"
+  },
+  "consoleMessages": [
+    {
+      "type": "warning",
+      "text": "cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation"
+    },
+    {
+      "type": "warning",
+      "text": "cdn.tailwindcss.com should not be used in production. To use Tailwind CSS in production, install it as a PostCSS plugin or use the Tailwind CLI: https://tailwindcss.com/docs/installation"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x2e4c0260ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x2e4c0260ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x2e4c0260ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+    },
+    {
+      "type": "warning",
+      "text": "[.WebGL-0x2e4c0260ac00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    }
+  ]
+}

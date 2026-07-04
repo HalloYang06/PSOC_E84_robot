@@ -1949,6 +1949,8 @@ function Arm3DOverview({
   wiringChecks,
   safetyState,
   stageMode = false,
+  externalUrdfFile = null,
+  externalUrdfFileNonce = null,
 }: {
   deviceId: string;
   robotId: string;
@@ -1959,6 +1961,8 @@ function Arm3DOverview({
   wiringChecks: AnyRecord[];
   safetyState: string;
   stageMode?: boolean;
+  externalUrdfFile?: File | null;
+  externalUrdfFileNonce?: number | null;
 }) {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const cleanupRef = useRef<() => void>(() => {});
@@ -1983,6 +1987,8 @@ function Arm3DOverview({
   const [urdfJoints, setUrdfJoints] = useState<JointDetail[]>([]);
   const [meshStats, setMeshStats] = useState({ loaded: 0, missing: 0 });
   const restoredModelRef = useRef("");
+  const lastExternalUrdfNonceRef = useRef<number | null>(null);
+  const applyUrdfPackageRef = useRef<(file: File, shouldSave: boolean) => void>(() => {});
   const serverCalibrationsRef = useRef(new Map<string, JointCalibration>());
   const applyResolvedUrdfPackageRef = useRef<(modelPackage: UrdfPackage, fileForSave: File | null) => void>(() => {});
   const urdfJointNames = useMemo(() => urdfJoints.map((joint) => joint.name), [urdfJoints]);
@@ -2118,6 +2124,8 @@ function Arm3DOverview({
         setModelSaveState("error");
       });
   }
+  applyUrdfPackageRef.current = applyUrdfPackage;
+
   function applyResolvedUrdfPackage(modelPackage: UrdfPackage, fileForSave: File | null) {
     const parsedJoints = parseUrdfJoints(modelPackage.urdfText);
     const rows = defaultCalibrations(movableJoints(parsedJoints).map((joint) => joint.name), sourceNames, serverCalibrationsRef.current);
@@ -2136,6 +2144,12 @@ function Arm3DOverview({
     if (!file) return;
     applyUrdfPackage(file, true);
   }
+
+  useEffect(() => {
+    if (!externalUrdfFile || !externalUrdfFileNonce || lastExternalUrdfNonceRef.current === externalUrdfFileNonce) return;
+    lastExternalUrdfNonceRef.current = externalUrdfFileNonce;
+    applyUrdfPackageRef.current(externalUrdfFile, true);
+  }, [externalUrdfFile, externalUrdfFileNonce]);
 
   useEffect(() => {
     if (!deviceId || urdfText) return;
@@ -3339,6 +3353,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   const [demoLanguageInput, setDemoLanguageInput] = useState("");
   const [activeModule, setActiveModule] = useState<RehabWorkspaceModule>("overview");
   const [twinRuntimeHost, setTwinRuntimeHost] = useState<HTMLElement | null>(null);
+  const [twinImportRequest, setTwinImportRequest] = useState<{ file: File; nonce: number } | null>(null);
   const [ikTargetInput, setIkTargetInput] = useState({ x_m: "0.32", y_m: "-0.08", z_m: "0.24" });
   const [ikApproachInput, setIkApproachInput] = useState("0,0,-1");
   const [ikOrientationInput, setIkOrientationInput] = useState("roll=0,pitch=90,yaw=0");
@@ -5399,7 +5414,16 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       const displayedIkSourceInput =
         (existingIkPanel?.querySelector<HTMLSelectElement>('[data-role="ik-source"]')?.value as typeof ikSourceInput | undefined)
         ?? ikDraftRef.current.source;
-      const ikPanel = ensureStitchPanel("codex-ik-dry-run-panel", `
+      const activeIkElement = doc.activeElement as HTMLElement | null;
+      const shouldPreserveIkPanel = Boolean(
+        existingIkPanel
+        && activeIkElement
+        && existingIkPanel.contains(activeIkElement)
+        && activeIkElement.matches('input[data-role^="ik-"], select[data-role="ik-source"]'),
+      );
+      const ikPanel = shouldPreserveIkPanel
+        ? existingIkPanel as HTMLElement
+        : ensureStitchPanel("codex-ik-dry-run-panel", `
         <div class="p-4 border border-secondary-fixed-dim/40 bg-surface-container-low/80 backdrop-blur-xl rounded-lg shadow-[0_0_24px_rgba(255,185,95,0.12)]">
           <div class="flex items-start justify-between gap-3 border-b border-outline-variant/30 pb-3">
             <div>
@@ -5453,7 +5477,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       ikPanel.style.zIndex = "30";
       const ikSource = ikPanel.querySelector<HTMLSelectElement>('[data-role="ik-source"]');
       if (ikSource) ikSource.value = displayedIkSourceInput;
-      const syncIkInputs = () => {
+      const syncIkInputs = (commitState = false) => {
         const nextTarget = {
           x_m: ikPanel.querySelector<HTMLInputElement>('[data-role="ik-x"]')?.value ?? ikTargetInput.x_m,
           y_m: ikPanel.querySelector<HTMLInputElement>('[data-role="ik-y"]')?.value ?? ikTargetInput.y_m,
@@ -5468,21 +5492,23 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           orientation: nextOrientation,
           source: nextSource,
         };
-        setIkTargetInput(nextTarget);
-        setIkApproachInput(nextApproach);
-        setIkOrientationInput(nextOrientation);
-        setIkSourceInput(nextSource);
+        if (commitState) {
+          setIkTargetInput(nextTarget);
+          setIkApproachInput(nextApproach);
+          setIkOrientationInput(nextOrientation);
+          setIkSourceInput(nextSource);
+        }
       };
       ikPanel.querySelectorAll<HTMLInputElement>('[data-role="ik-x"], [data-role="ik-y"], [data-role="ik-z"], [data-role="ik-approach"], [data-role="ik-orientation"]').forEach((input) => {
-        input.oninput = syncIkInputs;
-        input.onchange = syncIkInputs;
+        input.oninput = () => syncIkInputs(false);
+        input.onchange = () => syncIkInputs(false);
       });
-      if (ikSource) ikSource.onchange = syncIkInputs;
+      if (ikSource) ikSource.onchange = () => syncIkInputs(false);
       const ikGenerateButton = ikPanel.querySelector<HTMLButtonElement>('[data-role="ik-generate"]');
       if (ikGenerateButton) {
         ikGenerateButton.onclick = (event) => {
           event.preventDefault();
-          syncIkInputs();
+          syncIkInputs(true);
           window.setTimeout(() => void generateIkCandidate(), 0);
         };
       }
@@ -5490,7 +5516,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       if (ikExportButton) {
         ikExportButton.onclick = (event) => {
           event.preventDefault();
-          syncIkInputs();
+          syncIkInputs(true);
           window.setTimeout(() => exportIkCandidateEvidence(), 0);
         };
       }
@@ -5626,9 +5652,32 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         host.style.minHeight = "420px";
         window.setTimeout(() => window.dispatchEvent(new Event("resize")), 80);
         if (twinRuntimeHost !== host) setTwinRuntimeHost(host);
+      } else if (twinRuntimeHost) {
+        setTwinRuntimeHost(null);
       }
-    } else if (twinRuntimeHost) {
-      setTwinRuntimeHost(null);
+      const stitchUrdfInput = doc.querySelector<HTMLInputElement>('#urdf-import-panel input[type="file"][data-testid="rehab-urdf-file"]');
+      const stitchUrdfDropzone = stitchUrdfInput?.parentElement as HTMLElement | null;
+      if (stitchUrdfInput && stitchUrdfInput.dataset.codexBound !== "true") {
+        stitchUrdfInput.dataset.codexBound = "true";
+        stitchUrdfInput.onchange = (event) => {
+          const file = (event.currentTarget as HTMLInputElement).files?.[0] ?? null;
+          if (!file) return;
+          setTwinImportRequest({ file, nonce: Date.now() });
+          const currentModelLabel = doc.querySelector<HTMLElement>("#urdf-import-panel span.font-data-tabular");
+          if (currentModelLabel) currentModelLabel.textContent = `当前模型: ${file.name}`;
+        };
+      }
+      if (stitchUrdfInput && stitchUrdfDropzone && stitchUrdfDropzone.dataset.codexBound !== "true") {
+        stitchUrdfDropzone.dataset.codexBound = "true";
+        stitchUrdfDropzone.onclick = (event) => {
+          event.preventDefault();
+          stitchUrdfInput.click();
+        };
+      }
+      if (twinImportRequest?.file) {
+        const currentModelLabel = doc.querySelector<HTMLElement>("#urdf-import-panel span.font-data-tabular");
+        if (currentModelLabel) currentModelLabel.textContent = `当前模型: ${twinImportRequest.file.name}`;
+      }
     }
 
     if (activeModule === "muscle_assist") {
@@ -7046,6 +7095,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     stereoTargetLabel,
     stereoTargetQualityGateState,
     targetQualityGateTitle,
+    twinImportRequest,
     twinRuntimeHost,
     endEffectorEvidenceText,
     visualLockConfidenceText,
@@ -7093,6 +7143,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             wiringChecks={wiringChecks}
             safetyState={stateLabel(currentSafetyState)}
             stageMode
+            externalUrdfFile={twinImportRequest?.file ?? null}
+            externalUrdfFileNonce={twinImportRequest?.nonce ?? null}
           />
           <div className={styles.stitchTwinHudReplica} aria-label="数字孪生浮层信息">
             <section data-slot="joints">
