@@ -1,0 +1,35 @@
+{
+  "base": "http://127.0.0.1:8799",
+  "results": [
+    {
+      "page": "home.html",
+      "badTerms": [],
+      "bodyStart": "网络未连接，请检查后端服务\nclinical_notes\nRoboRehab Controller\nsmart_toy\n登录账号\nmedical_information\n康复阶段：亚急性期\nfront_hand\n患侧：左侧\ntimer\n今日目标：30 分钟\nM33 ACTIVE\n今日目标动作\n屈肘训练\n时长\n待计划\n强度\n低\n训练记录\n待记录\nplay_arrow\n开始训练\n\n(需 M33 授权)\n\nverified_user\n状态：M33 已允许执行\nemergency\n急停已就绪\n设备状态\nbluetooth\nM33 BLE\n已连接\nsensors\nM55 EMG\n激活\nprecision_manufacturing\nArm\n安全\ncloud_sync\nCloud\n已同步\n最近训练结果快照\n完成度\n95%\n肌肉疲劳\n低\npsychiatry\nAI/报告建议待复核\n\"动作稳定性极佳，建议维持当前强度\"\nrobot_2\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的\n登录后同步康复数据\n登录并同步\n训练计划、报告和设备状态会从云端同步。",
+      "horizontalOverflow": false,
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round3-local/home-mobile.png"
+    },
+    {
+      "page": "training-library.html",
+      "badTerms": [
+        "增加 5%"
+      ],
+      "bodyStart": "网络未连接，请检查后端服务\nclinical_notes\nRoboRehab Controller\nsmart_toy\n训练库\n\n为当前训练选择或生成康复方案。\n\nauto_awesome\n新建计划 (AI 生成)\nwarning\n\n需 M33 审核：计划必须先同步并经由 M33 审核后方可执行。\n\ncalendar_today\n今日计划\n伸肘训练\n低风险\n\n目标角度\n\n120°\n\n助力等级\n\n20%\n\n最近完成\n\n2小时前\n\ncloud_done\n等待设备审核\nplay_arrow\n待创建计划\n待评估\n\n目标角度\n\n待同步\n\n助力等级\n\n待审核\n\n最近完成\n\n暂无真实记录\n\nsync\n待同步\nlock\nmedical_services\n照护方案\n查看全部\nchevron_right\nfitness_center\n腕屈曲协议\n\n等待康复师或照护协作记录\n\nsync\n待同步\n查看详情\nhistory\n常用方案\nsettings_accessibility\n基础握力\nfront_hand\n手指伸展\npan_tool\n手掌屈曲\npsychology\nAI 推荐\nauto_awesome\n智能生成\nmore_horiz\n自适应阻力训练\n\n基于暂无真实记录的表现指标，AI/报告建议待复核增加 5% 的阻力以进一步刺激神经调控。\n\n生成 AI 草稿\nneurology\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的\n登录后同步康复数据\n登录并同步\n训练计划、报告和设备状态会从云端同步。",
+      "horizontalOverflow": false,
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round3-local/training-library-mobile.png"
+    },
+    {
+      "page": "device.html",
+      "badTerms": [],
+      "bodyStart": "网络未连接，请检查后端服务\nclinical_notes\nRoboRehab 控制器\nsmart_toy\ncheck_circle\n系统状态\n\nM33 状态：准备就绪，允许安全训练\n\n系统架构图\nsmartphone\n手机 APP\nhub\n等待协议门控 (Gatekeeper)\nmemory\nM55\ndns\nNanoPi\nprecision_manufacturing\n机械臂\n当前连接\n已扫描蓝牙\nbluetooth_connected\nM33 康复机械臂\n待绑定\nmonitor_heart\n心跳状态待上报\nM33:\n待上报\n云端:\n待上报\nbattery_charging_80\n电源状态待上报\n机械臂电量:\n机械臂电量: 待上报\nsync\n一键同步训练计划\n\n需要 M33 医疗系统授权。\n\nbug_report\n蓝牙调试 / 实机验证\nbug_report\n调试信息\nexpand_more\nrobot_2\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的\n登录后同步康复数据\n登录并同步\n训练计划、报告和设备状态会从云端同步。",
+      "horizontalOverflow": false,
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round3-local/device-mobile.png"
+    },
+    {
+      "page": "report.html",
+      "badTerms": [],
+      "bodyStart": "网络未连接，请检查后端服务\nclinical_notes\nRoboRehab Controller\nsmart_toy\n训练报告闭环\n--\n待生成\n\n报告生成后显示\n\ntask_alt\n待报告\n重复次数\ntimer\n待报告\n训练时长\nwarning\n2\n中断记录\n质量指标待报告\nanalytics\nbalance\n稳定性待报告\n待报告\nroute\n路径偏差待报告\n待报告\naccessibility_new\n代偿情况待报告\n待报告\n肌肉洞察待报告\nmonitor_heart\n峰值疲劳 (第 3 组)\n待同步\n左右平衡待报告\n待报告 / 待报告\nL: 待报告%\nR: 待报告%\nmemory\n设备审核记录\n设备通过\n0\n人工复核\n0\nauto_awesome\n\n报告建议\n\n完成真实训练记录并生成报告后，这里会显示复盘建议。\n\ncloud_sync\n刷新报告\nios_share\n等待照护协作\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的\n登录后同步康复数据\n登录并同步\n训练计划、报告和设备状态会从云端同步。",
+      "horizontalOverflow": false,
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round3-local/report-mobile.png"
+    }
+  ]
+}

@@ -32,6 +32,8 @@
 - Validation passed: `node --check apps/web/public/rehab-arm-mobile/mobile-bridge.js`, `node --check apps/mobile/rehab-arm-android/www/mobile-bridge.js`, and `python -m pytest apps/api/tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`13 passed`, deprecation warnings only).
 - Continued phone user-view QA across the deployed mobile pages. The scan found `report.html`, `emg.html`, and `training-session.html` still showed demo-like values (`100%`, `15m`, fake score, EMG microvolts, `98%` confidence, `TRN-8842-X`, `8/12`, `30%`, and active M33 execution copy). These pages now default to backend-evidence waiting states unless real report/EMG/session data exists.
 - Local repair QA passed for `report.html`, `emg.html`, and `training-session.html` at 390 px with no flagged fake-real-time terms and no horizontal overflow. Evidence: `docs/screenshots/rehab-arm-mobile-user-qa-20260704-round2-local-fix3/qa-results.json`.
+- Extended the App QA wordlist after manually reading rendered `bodyStart` output. The mobile bridge now also removes misleading static values from home/training-library/device/report first paint, including `20 mins`, `45%`, `M33 已接收`, `昨天`, fake therapist attribution, `增加 5%`, `120ms`, `45ms`, `85%`, and `安全门控 (Gatekeeper)`. Offline/unauthenticated first paint now also replaces `M33 ACTIVE`, `允许安全训练`, `急停已就绪`, and `2小时前` with waiting states.
+- Local expanded QA passed for `home.html`, `training-library.html`, `device.html`, and `report.html` at 390 px with the expanded fake-data term list and no horizontal overflow. Evidence: `docs/screenshots/rehab-arm-mobile-user-qa-20260704-round3-local-v2/qa-results.json`.
 
 ## 2026-06-17
 

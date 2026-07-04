@@ -637,6 +637,13 @@
     const workflow = state.workflow || {};
     const phase = workflow.phase || {};
     const nextAction = workflow.next_action || {};
+    replaceAll(["M33 ACTIVE", "状态：M33 已允许执行", "M33 已允许执行"], "M33 待协议/待审核");
+    replaceAll(["M33 状态：准备就绪，允许安全训练"], "设备状态：等待绑定与审核");
+    replaceAll(["已扫描蓝牙"], devices.length ? "已绑定设备" : "等待绑定设备");
+    replaceAll(["M33 康复机械臂"], devices[0] ? devices[0].ble_name || devices[0].m33_device_id : "等待绑定康复设备");
+    replaceAll(["急停已就绪"], "急停状态待硬件上报");
+    replaceAll(["动作稳定性极佳，建议维持当前强度"], "等待真实训练报告和治疗师复核");
+    replaceAll(["2小时前"], "暂无真实记录");
     if (isBlocked) {
       replaceAll(["M33 ACTIVE", "状态：M33 已允许执行", "M33 已允许执行"], "M33 待协议/待审核");
       replaceAll(["M33 状态：准备就绪，允许安全训练"], "设备状态：等待绑定与审核");
@@ -688,6 +695,11 @@
       const device = devices[0];
       replaceFirst(["M33-Cortex", "ArmControl"], device ? device.ble_name || device.m33_device_id : "等待绑定 M33");
       replaceFirst(["已连接"], device && device.trust_status === "trusted" ? "已绑定" : "待绑定");
+      replaceAll(["安全门控 (Gatekeeper)"], "等待协议门控 (Gatekeeper)");
+      replaceAll(["120ms", "45ms"], "待上报");
+      replaceAll(["机械臂电量:\n85%", "85%"], "机械臂电量:\n待上报");
+      replaceAll(["电源状态"], "电源状态待上报");
+      replaceAll(["心跳状态"], "心跳状态待上报");
     }
     if (current === "bluetooth-debug.html") {
       renderBluetoothDebugPage(state);
@@ -702,6 +714,20 @@
       replaceAll(["智能方案生成"], "AI 草稿待审核");
       replaceAll(["生成方案"], "生成 AI 草稿");
       replaceAll(["开始计划"], "查看计划工作流");
+      if (current === "training-library.html") {
+        replaceAll(["M33 已接收"], "等待设备审核");
+        replaceAll(["肩部旋转"], "待创建计划");
+        replaceAll(["中风险"], "待评估");
+        replaceAll(["45°"], "待同步");
+        replaceAll(["50%"], "待审核");
+        replaceAll(["昨天"], "暂无真实记录");
+        replaceAll(["康复师方案"], "照护方案");
+        replaceAll(["由陈医生开具 • 3 组 x 15 次", "由陈医生开具 • 2组 x 15 次"], "等待康复师或照护协作记录");
+        replaceAll(["基于昨天的表现指标，AI/报告建议待复核增加 5% 的阻力以进一步刺激神经调控。"], "等待真实训练报告后再生成调整建议。");
+        replaceAll(["基于昨天的表现指标，AI 建议增加 5% 的阻力以进一步刺激神经调控。"], "等待真实训练报告后再生成调整建议。");
+        replaceAll(["基于暂无真实记录的表现指标，AI/报告建议待复核增加 5% 的阻力以进一步刺激神经调控。"], "等待真实训练报告后再生成调整建议。");
+        replaceAll(["生成蓝图"], "生成 AI 草稿");
+      }
     }
     if (current === "emg.html") {
       replaceFirst(["肱二头肌", "biceps"], state.latestEmg ? state.latestEmg.muscle_name : "等待肌电记录");
@@ -745,7 +771,8 @@
       replaceAll(["峰值疲劳 (第 3 组)"], "峰值疲劳待肌电报告");
       replaceAll(["左右平衡"], "左右平衡待报告");
       replaceAll(["48 / 52"], "待报告");
-      replaceAll(["L: 48%", "R: 52%"], "待报告");
+      replaceAll(["48", "52"], "待报告");
+      replaceAll(["L: 48%", "R: 52%", "L: 待报告%", "R: 待报告%"], "待报告");
       replaceAll(["M33 系统日志"], "设备审核记录");
       replaceAll(["自动裁决"], "设备通过");
       replaceAll(["人工干预"], "人工复核");
@@ -779,6 +806,10 @@
     }
     if (current === "home.html") {
       replaceFirst(["今日训练"], readiness.status === "blocked" ? "真实后端已连接：仍有门禁" : "今日训练");
+      replaceAll(["晚上好，今天适合做轻量屈肘训练"], userNextAction(state));
+      replaceAll(["20 mins"], plans[0] && plans[0].duration_sec ? `${Math.round(Number(plans[0].duration_sec) / 60)} 分钟` : "待计划");
+      replaceAll(["45%"], "待记录");
+      replaceAll(["进度"], "训练记录");
     }
     if (plans[0]) {
       replaceFirst(["3组", "3 组"], `${plans[0].sets || 0}组`);
