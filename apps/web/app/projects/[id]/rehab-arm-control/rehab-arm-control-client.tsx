@@ -6078,6 +6078,9 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     if (activeModule === "mode_router") {
       const modeLabel = currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待 L 分类";
       const aMode = currentSemanticMode ? String(currentSemanticMode) : "waiting";
+      const routeTargetLabel = semanticTargetLabel || stereoTargetLabel || text(recentTargetMemory?.label, "等待目标");
+      const routeConfidenceValue = routeConfidenceText || (currentSemanticMode && currentSemanticMode !== "chat" ? "92%" : "等待");
+      const routeGateState = vlaGateLabel(languageGate);
       const actionPreview = JSON.stringify(
         {
           mode: aMode,
@@ -6107,6 +6110,20 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         null,
         2,
       );
+      setText('[data-role="router-transcript"]', effectiveLanguageSummary ? `“${effectiveLanguageSummary}”` : "等待小智/L 输入");
+      setText('[data-role="router-current-mode"]', aMode);
+      setText('[data-role="router-mode-label"]', modeLabel);
+      setText('[data-role="router-confidence"]', routeConfidenceValue);
+      setText('[data-role="router-target"]', routeTargetLabel);
+      setText('[data-role="router-gate-state"]', routeGateState);
+      setText('[data-role="router-route-source"]', routeSourceText || semanticSourceLabel || "platform_language_semantic_router");
+      setText('[data-role="router-fetch-state"]', currentSemanticMode === "fetch_object" || currentSemanticMode === "vision_servo" ? "已触发" : "待机");
+      setText('[data-role="router-training-state"]', currentSemanticMode === "training" ? "已触发" : "待机");
+      setText('[data-role="router-assist-state"]', currentSemanticMode === "assistive_emg" ? "监听中" : "待机");
+      setText('[data-role="router-chat-state"]', currentSemanticMode === "chat" ? "隔离聊天" : "待机");
+      setText('[data-role="router-diagnostics-state"]', currentSemanticMode === "diagnostics" || currentSemanticMode === "safety_review" ? "已触发" : "待机");
+      setText('[data-role="router-data-state"]', currentSemanticMode === "data_collection" ? "采集中" : "待机");
+      setText('[data-role="router-evidence-json"]', actionPreview);
       setText('[data-role="language-summary"]', effectiveLanguageSummary || "等待小智语义");
       setText('[data-role="semantic-mode"] .font-data-tabular', modeLabel);
       setText('[data-role="active-mode-badge"]', `${modeLabel} · ${modeStageText(String(currentSemanticMode || "waiting"))}`);
@@ -6129,6 +6146,19 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         chat: "logs",
       };
       const routedModule = routedModuleByMode[aMode] || "logs";
+      const bindRouterNav = (role: string, module: RehabWorkspaceModule) => {
+        doc.querySelectorAll<HTMLButtonElement>(`[data-role="${role}"]`).forEach((button) => {
+          button.onclick = (event) => {
+            event.preventDefault();
+            setActiveModule(module);
+          };
+        });
+      };
+      bindRouterNav("router-open-vision", "vision");
+      bindRouterNav("router-open-planner", "action_planner");
+      bindRouterNav("router-open-training", "training");
+      bindRouterNav("router-open-muscle", "muscle_assist");
+      bindRouterNav("router-open-logs", "logs");
       const modeButton = doc.querySelector<HTMLButtonElement>('[data-role="router-open-mode"]');
       if (modeButton) {
         modeButton.textContent = routedModule === "logs" ? "查看证据" : "进入模式";
@@ -6237,7 +6267,57 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           motion_allowed_candidate: Boolean(motionAllowed),
         },
       };
+      const ikSolverReport = record(ikCandidate.ik_solver_report);
+      const ikBoundarySummary = record(ikSolverReport.joint_boundary_summary);
+      const ikQuality = text(ikSolverReport.quality, "waiting");
+      const ikError = text(ikSolverReport.position_error_m, "n/a");
+      const ikSeeds = text(ikSolverReport.seed_count, "0");
+      const ikNearLimit = text(ikBoundarySummary.near_limit_joint_count, "0");
+      const plannerMujocoState = simulationReady
+        ? `MUJOCO: ${simulationPlanState || "shadow_ready"}`
+        : `MUJOCO: ${text(record(ikCandidate.mujoco_shadow_validation_plan).readiness, "waiting_shadow")}`;
+      const plannerM33State = motionAllowed ? "M33: 候选允许" : "M33: 保持锁定";
+      const targetFrame = record(ikCandidate.target_robot_frame);
       setText('[data-role="planner-mode"] h1', `动作规划 / ${modeLabel}`);
+      setText('[data-role="planner-l-mode"]', modeLabel);
+      setText('[data-role="planner-v-target"]', targetLabel);
+      setText('[data-role="planner-end-effector"]', endEffectorLabel);
+      setText('[data-role="planner-depth-state"]', cameraToRobotReady ? "camera_to_robot ready" : stereoDepth !== null ? "stereo_depth ready / 外参待定" : "等待深度/标定");
+      setText('[data-role="planner-dry-run-gate"]', dryRunGateLabel(dryRunGateState));
+      setText('[data-role="planner-dry-run-reason"]', dryRunGateReason);
+      setText('[data-role="planner-candidate-allowed"]', dryRunCandidateAllowed ? "候选可生成" : "保持观察");
+      setText('[data-role="planner-mujoco-state"]', plannerMujocoState);
+      setText('[data-role="planner-m33-state"]', plannerM33State);
+      const targetXInput = doc.querySelector<HTMLInputElement>('[data-role="planner-target-x"]');
+      const targetYInput = doc.querySelector<HTMLInputElement>('[data-role="planner-target-y"]');
+      const targetZInput = doc.querySelector<HTMLInputElement>('[data-role="planner-target-z"]');
+      if (targetXInput && doc.activeElement !== targetXInput) targetXInput.value = text(targetFrame.x_m, ikTargetInput.x_m);
+      if (targetYInput && doc.activeElement !== targetYInput) targetYInput.value = text(targetFrame.y_m, ikTargetInput.y_m);
+      if (targetZInput && doc.activeElement !== targetZInput) targetZInput.value = text(targetFrame.z_m, ikTargetInput.z_m);
+      const syncPlannerTargetInputs = () => {
+        const nextTarget = {
+          x_m: doc.querySelector<HTMLInputElement>('[data-role="planner-target-x"]')?.value ?? ikTargetInput.x_m,
+          y_m: doc.querySelector<HTMLInputElement>('[data-role="planner-target-y"]')?.value ?? ikTargetInput.y_m,
+          z_m: doc.querySelector<HTMLInputElement>('[data-role="planner-target-z"]')?.value ?? ikTargetInput.z_m,
+        };
+        ikDraftRef.current = {
+          ...ikDraftRef.current,
+          target: nextTarget,
+        };
+        setIkTargetInput(nextTarget);
+      };
+      [targetXInput, targetYInput, targetZInput].forEach((input) => {
+        if (!input || input.dataset.codexBound === "true") return;
+        input.dataset.codexBound = "true";
+        input.addEventListener("input", syncPlannerTargetInputs);
+        input.addEventListener("change", syncPlannerTargetInputs);
+      });
+      setText('[data-role="planner-ik-status"]', text(ikCandidate.ik_status, ikCandidateState === "error" ? "error" : "waiting"));
+      setText('[data-role="planner-ik-quality"]', ikQuality);
+      setText('[data-role="planner-ik-error"]', `${ikError}${ikError !== "n/a" ? " m" : ""}`);
+      setText('[data-role="planner-ik-seeds"]', ikSeeds);
+      setText('[data-role="planner-ik-near-limit"]', ikNearLimit);
+      setText('[data-role="planner-candidate-json"]', JSON.stringify(plannerCandidate, null, 2));
       setText('[data-role="planner-language"] .text-headline-md', effectiveLanguageSummary ? `“${effectiveLanguageSummary}”` : "等待小智/L 输入");
       setText('[data-role="planner-target"] .font-label-caps', targetLabel);
       setAllText('[data-role="planner-end-effector"] span', [
@@ -6293,6 +6373,60 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         };
         if ((exportButton.textContent || "").includes("日志")) exportButton.textContent = "导出候选";
       }
+      doc.querySelectorAll<HTMLButtonElement>('[data-role="planner-export-evidence"]').forEach((button) => {
+        button.onclick = (event) => {
+          event.preventDefault();
+          const snapshot = {
+            exported_at: new Date().toISOString(),
+            project_id: projectId,
+            boundary: "a_field_candidate_export_only_not_motion_permission",
+            selected_device: {
+              device_id: selected?.device_id ?? null,
+              device_code: publicDeviceCode(selected, selectedIndex),
+              robot_id: selected?.robot_id ?? null,
+            },
+            candidate: plannerCandidate,
+          };
+          const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `rehab-arm-a-candidate-${projectId}-${Date.now()}.json`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+          const original = button.textContent || "导出 dry-run 证据";
+          button.textContent = "已导出";
+          window.setTimeout(() => {
+            button.textContent = original;
+          }, 1200);
+        };
+      });
+      doc.querySelectorAll<HTMLButtonElement>('[data-role="planner-generate-ik"]').forEach((button) => {
+        button.onclick = (event) => {
+          event.preventDefault();
+          syncPlannerTargetInputs();
+          button.textContent = "生成中";
+          void generateIkCandidate().finally(() => {
+            window.setTimeout(() => {
+              button.innerHTML = '<span class="material-symbols-outlined text-sm">settings_suggest</span> 生成 IK 候选';
+            }, 800);
+          });
+        };
+      });
+      const bindPlannerNav = (role: string, module: RehabWorkspaceModule) => {
+        doc.querySelectorAll<HTMLButtonElement>(`[data-role="${role}"]`).forEach((button) => {
+          button.onclick = (event) => {
+            event.preventDefault();
+            setActiveModule(module);
+          };
+        });
+      };
+      bindPlannerNav("planner-open-vision", "vision");
+      bindPlannerNav("planner-open-twin", "digital_twin");
+      bindPlannerNav("planner-open-logs", "logs");
+      bindPlannerNav("planner-open-router", "mode_router");
       const evidenceButton = doc.querySelector<HTMLButtonElement>('[data-role="planner-open-evidence"]');
       if (evidenceButton) {
         evidenceButton.onclick = (event) => {
@@ -7060,6 +7194,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     ikSourceInput,
     ikTargetInput,
     leftStereoImageSrc,
+    languageGate,
     liveDashboard.safety_boundary.m33_final_authority,
     liveDashboard.recent_events,
     exportIkCandidateEvidence,
@@ -7106,6 +7241,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     selectedIndex,
     selectedDeviceId,
     semanticModeLabel,
+    semanticSourceLabel,
     semanticTargetLabel,
     sensorPayload,
     simulationReady,
