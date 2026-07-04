@@ -22,6 +22,7 @@
     latestEmg: null,
     lastAiDraft: null,
     lastAcceptedAiPlan: null,
+    lastAcceptedAiDraftId: "",
     nativeSpp: null,
     lastSync: null,
     lastLegacySppSend: null,
@@ -581,7 +582,7 @@
         devices: bootstrap.devices || [],
         plans: bootstrap.training_plans || [],
         latestEmg,
-        lastAiDraft: state.lastAiDraft || bootstrap.latest_open_ai_draft || null,
+        lastAiDraft: state.lastAcceptedAiPlan ? null : (state.lastAiDraft || bootstrap.latest_open_ai_draft || null),
         online: true,
         authenticated: true,
         statusText: `已连接后端：${workflow.phase ? workflow.phase.title : bootstrap.mobile_readiness_guide ? bootstrap.mobile_readiness_guide.summary : "读取成功"}`
@@ -638,6 +639,24 @@
   function renderAiPlanPage(state) {
     if (pageName() !== "ai-plan.html") return;
     const draft = state.lastAiDraft || ((state.bootstrap || {}).latest_open_ai_draft) || null;
+    const acceptedPlan = !draft ? state.lastAcceptedAiPlan : null;
+    if (acceptedPlan) {
+      const sets = acceptedPlan.sets == null ? "-" : acceptedPlan.sets;
+      const reps = acceptedPlan.reps == null ? "-" : acceptedPlan.reps;
+      const assist = acceptedPlan.assist_level == null ? "-" : `${Math.round(Number(acceptedPlan.assist_level) * 100)}%`;
+      const speed = acceptedPlan.speed_level || "-";
+      setText("[data-role='ai-draft-title']", acceptedPlan.title || "已接受的训练计划");
+      setText("[data-role='ai-draft-sets-reps']", `${sets} 组 x ${reps} 次`);
+      setText("[data-role='ai-draft-assist']", `${assist} / ${speed}`);
+      setText(
+        "[data-role='ai-draft-explain']",
+        "已接受为普通训练计划。下一步请同步到设备，等待 M33 accepted，并通过 preflight 后再开始训练记录。"
+      );
+      document.querySelectorAll("[data-arm-ai-accept]").forEach((button) => {
+        button.disabled = true;
+      });
+      return;
+    }
     const plan = aiDraftPlan(draft);
     const sets = plan.sets == null ? "-" : plan.sets;
     const reps = plan.reps == null ? "-" : plan.reps;
@@ -705,7 +724,7 @@
         method: "POST",
         body: JSON.stringify({ input_text: inputText, context_snapshot: composeAiDraftContext(state) })
       });
-      const nextState = { ...readState(), lastAiDraft: draft };
+      const nextState = { ...readState(), lastAiDraft: draft, lastAcceptedAiPlan: null, lastAcceptedAiDraftId: "" };
       writeState(nextState);
       renderAiPlanPage(nextState);
       toast(aiPlannerStatus(draft));
@@ -724,7 +743,7 @@
       return null;
     }
     const plan = await api(`/api/rehab-arm/app/v1/ai-training-drafts/${draft.id}/accept`, { method: "POST", body: JSON.stringify({}) });
-    writeState({ ...readState(), lastAiDraft: null, lastAcceptedAiPlan: plan, plans: [plan, ...((state.plans || []).filter((item) => item.id !== plan.id))] });
+    writeState({ ...readState(), lastAiDraft: null, lastAcceptedAiPlan: plan, lastAcceptedAiDraftId: draft.id, plans: [plan, ...((state.plans || []).filter((item) => item.id !== plan.id))] });
     toast("AI 草稿已接受为训练计划；仍需同步设备、M33 accepted 和 preflight。");
     await refreshFromBackend();
     return plan;
