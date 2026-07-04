@@ -801,6 +801,68 @@ def test_command_center_protocol_snapshot_wiring_vla_and_estop_are_safe(tmp_path
     get_settings.cache_clear()
 
 
+def test_wiring_health_uses_latest_sensor_state_over_stale_snapshot_emg(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    get_settings.cache_clear()
+
+    client.post(
+        "/api/rehab-arm/v1/devices/register",
+        json={"device_id": "nanopi-m5", "robot_id": "rehab-arm-alpha", "project_id": "project-rehab"},
+    )
+    snapshot = client.post(
+        "/api/rehab-arm/v1/devices/nanopi-m5/command-center/snapshot",
+        json={
+            "schema_version": "command_center_snapshot_v1",
+            "ts_unix": 1780916046.11,
+            "robot_id": "rehab-arm-alpha",
+            "device_id": "nanopi-m5",
+            "project_id": "project-rehab",
+            "source": "nanopi_ros",
+            "wiring_health": {
+                "schema_version": "wiring_health_v1",
+                "overall": "degraded",
+                "checks": [
+                    {"channel": "c8t6_emg_can", "status": "missing", "fresh_ms": None, "evidence": "no 0x7C2/0x7C3 in window"},
+                    {"channel": "motor_4_feedback", "status": "stale", "fresh_ms": 1200, "evidence": "0x331 stale bit set"},
+                ],
+            },
+            "control_boundary": "telemetry_snapshot_only_not_motion_permission",
+        },
+    )
+    assert snapshot.status_code == 200
+
+    sensor_state = client.post(
+        "/api/rehab-arm/v1/devices/nanopi-m5/sensor-state",
+        json={
+            "robot_id": "rehab-arm-alpha",
+            "device_id": "nanopi-m5",
+            "project_id": "project-rehab",
+            "ts_unix": 1783197000.0,
+            "source": "nanopi_ros2_f103_can_gateway",
+            "emg": {
+                "schema_version": "rehab_arm_emg4_adc_v1",
+                "source": "stm32_f103_emg3_can_0x7c2",
+                "channel_count": 4,
+                "voltage_reference_v": 3.3,
+                "channels": [
+                    {"channel": "ch1", "muscle": "biceps", "raw_adc": 289, "activation": 0.070574, "voltage_v": 0.232894},
+                    {"channel": "ch2", "muscle": "triceps", "raw_adc": 490, "activation": 0.119658, "voltage_v": 0.394872},
+                    {"channel": "ch3", "muscle": "anterior_deltoid", "raw_adc": 0, "activation": 0.0, "voltage_v": 0.0},
+                    {"channel": "ch4", "muscle": "forearm_extensor", "raw_adc": 1317, "activation": 0.321612, "voltage_v": 1.061319},
+                ],
+            },
+        },
+    )
+    assert sensor_state.status_code == 200
+
+    dashboard = client.get("/api/rehab-arm/v1/devices/dashboard", params={"project_id": "project-rehab"})
+    checks = dashboard.json()["data"]["devices"][0]["wiring_health"]["checks"]
+    emg_check = next(item for item in checks if item["channel"] == "c8t6_emg_can")
+    assert emg_check["status"] == "ok"
+    assert "sensor_state" in emg_check["evidence"]
+    get_settings.cache_clear()
+
+
 def test_rehab_arm_model_relay_keeps_provider_secret_server_side_and_blocks_low_level_outputs(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
     monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_PROVIDER", "openai")

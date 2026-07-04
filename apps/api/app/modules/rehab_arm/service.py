@@ -866,18 +866,45 @@ def build_robot_render_state(device_id: str) -> dict[str, Any]:
 
 
 def build_wiring_health(device_id: str) -> dict[str, Any]:
+    sensor_record = _device_latest(device_id, "sensor_state") or {}
+    sensor_payload = sensor_record.get("payload") if isinstance(sensor_record.get("payload"), dict) else {}
+    sensor_emg = sensor_payload.get("emg") if isinstance(sensor_payload.get("emg"), dict) else None
+    sensor_emg_check = None
+    if sensor_emg:
+        channel_count = sensor_emg.get("channel_count")
+        if channel_count is None and isinstance(sensor_emg.get("channels"), list):
+            channel_count = len(sensor_emg.get("channels") or [])
+        sensor_ts = float(sensor_record.get("ts_unix") or sensor_payload.get("ts_unix") or 0)
+        fresh_ms = int(max(0, (time.time() - sensor_ts) * 1000)) if sensor_ts else None
+        sensor_emg_check = {
+            "channel": "c8t6_emg_can",
+            "status": "ok",
+            "fresh_ms": fresh_ms,
+            "evidence": f"sensor_state EMG {channel_count or 0}ch via {sensor_emg.get('source') or sensor_payload.get('source') or 'unknown'}",
+        }
+
     snapshot = _latest_payload(device_id, "command_center_snapshot")
     wiring = snapshot.get("wiring_health") if isinstance(snapshot.get("wiring_health"), dict) else {}
     if wiring:
-        checks = [item for item in wiring.get("checks", []) if isinstance(item, dict)]
+        checks = [dict(item) for item in wiring.get("checks", []) if isinstance(item, dict)]
         for item in checks:
             if item.get("status") not in WIRING_STATUSES:
                 item["status"] = "unknown"
+        if sensor_emg_check:
+            replaced = False
+            for index, item in enumerate(checks):
+                if item.get("channel") == "c8t6_emg_can":
+                    checks[index] = sensor_emg_check
+                    replaced = True
+                    break
+            if not replaced:
+                checks.append(sensor_emg_check)
+        bad = [item for item in checks if item.get("status") in {"stale", "missing", "fault"}]
         return {
             "schema_version": "wiring_health_v1",
             "robot_id": snapshot.get("robot_id", "rehab-arm-alpha"),
             "device_id": device_id,
-            "overall": wiring.get("overall", "unknown"),
+            "overall": "degraded" if bad else "ok",
             "checks": checks,
             "control_boundary": "diagnostic_only_not_motion_permission",
         }
@@ -885,7 +912,6 @@ def build_wiring_health(device_id: str) -> dict[str, Any]:
     motor_payload = _latest_payload(device_id, "motor_state")
     safety_payload = _latest_payload(device_id, "safety_state")
     camera_record = _device_latest(device_id, "camera_keyframe") or {}
-    sensor_payload = _latest_payload(device_id, "sensor_state")
     now = time.time()
     motor_by_id = {_motor_key(motor.get("motor_id")): motor for motor in motor_payload.get("motors") or [] if isinstance(motor, dict)}
     checks: list[dict[str, Any]] = []
@@ -917,9 +943,9 @@ def build_wiring_health(device_id: str) -> dict[str, Any]:
         "fresh_ms": heartbeat_age,
         "evidence": "M33 safety_state_v1 heartbeat_age_ms",
     })
-    checks.append({
+    checks.append(sensor_emg_check or {
         "channel": "c8t6_emg_can",
-        "status": "ok" if sensor_payload.get("emg") else "missing",
+        "status": "missing",
         "fresh_ms": None,
         "evidence": "C8T6 0x7C2/0x7C3 EMG summary",
     })

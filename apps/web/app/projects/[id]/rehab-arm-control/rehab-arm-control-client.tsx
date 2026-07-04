@@ -1157,6 +1157,10 @@ type MuscleSignalRow = {
   key: string;
   label: string;
   value: number | null;
+  rawAdc: number | null;
+  voltageV: number | null;
+  displayValue: string;
+  detail: string;
   fatigue: number | null;
   status: "active" | "moderate" | "quiet" | "unknown";
 };
@@ -1262,6 +1266,21 @@ function muscleStatus(value: number | null): MuscleSignalRow["status"] {
   if (value >= 0.68) return "active";
   if (value >= 0.34) return "moderate";
   return "quiet";
+}
+
+function emgVoltageFromChannel(channel: AnyRecord, rawAdc: number | null) {
+  const direct = firstFiniteNumber(channel.voltage_v, channel.value_v, channel.voltage, channel.voltageV);
+  if (direct !== null) return direct;
+  if (rawAdc === null) return null;
+  return rawAdc * 3.3 / 4095;
+}
+
+function emgDisplayText(voltageV: number | null, rawAdc: number | null, value: number | null) {
+  if (voltageV !== null && rawAdc !== null) return `${numberText(voltageV, "V")} / ADC ${Math.round(rawAdc)}`;
+  if (voltageV !== null) return numberText(voltageV, "V");
+  if (rawAdc !== null) return `ADC ${Math.round(rawAdc)}`;
+  if (value !== null) return `${Math.round(value * 100)}%`;
+  return "0.000V / ADC 0";
 }
 
 function humanModelUrlFromSensor(sensorPayload: AnyRecord) {
@@ -1420,6 +1439,8 @@ function muscleRowsFromSensor(sensorPayload: AnyRecord): MuscleSignalRow[] {
       emg[`ch${index + 1}`],
       sensorPayload[spec.key],
     );
+    const rawAdc = firstFiniteNumber(channel.raw_adc, channel.rawAdc, channel.adc, channel.adc_raw, channel.sample);
+    const voltageV = emgVoltageFromChannel(channel, rawAdc);
     const fatigueValue = normalizedSignalValue(
       channel.fatigue,
       channel.fatigue_score,
@@ -1428,10 +1449,15 @@ function muscleRowsFromSensor(sensorPayload: AnyRecord): MuscleSignalRow[] {
       sensorPayload.fatigue_score,
       sensorPayload.fatigueScore,
     );
+    const displayValue = emgDisplayText(voltageV, rawAdc, value);
     return {
       key: spec.key,
       label: spec.label,
       value,
+      rawAdc,
+      voltageV,
+      displayValue,
+      detail: `ADC ${rawAdc === null ? 0 : Math.round(rawAdc)} 路 ${voltageV === null ? "0.000V" : numberText(voltageV, "V")}`,
       fatigue: fatigueValue,
       status: muscleStatus(value),
     };
@@ -3026,8 +3052,8 @@ function HumanMuscleOverview({ sensorPayload, stageMode = false }: { sensorPaylo
       function muscleHudRows(): Array<[string, string, string]> {
         const muscleRows = rowsRef.current.slice(0, 4).map((row): [string, string, string] => [
           row.label,
-          row.value === null ? "unknown" : `${Math.round(row.value * 100)}%`,
-          `fatigue ${row.fatigue === null ? "unknown" : `${Math.round(row.fatigue * 100)}%`} · ${row.status}`,
+          row.displayValue,
+          `${row.detail} · intensity ${row.value === null ? "unknown" : `${Math.round(row.value * 100)}%`}`,
         ]);
         const predictionRows = motionRowsRef.current.slice(0, 3).map((row): [string, string, string] => [
           row.label,
@@ -3247,7 +3273,7 @@ function HumanMuscleOverview({ sensorPayload, stageMode = false }: { sensorPaylo
           <div className={styles.muscleMapOverlay} aria-label="上肢肌肉电信号定位">
             {MUSCLE_MAP_ANCHORS.map((anchor) => {
               const row = rows.find((item) => item.key === anchor.key);
-              const valueText = row?.value === null || row?.value === undefined ? "unknown" : `${Math.round(row.value * 100)}%`;
+              const valueText = row?.displayValue ?? "0.000V / ADC 0";
               return (
                 <article
                   key={anchor.key}
@@ -3274,8 +3300,8 @@ function HumanMuscleOverview({ sensorPayload, stageMode = false }: { sensorPaylo
           {rows.map((row) => (
             <article key={row.key} data-state={row.status}>
               <span>{row.label}</span>
-              <strong>{row.value === null ? "unknown" : `${Math.round(row.value * 100)}%`}</strong>
-              <p>fatigue {row.fatigue === null ? "unknown" : `${Math.round(row.fatigue * 100)}%`}</p>
+              <strong>{row.displayValue}</strong>
+              <p>intensity {row.value === null ? "unknown" : `${Math.round(row.value * 100)}%`} · fatigue {row.fatigue === null ? "unknown" : `${Math.round(row.fatigue * 100)}%`}</p>
             </article>
           ))}
         </div>
@@ -5147,7 +5173,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       const confidenceBar = doc.querySelector<HTMLElement>('[data-role="overview-assist-confidence-bar"]');
       if (confidenceBar) confidenceBar.style.width = `${Math.max(8, assistConfidence)}%`;
       muscleRows.forEach((row, index) => {
-        setText(`[data-role="overview-emg-ch${index + 1}"]`, text(row.value ?? row.label ?? row.status, "等待"));
+        setText(`[data-role="overview-emg-ch${index + 1}"]`, row.displayValue);
       });
       setText('[data-role="overview-emg-status"]', muscleRows.length ? "传感器: 已有通道摘要" : "传感器: 等待真实 EMG");
       setText('[data-role="overview-emg-intent"]', `动作意图: ${firstPrediction?.value || firstPrediction?.label || "预留"}`);
@@ -8172,7 +8198,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
                     {muscleRowsFromSensor(sensorPayload).slice(0, 4).map((row) => (
                       <article key={row.key} data-tone={row.status}>
                         <span>{row.label}</span>
-                        <strong>{row.value === null ? "unknown" : `${Math.round(row.value * 100)}%`}</strong>
+                        <strong>{row.displayValue}</strong>
                         <em><i style={{ width: `${Math.round((row.value ?? 0) * 100)}%` }} /></em>
                         <small>疲劳 {row.fatigue === null ? "unknown" : `${Math.round(row.fatigue * 100)}%`} · {row.status}</small>
                       </article>
