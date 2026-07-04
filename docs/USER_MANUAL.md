@@ -383,10 +383,10 @@ APK details:
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0.9 debug
-versionCode: 10
-size: 4,189,022 bytes
-sha256: 155EEBB6B4FA1C001DD82744B3F4A92356B757784EBC3778444F755AA2C020BF
+version: 1.0.10 debug
+versionCode: 11
+size: 4,198,462 bytes
+sha256: DB674D09F46D0CF0B8DE9717D1904A52CE042BC19E49FB1BEB45BC4548E9BB52
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
@@ -395,7 +395,7 @@ Current user-release gate:
 
 ```text
 status: blocked
-reason: APK 1.0.9 connects to backend public-config/catalog/bootstrap/workflow, renders backend care timeline/daily workflow state, can execute safe workflow actions, includes the Android native Bluetooth Classic SPP bridge, and exposes a Stitch-designed Bluetooth debug / M33 validation page that can bind a paired SPP device as a backend trusted device. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
+reason: APK 1.0.10 connects to backend public-config/catalog/bootstrap/workflow, renders backend care timeline/daily workflow state, shows accepted AI plans inside the training library, can execute safe workflow actions, includes the Android native Bluetooth Classic SPP bridge, and exposes a Stitch-designed Bluetooth debug / M33 validation page that can bind a paired SPP device as a backend trusted device. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
 hardware_protocol: legacy SPP profile available; UUID 00001101-0000-1000-8000-00805F9B34FB with newline-delimited UTF-8 JSON. Real Android pairing, backend device binding, frame send, and ACK/sensor evidence must be tested on hardware before motion-adjacent UX can be certified.
 ```
 
@@ -497,3 +497,4 @@ AI -> 接受为训练计划 -> 训练
 ```
 
 Pass criteria: `训练库` shows the accepted backend plan title, target angle, assist level, and `待同步` state in the existing Stitch plan card. Tapping an unsynced plan routes to `设备`, where `一键同步训练计划` either syncs to a trusted device or clearly explains that M33/PSoC binding is still required. The page must not fall back to static demo exercises as the primary plan.
+
