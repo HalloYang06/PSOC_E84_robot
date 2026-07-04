@@ -5745,6 +5745,71 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       const assistActive = currentSemanticMode === "assistive_emg";
       const confidenceText = firstPrediction?.detail.match(/\d+%/)?.[0]?.replace("%", "") || (assistActive ? "85" : "0");
       const intentText = firstPrediction?.value || (assistActive ? "助力意图监听" : "等待动作意图");
+      const emgChannelTexts = Array.from({ length: 4 }, (_, index) => (
+        muscleRows[index]?.displayValue || "0.000V / ADC 0"
+      ));
+      const emgChannelLabels = Array.from({ length: 4 }, (_, index) => (
+        muscleRows[index]?.label || `CH${index + 1} EMG`
+      ));
+      const emgLiveCount = muscleRows.filter((row) => (
+        (row.rawAdc !== null && row.rawAdc > 0) || (row.voltageV !== null && row.voltageV > 0)
+      )).length;
+      const peakRowIndex = muscleRows.reduce((bestIndex, row, index) => {
+        const bestRaw = muscleRows[bestIndex]?.rawAdc ?? -1;
+        const raw = row.rawAdc ?? -1;
+        return raw > bestRaw ? index : bestIndex;
+      }, 0);
+      const peakRow = muscleRows[peakRowIndex] ?? muscleRows[0];
+      const peakText = peakRow ? `峰值信号: CH${peakRowIndex + 1} ${peakRow.displayValue}` : "峰值信号: 0.000V / ADC 0";
+      const liveWavePath = (index: number) => {
+        const row = muscleRows[index];
+        const raw = Math.max(0, Math.min(4095, Math.round(row?.rawAdc ?? 0)));
+        if (raw <= 0) return "M0,50 L100,50";
+        const amplitude = Math.max(3, Math.min(34, Math.round((raw / 4095) * 42)));
+        const phase = index * 7;
+        const points = Array.from({ length: 21 }, (_, pointIndex) => {
+          const x = pointIndex * 5;
+          const sign = pointIndex % 2 === 0 ? 1 : -1;
+          const ripple = ((pointIndex + phase) % 5) - 2;
+          const y = Math.max(8, Math.min(92, 50 + (sign * amplitude) + ripple));
+          return `${pointIndex === 0 ? "M" : "L"}${x},${y}`;
+        });
+        return points.join(" ");
+      };
+      const syncStitchMuscleTelemetry = () => {
+        const panel = Array.from(doc.querySelectorAll<HTMLElement>(".glass-panel"))
+          .find((node) => text(node.textContent, "").includes("实时肌电摘要"));
+        const channelCards = Array.from(
+          panel?.querySelectorAll<HTMLElement>(".grid.grid-cols-4.gap-4.mb-4 > div") ?? [],
+        ).slice(0, 4);
+        channelCards.forEach((card, index) => {
+          card.setAttribute("data-codex-emg-channel", String(index + 1));
+          const children = Array.from(card.children) as HTMLElement[];
+          const labelNode = children[0];
+          const valueNode = children[1];
+          if (labelNode) labelNode.textContent = emgChannelLabels[index];
+          if (valueNode) valueNode.textContent = emgChannelTexts[index];
+        });
+
+        const waveformCards = Array.from(panel?.querySelectorAll<HTMLElement>(".waveform-container") ?? []).slice(0, 4);
+        waveformCards.forEach((card, index) => {
+          card.setAttribute("data-codex-emg-channel", String(index + 1));
+          const labelNode = card.querySelector<HTMLElement>(".absolute.top-2.left-2");
+          if (labelNode) {
+            labelNode.textContent = `CH${index + 1} ${emgChannelTexts[index]}`;
+          }
+          const path = card.querySelector<SVGPathElement>("svg path");
+          if (path) {
+            path.setAttribute("d", liveWavePath(index));
+            path.setAttribute("stroke", muscleRows[index]?.rawAdc ? "#06b6d4" : "#869397");
+          }
+        });
+
+        const emgMetricLabel = Array.from(doc.querySelectorAll<HTMLElement>("div"))
+          .find((node) => text(node.textContent, "").trim() === "四路 EMG");
+        const emgMetricValue = emgMetricLabel?.parentElement?.querySelectorAll<HTMLElement>("div")[1];
+        if (emgMetricValue) emgMetricValue.textContent = `${emgLiveCount}/4 路上报`;
+      };
       setText("h1", "VLA 控制台");
       setText("h2", intentText);
       setNthText(".font-telemetry-data.text-display-lg", 0, confidenceText);
@@ -5763,19 +5828,27 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         ["ACTIVE", assistActive ? "ACTIVE" : "STANDBY"],
         ["助力方向: 屈曲上升沿", assistActive ? "助力方向: 等待 M55 确认" : "助力方向: 未触发"],
         ["前臂肌电: 高阈值", assistActive ? "前臂肌电: 候选监听" : "前臂肌电: 等待输入"],
-        ["峰值信号: 142µV", "峰值信号: 等待遥测"],
-        ["频率中值: 82Hz", "频率中值: 等待遥测"],
+        ["峰值信号: 142µV", peakText],
+        ["频率中值: 82Hz", "采样: C8T6 ADC → 3.3V"],
         ["目标预测: 肘关节屈曲", assistActive ? "目标预测: 助力候选" : "目标预测: 未触发"],
         ["动作流同步", "动作流监听"],
         ["等待动作预测模型接入", "M55 模型输出接入后实时更新"],
         ["APP同步", "APP/训练库"],
         ["流式传输", currentSemanticMode === "training" ? "训练计划" : "预留"],
+        ["基线 15µV", emgChannelTexts[0]],
+        ["基线 15μV", emgChannelTexts[0]],
         ["CH2: 肱三头肌 (Triceps) [活跃]", "CH2: 肱三头肌 (Triceps)"],
         ["CH2: 肱三头肌 (主发力)", "CH2: 肱三头肌"],
-        ["活跃 142µV", "等待遥测"],
+        ["活跃 142µV", emgChannelTexts[1]],
+        ["活跃 142μV", emgChannelTexts[1]],
+        ["微弱 24µV", emgChannelTexts[2]],
+        ["微弱 24μV", emgChannelTexts[2]],
+        ["基线 12µV", emgChannelTexts[3]],
+        ["基线 12μV", emgChannelTexts[3]],
         ["HIGH", "WAIT"],
         ["© 2024 Industrial Robotics. Safety Protocol v4.2 Active.", "VLA Rehab Arm · M55 肌电证据 / M33 最终安全裁决"],
       ]);
+      syncStitchMuscleTelemetry();
       const muscleSnapshot = () => ({
         exported_at: new Date().toISOString(),
         project_id: projectId,
