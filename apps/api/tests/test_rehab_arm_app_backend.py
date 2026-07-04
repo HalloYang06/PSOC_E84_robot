@@ -2272,6 +2272,12 @@ def test_rehab_arm_app_workflow_action_endpoint_executes_safe_loop_actions(tmp_p
     assert start_data["result"]["status"] == "started"
     assert start_data["result"]["control_boundary"] == "training_session_record_only_not_motion_permission"
     assert start_data["workflow"]["phase"]["status"] == "active_session"
+    assert start_data["workflow"]["frontend_contract"]["workflow_action_endpoint"] == "/api/rehab-arm/app/v1/me/workflow/actions"
+    active_actions = {action["code"]: action for action in start_data["workflow"]["action_queue"]}
+    assert active_actions["RECORD_PROGRESS"]["form_contract"]["can_submit_empty_payload"] is True
+    assert active_actions["RECORD_PROGRESS"]["payload_schema"]["schema_version"] == "rehab_app_workflow_action_payload_schema_v1"
+    assert "completion_rate" in {field["name"] for field in active_actions["RECORD_PROGRESS"]["payload_schema"]["fields"]}
+    assert active_actions["FINISH_SESSION"]["payload_schema"]["title"] == "完成训练记录"
 
     finish_action = client.post(
         "/api/rehab-arm/app/v1/me/workflow/actions",
@@ -2291,6 +2297,9 @@ def test_rehab_arm_app_workflow_action_endpoint_executes_safe_loop_actions(tmp_p
     report_data = report_action.json()["data"]
     assert report_data["result"]["summary"]["completion_rate"] == 0.9
     assert report_data["workflow"]["phase"]["status"] == "report_review_required"
+    review_actions = {action["code"]: action for action in report_data["workflow"]["action_queue"]}
+    assert review_actions["RECORD_REPORT_REVIEW"]["payload_schema"]["schema_version"] == "rehab_app_workflow_action_payload_schema_v1"
+    assert "next_step" in {field["name"] for field in review_actions["RECORD_REPORT_REVIEW"]["payload_schema"]["fields"]}
 
     review_action = client.post(
         "/api/rehab-arm/app/v1/me/workflow/actions",

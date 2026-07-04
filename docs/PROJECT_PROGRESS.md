@@ -310,6 +310,9 @@
 
 ## 2026-07-04
 
+- Added backend-renderable `payload_schema` and `form_contract` to rehab App `/me/workflow.action_queue` entries, and exposed `frontend_contract.workflow_action_endpoint` plus the rule that phone shells should render action forms from backend schema instead of hard-coding payloads.
+- Validation passed locally: `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` from `apps/api` (`11 passed`, deprecation warnings only). The schema contract is workflow/evidence guidance only and does not grant BLE, CAN, M33, motor, or emergency-stop authority.
+- Deployed preflight workflow action commit `4609ebf2` to Tencent cloud. Cloud backend tests passed with `11 passed`; a temporary cloud user completed setup, plan sync, real M33-status evidence, and preflight through `/me/workflow/actions`, reached `ready_to_start`, and the App HTTP boundary remained evidence-only.
 - Added `POST /api/rehab-arm/app/v1/me/workflow/actions` as the App's unified safe workflow-action endpoint. It executes only backend-available, whitelisted workflow actions such as `READY_TO_START`, `FINISH_SESSION`, `GENERATE_TRAINING_REPORT`, `RECORD_REPORT_REVIEW`, `DRAFT_NEXT_PLAN_FROM_REPORT`, `ACCEPT_AI_DRAFT`, offline replay/review, and safety-review evidence.
 - Preserved the safety boundary: `M33_ACCEPTANCE_REQUIRED`, `RECORD_M33_DECISION`, direct motor commands, CAN frame send, M33 override, emergency-stop release, and App-granted motion permission are explicitly rejected with `WORKFLOW_ACTION_FORBIDDEN`.
 - Updated `public-config` with `workflow_action_endpoint`, extended `mobile_boot_flow`, and published Android debug APK `1.0.4` (`versionCode=5`) with a workflow panel button that calls the unified endpoint and refreshes backend workflow state.

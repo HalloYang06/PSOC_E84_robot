@@ -2425,7 +2425,7 @@ def get_app_bootstrap(db: Session, user_id: str) -> dict:
 def _workflow_action_from_daily(action: dict | None) -> dict | None:
     if not action:
         return None
-    return {
+    return _workflow_action_with_contract({
         "code": action.get("code", ""),
         "label": action.get("title") or action.get("label") or action.get("code", ""),
         "description": action.get("description", ""),
@@ -2434,13 +2434,13 @@ def _workflow_action_from_daily(action: dict | None) -> dict | None:
         "payload_hint": action.get("payload_hint") or {},
         "priority": action.get("priority"),
         "source": action.get("source") or {},
-    }
+    })
 
 
 def _workflow_action_from_guide(action: dict | None, guide_name: str) -> dict | None:
     if not action:
         return None
-    return {
+    return _workflow_action_with_contract({
         "code": action.get("code", ""),
         "label": action.get("label") or action.get("title") or action.get("code", ""),
         "description": action.get("description", ""),
@@ -2448,6 +2448,147 @@ def _workflow_action_from_guide(action: dict | None, guide_name: str) -> dict | 
         "method": action.get("method", ""),
         "payload_hint": action.get("payload_hint") or {},
         "source": {"guide": guide_name},
+    })
+
+
+def _workflow_action_with_contract(action: dict) -> dict:
+    code = _normalized_workflow_action_code(str(action.get("code") or ""))
+    schema = _workflow_action_payload_schema(code, action.get("payload_hint") or {})
+    if schema:
+        action["payload_schema"] = schema
+        action["form_contract"] = {
+            "submit_endpoint": "/api/rehab-arm/app/v1/me/workflow/actions",
+            "submit_method": "POST",
+            "action_code": code,
+            "payload_field": "payload",
+            "can_submit_empty_payload": bool(schema.get("can_submit_empty_payload")),
+            "render_rule": "render fields from backend schema and send only user-entered values plus payload_hint when needed",
+            "control_boundary": "workflow_action_form_evidence_only_not_motion_permission",
+        }
+    return action
+
+
+def _workflow_action_payload_schema(action_code: str, payload_hint: dict) -> dict:
+    schemas: dict[str, dict] = {
+        "PROFILE_REQUIRED": {
+            "title": "康复档案",
+            "can_submit_empty_payload": False,
+            "required_fields": ["affected_side", "rehab_stage", "pain_baseline"],
+            "fields": [
+                {"name": "affected_side", "type": "select", "required": True, "options": ["left", "right", "bilateral"]},
+                {"name": "rehab_stage", "type": "select", "required": True, "options": ["early_active", "strengthening", "maintenance"]},
+                {"name": "pain_baseline", "type": "number", "required": True, "min": 0, "max": 10, "step": 0.5},
+                {"name": "medical_constraints", "type": "string_list", "required": False},
+            ],
+        },
+        "TRUSTED_DEVICE_REQUIRED": {
+            "title": "可信 M33 设备",
+            "can_submit_empty_payload": False,
+            "required_fields": ["m33_device_id"],
+            "fields": [
+                {"name": "m33_device_id", "type": "text", "required": True},
+                {"name": "ble_name", "type": "text", "required": False},
+                {"name": "trust_status", "type": "select", "required": False, "options": ["trusted", "pending"], "default": "trusted"},
+            ],
+        },
+        "TRAINING_PLAN_REQUIRED": {
+            "title": "训练计划",
+            "can_submit_empty_payload": False,
+            "required_fields": ["title", "movement_type"],
+            "fields": [
+                {"name": "title", "type": "text", "required": True},
+                {"name": "movement_type", "type": "catalog_training_movement", "required": True},
+                {"name": "sets", "type": "integer", "required": False, "min": 1, "default": 1},
+                {"name": "reps", "type": "integer", "required": False, "min": 1, "default": 5},
+                {"name": "status", "type": "select", "required": False, "options": ["draft", "active"], "default": "active"},
+            ],
+        },
+        "PREFLIGHT_CHECK_REQUIRED": {
+            "title": "训练前检查",
+            "can_submit_empty_payload": True,
+            "required_fields": [],
+            "fields": [
+                {"name": "pain_before", "type": "number", "required": False, "min": 0, "max": 10, "step": 0.5},
+                {"name": "notes", "type": "textarea", "required": False, "max_length": 2000},
+                {"name": "checklist.device_worn", "type": "boolean", "required": False, "default": True},
+                {"name": "checklist.pain_within_limit", "type": "boolean", "required": False, "default": True},
+                {"name": "checklist.stop_explained", "type": "boolean", "required": False, "default": True},
+                {"name": "checklist.m33_plan_accepted", "type": "boolean", "required": False, "default": True},
+            ],
+        },
+        "READY_TO_START": {"title": "开始训练记录", "can_submit_empty_payload": True, "required_fields": [], "fields": []},
+        "RECORD_PROGRESS": {
+            "title": "记录训练进度",
+            "can_submit_empty_payload": True,
+            "required_fields": [],
+            "fields": [
+                {"name": "completion_rate", "type": "number", "required": False, "min": 0, "max": 1, "step": 0.05},
+                {"name": "avg_assist_level", "type": "number", "required": False, "min": 0, "max": 1, "step": 0.05},
+                {"name": "max_assist_level", "type": "number", "required": False, "min": 0, "max": 1, "step": 0.05},
+                {"name": "m33_reject_count", "type": "integer", "required": False, "min": 0},
+                {"name": "user_note", "type": "textarea", "required": False, "max_length": 2000},
+            ],
+        },
+        "FINISH_SESSION": {
+            "title": "完成训练记录",
+            "can_submit_empty_payload": True,
+            "required_fields": [],
+            "fields": [
+                {"name": "completion_rate", "type": "number", "required": False, "min": 0, "max": 1, "step": 0.05, "default": 0},
+                {"name": "pain_after", "type": "number", "required": False, "min": 0, "max": 10, "step": 0.5},
+                {"name": "user_note", "type": "textarea", "required": False, "max_length": 2000},
+            ],
+        },
+        "RECORD_SAFETY_REVIEW": {
+            "title": "安全复核",
+            "can_submit_empty_payload": True,
+            "required_fields": [],
+            "fields": [
+                {"name": "note", "type": "textarea", "required": False, "max_length": 2000},
+                {"name": "payload.review_status", "type": "select", "required": False, "options": ["approved", "conditional"], "default": "approved"},
+            ],
+        },
+        "GENERATE_TRAINING_REPORT": {"title": "生成训练报告", "can_submit_empty_payload": True, "required_fields": [], "fields": []},
+        "RECORD_REPORT_REVIEW": {
+            "title": "报告复盘",
+            "can_submit_empty_payload": True,
+            "required_fields": [],
+            "fields": [
+                {"name": "reviewer_role", "type": "select", "required": False, "options": ["patient", "therapist"], "default": "patient"},
+                {"name": "review_status", "type": "select", "required": False, "options": ["reviewed", "needs_follow_up"], "default": "reviewed"},
+                {"name": "reviewer_note", "type": "textarea", "required": False, "max_length": 2000},
+                {"name": "next_step", "type": "select", "required": False, "options": ["continue_current_plan", "request_new_plan"], "default": "continue_current_plan"},
+                {"name": "request_new_plan", "type": "boolean", "required": False, "default": False},
+            ],
+        },
+        "DRAFT_NEXT_PLAN_FROM_REPORT": {"title": "生成下一计划草稿", "can_submit_empty_payload": True, "required_fields": [], "fields": []},
+        "ACCEPT_AI_DRAFT": {"title": "接受 AI 草稿", "can_submit_empty_payload": True, "required_fields": [], "fields": []},
+        "REPLAY_OFFLINE_EVIDENCE": {
+            "title": "重放离线证据",
+            "can_submit_empty_payload": True,
+            "required_fields": [],
+            "fields": [{"name": "item_ids", "type": "string_list", "required": False, "default": payload_hint.get("item_ids") or []}],
+        },
+        "REVIEW_FAILED_OFFLINE_ITEM": {
+            "title": "复核失败离线项",
+            "can_submit_empty_payload": False,
+            "required_fields": ["note"],
+            "fields": [
+                {"name": "note", "type": "textarea", "required": True, "max_length": 2000},
+                {"name": "review_status", "type": "select", "required": False, "options": ["reviewed", "ignored"], "default": "reviewed"},
+            ],
+        },
+        "SYNC_PLAN_TO_M33": {"title": "同步计划到 M33", "can_submit_empty_payload": True, "required_fields": [], "fields": []},
+        "SYNC_ACCEPTED_PLAN_TO_M33": {"title": "同步已接受计划到 M33", "can_submit_empty_payload": True, "required_fields": [], "fields": []},
+    }
+    schema = schemas.get(action_code)
+    if not schema:
+        return {}
+    return {
+        **schema,
+        "schema_version": "rehab_app_workflow_action_payload_schema_v1",
+        "payload_hint": payload_hint,
+        "control_boundary": "workflow_action_payload_schema_evidence_only_not_motion_permission",
     }
 
 
@@ -2594,9 +2735,11 @@ def get_app_workflow(db: Session, user_id: str) -> dict:
         "frontend_contract": {
             "bootstrap_endpoint": "/api/rehab-arm/app/v1/me",
             "workflow_endpoint": "/api/rehab-arm/app/v1/me/workflow",
+            "workflow_action_endpoint": "/api/rehab-arm/app/v1/me/workflow/actions",
             "catalog_endpoint": "/api/rehab-arm/app/v1/catalog",
             "required_header": "Authorization: Bearer {access_token}",
             "render_rule": "render next_action/action_queue/blockers from backend; do not hard-code success states",
+            "action_form_rule": "render workflow action forms from payload_schema/form_contract; do not hard-code action payloads in the App shell",
         },
         "forbidden_actions": [
             "direct_motor_command",

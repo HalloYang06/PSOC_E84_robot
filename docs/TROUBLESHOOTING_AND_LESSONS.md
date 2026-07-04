@@ -2,6 +2,8 @@
 
 ## 2026-07-04
 
+- Workflow-form lesson: phone workflow buttons are not closed-loop if each frontend shell guesses the payload shape. Return `payload_schema` and `form_contract` with each `/me/workflow.action_queue` item so Stitch/PWA/APK can render fields from backend-authored rules and submit through `/me/workflow/actions`.
+- Workflow-preflight lesson: `PREFLIGHT_CHECK_REQUIRED` can be App-executable only after the current plan version has real `m33_accepted` evidence. Execute it by reusing the normal preflight service so pain thresholds, checklist completeness, sync id, and plan-version gates stay centralized.
 - CORS QA lesson: local static QA from `127.0.0.1` can fail against the cloud API preflight even when the same APK/PWA works from the deployed `106.55.62.122:3001` origin. For workflow-panel QA, use the cloud PWA route after deploying static assets, or explicitly configure a matching allowed origin; do not treat local `Failed to fetch` as a workflow contract failure.
 
 ## 2026-07-03

@@ -314,6 +314,10 @@ GET /api/rehab-arm/app/v1/me/workflow
 
 Authenticated `/me.daily_care_plan` is the phone home source for the user's current daily checklist. It includes the primary task, next action, blocker details, progress totals, counts, and a short care-timeline preview. Frontend shells should render this field instead of using demo progress cards or recomputing the task order.
 
+Use `/me/workflow/actions` with JSON like `{"action_code":"GENERATE_TRAINING_REPORT","payload":{}}`. The backend only executes actions present in the current workflow queue and rejects forbidden motion/hardware actions such as direct motor commands, CAN frame send, M33 override, emergency-stop release, M33 decision spoofing, or App-granted motion permission.
+
+Each item in `/me/workflow.action_queue` may include `payload_schema` and `form_contract`. Phone shells should render profile, trusted-device, training-plan, preflight, progress, finish-session, report-review, offline, and sync forms from these backend fields, then submit to `/me/workflow/actions`; do not hard-code demo payloads in the APK/PWA.
+
 Rebuild locally:
 
 ```powershell
