@@ -5376,8 +5376,8 @@ def _call_external_ai_training_planner(input_text: str, context_snapshot: dict, 
                 "content": json.dumps(
                     {
                         "input_text": input_text,
-                        "context_snapshot": context_snapshot,
-                        "fallback_plan": fallback,
+                        "context_snapshot": _json_safe(context_snapshot),
+                        "fallback_plan": _json_safe(fallback),
                         "allowed_movement_types": sorted(REHAB_APP_MOVEMENT_CATALOG.keys()),
                         "control_boundary": "ai_draft_only_not_execution_permission",
                     },
