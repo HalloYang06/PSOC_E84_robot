@@ -705,6 +705,77 @@
     }
     if (current === "emg.html") {
       replaceFirst(["肱二头肌", "biceps"], state.latestEmg ? state.latestEmg.muscle_name : "等待肌电记录");
+      replaceAll(["Exoskeleton: Connected"], "设备待绑定");
+      replaceAll(["实时肌肉等待记录与动作意图推断。M55 医疗审批生效中。"], "肌电和动作意图只显示后端记录；未连接 M55 时保持等待。");
+      replaceAll(["实时肌肉激活与动作意图推断。M55 医疗审批生效中。"], "肌电和动作意图只显示后端记录；未连接 M55 时保持等待。");
+      replaceAll(["接触良好"], state.latestEmg ? "有记录" : "等待记录");
+      replaceAll(["14.2 µV", "28.5 µV", "42%", "5.1 µV", "12.0 µV", "15%", "32.4 µV", "65.2 µV", "88%", "8.3 µV", "18.1 µV", "22%"], state.latestEmg ? "已同步" : "待同步");
+      replaceAll(["建议降等待肌电助力"], "等待真实肌电趋势");
+      replaceAll(["建议降低助力"], "等待真实肌电趋势");
+      replaceAll(["持续监测 CH3 屈肌 (近 15 分钟)"], "等待 M55 上传肌电趋势");
+      replaceAll(["预测动作\n屈曲"], "预测动作\n等待意图记录");
+      replaceAll(["屈曲"], "等待意图记录");
+      replaceAll(["置信度: 98%"], "置信度：待同步");
+      replaceAll(["CH3 88%", "CH1 42%"], "等待记录");
+    }
+    if (current === "report.html") {
+      const report = bootstrap.latest_report || {};
+      const summary = report.summary || {};
+      const hasReport = Boolean(report.id);
+      replaceAll(["训练总结"], hasReport ? "训练报告闭环" : "暂无训练报告");
+      replaceAll(["92"], hasReport && summary.score != null ? summary.score : "--");
+      replaceAll(["/ 100"], hasReport ? "/ 100" : "待生成");
+      replaceAll(["表现评分"], hasReport ? "表现评分" : "报告生成后显示");
+      replaceAll(["100%"], hasReport && summary.completion_rate != null ? `${Math.round(Number(summary.completion_rate) * 100)}%` : "待报告");
+      replaceAll(["15m"], hasReport && summary.duration_sec ? `${Math.round(Number(summary.duration_sec) / 60)}m` : "待报告");
+      replaceAll(["中断次数"], "中断记录");
+      replaceAll(["质量指标"], "质量指标待报告");
+      replaceAll(["稳定性"], "稳定性待报告");
+      replaceAll(["高"], "待报告");
+      replaceAll(["路径偏差"], "路径偏差待报告");
+      replaceAll(["低"], "待报告");
+      replaceAll(["代偿情况"], "代偿情况待报告");
+      replaceAll(["无"], "待报告");
+      replaceAll(["稳定性\n高"], "稳定性\n待报告");
+      replaceAll(["路径偏差\n低"], "路径偏差\n待报告");
+      replaceAll(["代偿情况\n无"], "代偿情况\n待报告");
+      replaceAll(["肌肉洞察"], "肌肉洞察待报告");
+      replaceAll(["峰值疲劳 (第 3 组)", "峰值疲劳 (第 2组)"], "峰值疲劳待肌电报告");
+      replaceAll(["70%"], "待同步");
+      replaceAll(["峰值疲劳 (第 3 组)"], "峰值疲劳待肌电报告");
+      replaceAll(["左右平衡"], "左右平衡待报告");
+      replaceAll(["48 / 52"], "待报告");
+      replaceAll(["L: 48%", "R: 52%"], "待报告");
+      replaceAll(["M33 系统日志"], "设备审核记录");
+      replaceAll(["自动裁决"], "设备通过");
+      replaceAll(["人工干预"], "人工复核");
+      replaceAll(["12"], "0");
+      replaceAll(["AI 洞察"], "报告建议");
+      replaceAll(['"动作一致性极佳。准备好在下次训练中增加强度了吗？"'], hasReport ? "请根据报告复盘结果决定是否生成下一次训练草稿。" : "完成真实训练记录并生成报告后，这里会显示复盘建议。");
+      replaceAll(["同步至云端"], "刷新报告");
+      replaceAll(["分享给康复师"], "等待照护协作");
+    }
+    if (current === "training-session.html") {
+      replaceAll(["Exoskeleton: Connected"], "设备待绑定");
+      replaceAll(["执行中 - 由 M33 等待协议门控监控", "执行中 - 由 M33 监控", "执行中 - 由 M33 安全门控监控"], "等待设备审核，暂不能开始训练");
+      replaceAll(["训练编号: TRN-8842-X"], "训练记录：待创建");
+      replaceAll(["疲劳度上升"], "等待真实训练数据");
+      replaceAll(["M33 正在动态调整助力等级以确保患者等待协议。"], "当前没有可执行训练；需要设备审核和训练前检查后才能记录。");
+      replaceAll(["M33 正在动态调整助力等级以确保患者安全。"], "当前没有可执行训练；需要设备审核和训练前检查后才能记录。");
+      replaceAll(["Sets 2/3"], "Sets --/--");
+      replaceAll(["8/12"], "--/--");
+      replaceAll(["08:45"], "--:--");
+      replaceAll(["实时角度"], "角度记录待同步");
+      replaceAll(["偏差: -8°"], "偏差：待同步");
+      replaceAll(["90°", "82°"], "--°");
+      replaceAll(["助力状态"], "助力状态待设备审核");
+      replaceAll(["比例\n30%"], "比例\n待审核");
+      replaceAll(["方向\n向上"], "方向\n待同步");
+      replaceAll(["30%"], "待审核");
+      replaceAll(["向上"], "待同步");
+      replaceAll(["68%", "24%", "45%", "32%"], "待同步");
+      replaceAll(["暂停"], "查看流程");
+      replaceAll(["紧急停止"], "记录停止请求");
     }
     if (current === "home.html") {
       replaceFirst(["今日训练"], readiness.status === "blocked" ? "真实后端已连接：仍有门禁" : "今日训练");

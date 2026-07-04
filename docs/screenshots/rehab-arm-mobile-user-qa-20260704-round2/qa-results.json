@@ -1,0 +1,552 @@
+{
+  "base": "http://106.55.62.122:3001/rehab-arm-mobile",
+  "consoleErrors": [],
+  "results": [
+    {
+      "page": "home.html",
+      "title": "RoboRehab Controller",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/home.html",
+      "status": "已连接后端｜下一步：审核 AI 训练草稿",
+      "hasLoginPanel": false,
+      "badTerms": [],
+      "hasDebugPanels": [],
+      "bodyStart": "已连接后端｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n6\n训练计划\nclinical_notes\nRoboRehab Controller\nsmart_toy\n晚上好，今天适合做轻量屈肘训练\nmedical_information\n康复阶段：cloud_partial_profile_check\nfront_hand\n患侧：left\ntimer\n今日目标：360 秒\nM33 待协议/待审核\n今日目标动作\n屈肘训练\n时长\n20 mins\n强度\n等待肌电\n进度\n45%\nplay_arrow\n查看下一步\n\n(需 M33 授权)\n\nverified_user\nM33 待协议/待审核\nemergency\n急停状态待硬件上报\n设备状态\nbluetooth\nM33 BLE\n待绑定\nsensors\nM55 EMG\n等待记录\nprecision_manufacturing\nArm\n等待协议\ncloud_sync\nCloud\n已连接后端\n后端训练证据快照\n完成度\n完成度 无真实报告\n肌肉疲劳\n等待肌电\npsychiatry\nAI/报告建议待复核\n\"等待真实训练报告和治疗师复核\"\nrobot_2\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "text": "clinical_notes",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "smart_toy",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "play_arrow 查看下一步",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "emergency 急停状态待硬件上报",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "robot_2",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "home_health 首页",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "exercise 训练",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "monitoring 肌电",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "precision_manufacturing 设备",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "person 我的",
+          "href": "#",
+          "disabled": false
+        }
+      ],
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round2/home-mobile.png"
+    },
+    {
+      "page": "training-library.html",
+      "title": "训练库 - RoboRehab",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/training-library.html",
+      "status": "已连接后端｜下一步：审核 AI 训练草稿",
+      "hasLoginPanel": false,
+      "badTerms": [],
+      "hasDebugPanels": [],
+      "bodyStart": "已连接后端｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n6\n训练计划\nclinical_notes\nRoboRehab Controller\nsmart_toy\n训练库\n\n为当前训练选择或生成康复方案。\n\nauto_awesome\n新建计划 (AI 生成)\nwarning\n\n训练前需要先同步到设备，并完成设备审核与训练前检查。\n\ncalendar_today\n今日计划\n伸肘训练\n等待肌电风险\n\n目标角度\n\n10-35°\n\n助力等级\n\n20%\n\n最近完成\n\n暂无真实记录\n\ncloud_done\nM33 已接收\nplay_arrow\n肩部旋转\n中风险\n\n目标角度\n\n45°\n\n助力等级\n\n50%\n\n最近完成\n\n昨天\n\nsync\n待同步\nlock\nmedical_services\n康复师方案\n查看全部\nchevron_right\nfitness_center\n腕屈曲协议\n\n由陈医生开具 • 2组 x 15 次\n\nsync\n待同步\n查看详情\nhistory\n常用方案\nsettings_accessibility\n基础握力\nfront_hand\n手指伸展\npan_tool\n手掌屈曲\npsychology\nAI 推荐\nauto_awesome\n智能生成\nmore_horiz\n自适应阻力训练\n\n基于昨天的表现指标，AI/报告建议待复核增加 5% 的阻力以进一步刺激神经调控。\n\n生成蓝图\nneurology\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "text": "home_health 首页",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "exercise 训练",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "monitoring 肌电",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "precision_manufacturing 设备",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "person 我的",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "auto_awesome 新建计划 (AI 生成)",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "play_arrow",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "lock",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "查看全部 chevron_right",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "查看详情",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "生成蓝图",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "neurology",
+          "href": "",
+          "disabled": false
+        }
+      ],
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round2/training-library-mobile.png"
+    },
+    {
+      "page": "ai-plan.html",
+      "title": "康复智能体 - 灵动康复 ArmControl",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/ai-plan.html",
+      "status": "已连接后端｜下一步：审核 AI 训练草稿",
+      "hasLoginPanel": false,
+      "badTerms": [],
+      "hasDebugPanels": [],
+      "bodyStart": "已连接后端｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n6\n训练计划\narrow_back\n康复智能体\n云端同步\nwarning\nAI 只生成训练草稿；接受后还需要设备审核和训练前检查，不能直接启动机械臂。\nterminal\n智能体规划输入\n肌电：等待读取\n意图：等待读取\n草稿：等待生成\n疼痛自评\n2/10\n疲劳状态\n轻微\n中等\n明显疲劳\nmemory\n生成 AI 草稿\nreceipt_long\n训练草稿处方\n草稿\n安全复测肘关节屈曲（疼痛响应优化）\n\n训练量\n\n2 组 x 6 次\n\n助力 / 速度\n\n20% / ultra_slow\n\nreport\n\n等待协议提示：草稿接受后仍需同步到设备、等待设备审核，并通过训练前检查后才能开始记录。\n\n模型已调用：qwen-plus。完成按钮网络复测，基于昨日屈肘后疼痛评分3分，降低负荷、扩大安全角度缓冲、强化疼痛中止机制 AI 只生成草稿，不代表执行许可\ncheck_circle\n接受为训练计划\n闭环执行状态\ncheck\n\n生成 AI 草稿\n\n等待后端草稿\n\n人工确认草稿\n\n接受后仅生成普通训练计划\n\n生成训练计划\n\n同步到设备\n\n等待设备审核\n\nPreflight 后开始记录\n\n等待训练前检查\n\nhome_health\n首页\nterminal\nAI\nprecision_manufacturing\n设备",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "text": "arrow_back",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "memory 生成 AI 草稿",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "check_circle 接受为训练计划",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "home_health 首页",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "terminal AI",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "precision_manufacturing 设备",
+          "href": "",
+          "disabled": false
+        }
+      ],
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round2/ai-plan-mobile.png"
+    },
+    {
+      "page": "device.html",
+      "title": "设备连接 - RoboRehab 控制器",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/device.html",
+      "status": "待绑定后端｜下一步：审核 AI 训练草稿",
+      "hasLoginPanel": false,
+      "badTerms": [],
+      "hasDebugPanels": [],
+      "bodyStart": "待绑定后端｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n6\n训练计划\nclinical_notes\nRoboRehab 控制器\nsmart_toy\ncheck_circle\n系统状态\n\n设备状态：等待绑定与审核\n\n系统架构图\nsmartphone\n手机 APP\nhub\n等待协议门控 (Gatekeeper)\nmemory\nM55\ndns\nNanoPi\nprecision_manufacturing\n机械臂\n当前连接\n等待绑定设备\nbluetooth_connected\n等待绑定康复设备\n待绑定\nmonitor_heart\n心跳状态\nM33:\n120ms\n云端:\n45ms\nbattery_charging_80\n电源状态\n机械臂电量:\n85%\nsync\n一键同步训练计划\n\n需要 M33 医疗系统授权。\n\nbug_report\n蓝牙调试 / 实机验证\nbug_report\n调试信息\nexpand_more\nrobot_2\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "text": "smart_toy",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "sync 一键同步训练计划",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "bug_report 蓝牙调试 / 实机验证",
+          "href": "./bluetooth-debug.html",
+          "disabled": false
+        },
+        {
+          "text": "robot_2",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "home_health 首页",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "exercise 训练",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "monitoring 肌电",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "precision_manufacturing 设备",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "person 我的",
+          "href": "",
+          "disabled": false
+        }
+      ],
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round2/device-mobile.png"
+    },
+    {
+      "page": "emg.html",
+      "title": "RoboRehab - 肌电监测",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/emg.html",
+      "status": "已连接后端｜下一步：审核 AI 训练草稿",
+      "hasLoginPanel": false,
+      "badTerms": [],
+      "hasDebugPanels": [],
+      "bodyStart": "已连接后端｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n6\n训练计划\nclinical_notes\nRoboRehab Controller\nExoskeleton: Connected\nsmart_toy\n肌电监测\n\n实时肌肉等待记录与动作意图推断。M55 医疗审批生效中。\n\nCH1\n等待肌电记录\ncheck_circle\n接触良好\nRMS\n14.2 µV\nPeak\n28.5 µV\nActiv %\n42%\nCH2\n肱三头肌\ncheck_circle\n接触良好\nRMS\n5.1 µV\nPeak\n12.0 µV\nActiv %\n15%\nCH3\n屈肌\ncheck_circle\n接触良好\nRMS\n32.4 µV\nPeak\n65.2 µV\nActiv %\n88%\nCH4\n伸肌\ncheck_circle\n接触良好\nRMS\n8.3 µV\nPeak\n18.1 µV\nActiv %\n22%\n疲劳趋势 (中值频率)\n\n持续监测 CH3 屈肌 (近 15 分钟)\n\nwarning\n建议降等待肌电助力\n120Hz\n100Hz\n80Hz\n60Hz\n放松校准\n最大收缩校准\nneurology\nM55 动作意图推理\n预测动作\n屈曲\ninsights\n置信度: 98%\n\n自动助力触发需经过 M33 医疗审核确认。\n\n活跃肌群\nCH3 88%\nCH1 42%\nrobot\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "text": "放松校准",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "最大收缩校准",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "放松校准",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "最大收缩校准",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "robot",
+          "href": "",
+          "disabled": false
+        }
+      ],
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round2/emg-mobile.png"
+    },
+    {
+      "page": "profile.html",
+      "title": "RoboRehab Controller - My Profile",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/profile.html",
+      "status": "已连接后端｜下一步：审核 AI 训练草稿",
+      "hasLoginPanel": false,
+      "badTerms": [],
+      "hasDebugPanels": [],
+      "bodyStart": "已连接后端｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n6\n训练计划\nclinical_notes\n灵动康复 ArmControl\n已同步\nsmart_toy\nRehab App User\nID: 2e102a9b\nrelax\n\n康复阶段：cloud_partial_profile_check\n\nwarning\n\n医疗约束\n\n避免过度伸展 > 10-35°\n\n待绑定设备\nsettings_input_component\nprecision_manufacturing\n\n等待绑定康复设备\n\n未绑定设备\n\n等待记录\nsensors\n\n等待肌电记录\n\n暂无肌电\n\n等待记录\nadd\n配对新设备\ncalendar_month\n训练活动\n2026年7月\n一\n二\n三\n四\n五\n六\n日\n21\n22\n23\n24\n25\n26\n27\n28\n29\n30\n1\n2\n3\n4\n\n暂无本周训练记录\n\n查看最近记录\nAI 草稿已接受\n07/04 10:34\nAI 草稿 · 草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。\nAI 草稿已接受\n07/04 10:29\nAI 草稿 · 草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。\nAI 草稿待审核\n07/04 10:25\nAI 草稿 · AI 草稿不能直接授予运动权限。\nAI 草稿已接受\n07/04 10:23\nAI 草稿 · 草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。\ncloud_sync\n云端同步\n\n已同步\n\nrecord_voice_over\n语音入口\n\n由平台配置\n\nsupervisor_account\n照护协作\n\n待邀请\n\nshield_lock\n数据隐私与通知\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "text": "clinical_notes",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "smart_toy",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "add 配对新设备",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "查看最近记录",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "AI 草稿已接受 07/04 10:34 AI 草稿 · 草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "AI 草稿已接受 07/04 10:29 AI 草稿 · 草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "AI 草稿待审核 07/04 10:25 AI 草稿 · AI 草稿不能直接授予运动权限。",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "AI 草稿已接受 07/04 10:23 AI 草稿 · 草稿已转为普通训练计划；仍需 M33 同步、接受和 preflight。",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "cloud_sync 云端同步 已同步",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "record_voice_over 语音入口 由平台配置",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "supervisor_account 照护协作 待邀请",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "shield_lock 数据隐私与通知",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "home_health 首页",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "exercise 训练",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "monitoring 肌电",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "precision_manufacturing 设备",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "person 我的",
+          "href": "#",
+          "disabled": false
+        }
+      ],
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round2/profile-mobile.png"
+    },
+    {
+      "page": "report.html",
+      "title": "Training Summary - RoboRehab",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/report.html",
+      "status": "已连接后端｜下一步：审核 AI 训练草稿",
+      "hasLoginPanel": false,
+      "badTerms": [
+        "100%",
+        "15m",
+        "表现评分",
+        "自动裁决",
+        "人工干预",
+        "动作一致性极佳"
+      ],
+      "hasDebugPanels": [],
+      "bodyStart": "已连接后端｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n6\n训练计划\nclinical_notes\nRoboRehab Controller\nsmart_toy\n训练报告闭环\n92\n/ 100\n\n表现评分\n\ntask_alt\n100%\n重复次数\ntimer\n15m\n训练时长\nwarning\n2\n中断次数\n质量指标\nanalytics\nbalance\n稳定性\n高\nroute\n路径偏差\n等待肌电\naccessibility_new\n代偿情况\n无\n肌肉洞察\nmonitor_heart\n峰值疲劳 (第 2组)\n70%\n左右平衡\n48 / 52\nL: 48%\nR: 52%\nmemory\nM33 系统日志\n自动裁决\n12\n人工干预\n0\nauto_awesome\n\nAI 洞察\n\n\"动作一致性极佳。准备好在下次训练中增加强度了吗？\"\n\ncloud_sync\n同步至云端\nios_share\n分享给康复师\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "text": "clinical_notes",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "smart_toy",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "cloud_sync 同步至云端",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "ios_share 分享给康复师",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "home_health 首页",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "exercise 训练",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "monitoring 肌电",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "precision_manufacturing 设备",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "person 我的",
+          "href": "",
+          "disabled": false
+        }
+      ],
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round2/report-mobile.png"
+    },
+    {
+      "page": "training-session.html",
+      "title": "RoboRehab Controller - 训练执行",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/training-session.html",
+      "status": "已连接后端｜下一步：审核 AI 训练草稿",
+      "hasLoginPanel": false,
+      "badTerms": [],
+      "hasDebugPanels": [],
+      "bodyStart": "已连接后端｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n6\n训练计划\nclinical_notes\nRoboRehab Controller\nExoskeleton: Connected\nsmart_toy\n系统状态\nvital_signs\n执行中 - 由 M33 等待协议门控监控\n训练编号: TRN-8842-X\nwarning\n\n疲劳度上升\n\nM33 正在动态调整助力等级以确保患者等待协议。\n\n进度监控\nSets 2/3\n8/12\n剩余时间\n08:45\narchitecture\n实时角度\n偏差: -8°\n目标\n90°\n当前\n82°\nelectric_bolt\n助力状态\n比例\n30%\n方向\n向上\narrow_upward\nmonitor_heart\n肌电信号摘要\n肱二头肌 (CH1)\n68%\n肱三头肌 (CH2)\n24%\n屈肌 (CH3)\n45%\n伸肌 (CH4)\n32%\npause\n暂停\nblock\n紧急停止\n参数覆盖需经过 M33 医疗审核确认。",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "text": "pause 暂停",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "block 紧急停止",
+          "href": "",
+          "disabled": false
+        }
+      ],
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round2/training-session-mobile.png"
+    },
+    {
+      "page": "bluetooth-debug.html",
+      "title": "蓝牙调试 / M33 实机验证",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/bluetooth-debug.html",
+      "status": "已连接后端｜下一步：审核 AI 训练草稿",
+      "hasLoginPanel": false,
+      "badTerms": [],
+      "hasDebugPanels": [],
+      "bodyStart": "已连接后端｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n6\n训练计划\nclinical_notes\n蓝牙调试\nsmart_toy\n连接状态\n仅 Web/无权限\n设备名:\n未连接\nMAC:\n-\nUUID:\n00001101-0000-1000-8000-00805F9B34FB\n权限状态:\nweb_unavailable\n刷新状态\n断开\n已配对设备\n\n* 需先在 Android 系统设置中完成配对\n\n读取已配对设备\n等待 Android 权限\n安装 APK 后，这里显示 Android 系统已配对的 SPP 设备。\n后端 SPP 帧\n等待后端批准帧\n只有后端生成并标记 sendable=true 的 legacy_transport_frame 会出现在这里。\n发送后端批准帧\n\n等待协议边界：本页不发送 CAN、原始电机、电流、力矩、速度、位置或 M33 覆盖指令。\n\nTX / RX / API 证据\n上次发送:\n-\n上次回包:\n-\n后端入库:\n-\n传感器:\n等待 sensor JSON\n等待真实蓝牙事件。\n实机验证清单\n1. Android 系统蓝牙已开启并完成配对。\n2. SPP UUID 与旧 App 一致：00001101-0000-1000-8000-00805F9B34FB。\n3. App 登录后端并选择已绑定设备/训练计划。\n4. 回包上传后端后，仅作为 transport evidence，不代表 M33 已接受运动。\nhome_health\n首页\nexercise\n训练\nmonitoring\n肌电\nprecision_manufacturing\n设备\nperson\n我的",
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "horizontalOverflow": false,
+      "buttons": [
+        {
+          "text": "刷新状态",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "断开",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "读取已配对设备",
+          "href": "",
+          "disabled": false
+        },
+        {
+          "text": "发送后端批准帧",
+          "href": "",
+          "disabled": true
+        },
+        {
+          "text": "home_health 首页",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "exercise 训练",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "monitoring 肌电",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "precision_manufacturing 设备",
+          "href": "#",
+          "disabled": false
+        },
+        {
+          "text": "person 我的",
+          "href": "#",
+          "disabled": false
+        }
+      ],
+      "screenshot": "D:/ai合作产品/docs/screenshots/rehab-arm-mobile-user-qa-20260704-round2/bluetooth-debug-mobile.png"
+    }
+  ]
+}

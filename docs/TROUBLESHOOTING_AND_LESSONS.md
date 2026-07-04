@@ -21,6 +21,7 @@
 - Mobile profile calendar lesson: a visually polished Stitch calendar is still a demo if it contains hardcoded month labels, heatmap cells, counts, or log buttons. For `我的 / 训练活动`, render from `/me.care_timeline` only; if no `training_session` evidence exists this week, show `暂无本周训练记录` and a real next step rather than a fake activity count.
 - User-view deployment lesson: local QA can pass while the user still sees the old cloud package. Capture a cloud screenshot before/after deployment when the complaint is "I cannot see the change"; the stale cloud profile page still showed `Oct 2023`, `4 本周训练次数`, `System OK`, and debug panels even after the local fix.
 - Profile empty-state lesson: do not let first paint imply device readiness. Replace `System OK`, `患者 A`, fake M33/EMG bindings, and enabled voice/collaboration labels with authenticated backend state or clear `待登录/待同步/待邀请` language.
+- Mobile full-page QA lesson: keyword scans catch obvious fake values, but `bodyStart` review catches split text such as `8` + `/12`, residual M33 "执行中" copy, and static EMG confidence that a single search term can miss. For every App page that implies live physiology or motion, read the rendered text after bridge hydration and force unknown values to `待同步/待报告/待审核`.
 
 ## 2026-07-03
 
