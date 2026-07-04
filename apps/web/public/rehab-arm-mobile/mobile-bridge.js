@@ -23,6 +23,7 @@
     nativeSpp: null,
     lastSync: null,
     lastLegacySppSend: null,
+    lastLegacySppInbound: null,
     online: false,
     authenticated: false,
     statusText: "正在连接后端..."
@@ -621,6 +622,46 @@
     });
   }
 
+  async function uploadLegacySppInbound(event) {
+    const state = readState();
+    const device = state.devices && state.devices[0];
+    const wireText = event && event.wireText;
+    if (!token() || !device || !wireText) return null;
+    const related = state.lastBleMessage && state.lastBleMessage.id ? state.lastBleMessage.id : "";
+    const result = await api(`/api/rehab-arm/app/v1/devices/${device.id}/legacy-spp/inbound`, {
+      method: "POST",
+      body: JSON.stringify({
+        raw_text: wireText,
+        related_message_id: related,
+        transport_event: {
+          deviceName: event.deviceName || "",
+          deviceAddress: event.deviceAddress || "",
+          connected: Boolean(event.connected),
+          controlBoundary: "android_spp_transport_only_m33_final_authority"
+        }
+      })
+    });
+    writeState({ ...readState(), lastLegacySppInbound: result, nativeSpp: await readNativeSppStatus() });
+    return result;
+  }
+
+  function setupNativeSppInboundListener() {
+    if (window.__rehabArmSppInboundBound) return;
+    const plugin = nativeSppPlugin();
+    if (!plugin || !plugin.addListener) return;
+    window.__rehabArmSppInboundBound = true;
+    plugin.addListener("legacySppData", (event) => {
+      uploadLegacySppInbound(event)
+        .then((result) => {
+          if (result && result.status === "matched") toast("已收到 M33 SPP 回包并记录为后端证据。");
+        })
+        .catch((error) => toast(`M33 回包上传失败：${error.message || String(error)}`, "warn"));
+    });
+    plugin.addListener("legacySppDisconnected", (event) => {
+      writeState({ ...readState(), nativeSpp: event || { connected: false } });
+    });
+  }
+
   async function handlePrimaryAction(label) {
     const state = readState();
     if (label.includes("同步")) {
@@ -683,6 +724,7 @@
   document.addEventListener("DOMContentLoaded", async () => {
     bindNav();
     bindActions();
+    setupNativeSppInboundListener();
     upsertStatusStrip(readState());
     await refreshFromBackend();
   });

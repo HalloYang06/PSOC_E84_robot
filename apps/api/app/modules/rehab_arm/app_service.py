@@ -33,6 +33,7 @@ from app.modules.audit.service import create_audit_log
 from .app_schemas import (
     RehabAppDeviceBindRequest,
     RehabAppDiagnosticUploadRequest,
+    RehabAppLegacySppInboundCreate,
     RehabAppBleMessageCreate,
     RehabAppOfflineQueueItemCreate,
     RehabAppOfflineQueueReviewRequest,
@@ -2287,7 +2288,7 @@ def _app_mobile_readiness_guide(
             "code": "PHONE_NATIVE_BLUETOOTH_BRIDGE",
             "status": "debug_bridge_available",
             "title": "调试安装包已接入手机原生蓝牙桥",
-            "detail": "APK 1.0.6 内置 Capacitor/Android Bluetooth Classic SPP 桥；仍需用当前 M33 固件和已配对设备实测发送/ACK。",
+            "detail": "APK 1.0.7 内置 Capacitor/Android Bluetooth Classic SPP 发送桥和回包上传；仍需用当前 M33 固件和已配对设备实测发送/ACK。",
         },
     ]
 
@@ -2314,7 +2315,7 @@ def _app_mobile_readiness_guide(
             "code": "phone_native_bluetooth_bridge_hardware_validation_pending",
             "severity": "warning",
             "title": "手机原生蓝牙桥待实机验证",
-            "clear_condition": "安装 APK 1.0.6，在 Android 蓝牙设置中先配对 M33，再通过后端生成的 legacy_transport_frame.wire_text 完成实机发送和 M33 ACK 记录。",
+            "clear_condition": "安装 APK 1.0.7，在 Android 蓝牙设置中先配对 M33，再通过后端生成的 legacy_transport_frame.wire_text 完成实机发送，并把 M33 ACK/sensor 回包上传到后端。",
             "related_action_codes": ["BIND_TRUSTED_DEVICE", "UPLOAD_DEVICE_DIAGNOSTIC"],
         }
     )
@@ -4087,6 +4088,192 @@ def update_ble_message_ack(db: Session, user_id: str, device_id: str, message_id
     db.commit()
     db.refresh(message)
     return _ble_message_dict(message)
+
+
+LEGACY_SPP_ACK_TYPES = {"mode_ack", "control_ack", "memory_ack", "execute_ack", "stop_ack", "error"}
+
+
+def _parse_legacy_spp_line(raw_text: str) -> dict:
+    if len(raw_text.encode("utf-8")) > 4096:
+        raise AppError("LEGACY_SPP_FRAME_TOO_LARGE", "legacy SPP inbound frame is too large", status_code=413)
+    line = raw_text.strip()
+    try:
+        parsed = json.loads(line)
+    except json.JSONDecodeError as exc:
+        raise AppError(
+            "LEGACY_SPP_FRAME_INVALID_JSON",
+            "legacy SPP inbound frame must be newline-delimited JSON",
+            status_code=422,
+            details={"error": str(exc), "control_boundary": "legacy_spp_inbound_evidence_only_not_motion_permission"},
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise AppError("LEGACY_SPP_FRAME_INVALID", "legacy SPP inbound JSON must be an object", status_code=422)
+    message_type = str(parsed.get("type") or "").strip()
+    if not message_type:
+        raise AppError("LEGACY_SPP_TYPE_MISSING", "legacy SPP inbound frame must include a type", status_code=422)
+    return {**parsed, "type": message_type}
+
+
+def _legacy_ack_message_candidates(ack_type: str) -> set[str]:
+    if ack_type == "memory_ack":
+        return {"training_plan_push"}
+    if ack_type == "execute_ack":
+        return {"training_session_start_request"}
+    if ack_type == "stop_ack":
+        return {"training_pause_request", "training_stop_request"}
+    return BLE_MESSAGE_TYPES
+
+
+def _find_related_legacy_message(
+    db: Session,
+    user_id: str,
+    device_id: str,
+    parsed: dict,
+    related_message_id: str = "",
+) -> RehabAppBleMessage | None:
+    if related_message_id:
+        direct = db.get(RehabAppBleMessage, related_message_id)
+        if direct is not None and direct.user_id == user_id and direct.device_id == device_id:
+            return direct
+    ack_type = str(parsed.get("type") or "")
+    action_id = str(parsed.get("action_id") or parsed.get("related_action_id") or "")
+    candidates = _legacy_ack_message_candidates(ack_type)
+    messages = list(
+        db.scalars(
+            select(RehabAppBleMessage)
+            .where(
+                RehabAppBleMessage.user_id == user_id,
+                RehabAppBleMessage.device_id == device_id,
+                RehabAppBleMessage.ack_status == "pending",
+            )
+            .order_by(RehabAppBleMessage.created_at.desc())
+            .limit(50)
+        )
+    )
+    for message in messages:
+        if message.message_type not in candidates:
+            continue
+        frame = ((message.payload or {}).get("legacy_transport_frame") or {}).get("json") or {}
+        if action_id and str(frame.get("action_id") or "") != action_id:
+            continue
+        return message
+    return None
+
+
+def record_legacy_spp_inbound(db: Session, user_id: str, device_id: str, payload: RehabAppLegacySppInboundCreate) -> dict:
+    device = _require_user_device(db, user_id, device_id)
+    parsed = _parse_legacy_spp_line(payload.raw_text)
+    message_type = str(parsed.get("type") or "")
+    envelope = {
+        "transport": "bluetooth_classic_spp_rfcomm",
+        "profile": "legacy_m33_bluetooth_classic_spp_json_v1",
+        "raw_text": payload.raw_text,
+        "parsed_json": parsed,
+        "legacy_message_type": message_type,
+        "transport_event": payload.transport_event,
+        "received_at": datetime.now(timezone.utc).isoformat(),
+        "m33_authority": "final_safety_authority",
+        "control_boundary": "legacy_spp_inbound_evidence_only_not_motion_permission",
+    }
+    device.last_seen_at = datetime.now(timezone.utc)
+    db.add(device)
+
+    if message_type in LEGACY_SPP_ACK_TYPES:
+        related = _find_related_legacy_message(db, user_id, device.id, parsed, payload.related_message_id)
+        ack_status = "rejected" if message_type == "error" else "acknowledged"
+        if related is not None:
+            related.ack_status = ack_status
+            related.ack_payload = {
+                **envelope,
+                "related_message_id": related.id,
+                "transport_confirmation_only": True,
+                "does_not_set_m33_acceptance": True,
+                "control_boundary": "legacy_spp_ack_evidence_only_not_m33_acceptance",
+            }
+            related.acked_at = datetime.now(timezone.utc)
+            db.add(related)
+            resource_id = related.id
+            result = {
+                "status": "matched",
+                "ack_status": ack_status,
+                "related_message": _ble_message_dict(related),
+            }
+        else:
+            resource_id = device.id
+            result = {
+                "status": "unmatched",
+                "ack_status": ack_status,
+                "related_message": None,
+            }
+        create_audit_log(
+            db,
+            project_id=device.platform_project_id or None,
+            actor_type="m33",
+            actor_id=device.m33_device_id,
+            action=f"rehab_app.legacy_spp.{message_type}",
+            resource_type="rehab_app_ble_message" if related is not None else "rehab_app_device_binding",
+            resource_id=resource_id,
+            after={"ack_status": ack_status, "control_boundary": "legacy_spp_ack_evidence_only_not_m33_acceptance"},
+        )
+        db.commit()
+        if related is not None:
+            db.refresh(related)
+            result["related_message"] = _ble_message_dict(related)
+        return {
+            **result,
+            "parsed": parsed,
+            "m33_authority": "final_safety_authority",
+            "control_boundary": "legacy_spp_inbound_evidence_only_not_motion_permission",
+        }
+
+    if message_type == "sensor":
+        upload = RehabAppDiagnosticUpload(
+            user_id=user_id,
+            device_id=device.id,
+            snapshot_type="legacy_spp_sensor",
+            firmware_version=str(parsed.get("firmware_version") or device.firmware_version or ""),
+            m33_state=str(parsed.get("mode") or "sensor"),
+            payload=envelope,
+        )
+        db.add(upload)
+        db.flush()
+        create_audit_log(
+            db,
+            project_id=device.platform_project_id or None,
+            actor_type="m33",
+            actor_id=device.m33_device_id,
+            action="rehab_app.legacy_spp.sensor",
+            resource_type="rehab_app_diagnostic_upload",
+            resource_id=upload.id,
+            after={"snapshot_type": upload.snapshot_type, "control_boundary": "diagnostic_snapshot_only_not_motion_permission"},
+        )
+        db.commit()
+        db.refresh(upload)
+        return {
+            "status": "diagnostic_recorded",
+            "diagnostic": _diagnostic_dict(upload),
+            "parsed": parsed,
+            "m33_authority": "final_safety_authority",
+            "control_boundary": "legacy_spp_inbound_evidence_only_not_motion_permission",
+        }
+
+    create_audit_log(
+        db,
+        project_id=device.platform_project_id or None,
+        actor_type="m33",
+        actor_id=device.m33_device_id,
+        action="rehab_app.legacy_spp.unsupported_inbound",
+        resource_type="rehab_app_device_binding",
+        resource_id=device.id,
+        after={"legacy_message_type": message_type, "control_boundary": "legacy_spp_inbound_evidence_only_not_motion_permission"},
+    )
+    db.commit()
+    return {
+        "status": "unsupported_recorded",
+        "parsed": parsed,
+        "m33_authority": "final_safety_authority",
+        "control_boundary": "legacy_spp_inbound_evidence_only_not_motion_permission",
+    }
 
 
 def list_ble_messages(db: Session, user_id: str, device_id: str, limit: int = 50) -> list[dict]:

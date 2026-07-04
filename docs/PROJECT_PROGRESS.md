@@ -7,6 +7,9 @@
 - The backend generates old-protocol frames only for supported command shapes: `training_plan_push -> memory`, `training_session_start_request -> execute_memory`, `training_pause_request -> stop_memory`, and `training_stop_request -> stop`. Status/hello/diagnostic App messages remain backend records with `sendable=false` and `wire_text=null` so the phone bridge does not send undefined M33 commands.
 - Release state changed from "hardware protocol missing" to "legacy SPP profile available, current M33 firmware confirmation and Android native Bluetooth bridge pending." Browser/PWA JavaScript still cannot open RFCOMM directly; a Capacitor/Android native bridge is required for real phone hardware communication.
 - Safety boundary unchanged: session start still requires current-version `m33_accepted`; old SPP frames are compatibility transport evidence only and do not expose CAN, raw motor setpoints, M33 override, or emergency-stop release.
+- Added the App legacy SPP inbound evidence loop. Android `legacySppData` events now POST raw newline-delimited M33 JSON to `/api/rehab-arm/app/v1/devices/{device_id}/legacy-spp/inbound`; `memory_ack` / `execute_ack` / `stop_ack` can match the pending backend BLE message, while `sensor` is stored as a diagnostic snapshot. ACK upload remains transport evidence and does not set `m33_accepted`.
+- Built and published APK `1.0.7` (`versionCode=8`, SHA256 `386309ED8FF507A878817C7744AB4E69E944D1C22FEC32BD16DD34B229897802`, size `4,181,238 bytes`) with SPP send plus inbound ACK/sensor upload.
+- Validated locally with `python -m pytest tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60`, `node --check` for both mobile bridge copies, Android `npm run build:debug`, `aapt` package inspection, and `apksigner verify --verbose`.
 
 ## 2026-06-17
 

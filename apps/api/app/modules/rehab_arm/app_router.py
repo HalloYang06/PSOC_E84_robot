@@ -20,6 +20,7 @@ from .app_schemas import (
     RehabAppDiagnosticUploadRequest,
     RehabAppEmgSummaryCreate,
     RehabAppIntentSummaryCreate,
+    RehabAppLegacySppInboundCreate,
     RehabAppM33StatusUpdate,
     RehabAppOfflineQueueItemCreate,
     RehabAppOfflineQueueReviewRequest,
@@ -89,6 +90,7 @@ from .app_service import (
     pause_training_session,
     record_emg_summary,
     record_intent_summary,
+    record_legacy_spp_inbound,
     record_session_safety_event,
     replay_offline_queue,
     review_failed_offline_item,
@@ -176,9 +178,9 @@ def api_public_config(request: Request):
             "m33_legacy_spp_profile": LEGACY_M33_SPP_PROFILE,
             "downloads": {
                 "debug_apk_url": _download_url(api_base),
-                "debug_apk_version": "1.0.6",
-                "debug_apk_sha256": "673282444B58F198895A5F9A036A22542A9B0BA41F615F1809925FE60753CB05",
-                "debug_apk_status": "backend_connected_workflow_action_timeline_legacy_spp_native_bridge_debug_build_current_m33_confirmation_pending",
+                "debug_apk_version": "1.0.7",
+                "debug_apk_sha256": "386309ED8FF507A878817C7744AB4E69E944D1C22FEC32BD16DD34B229897802",
+                "debug_apk_status": "backend_connected_workflow_action_timeline_legacy_spp_native_bridge_inbound_ack_debug_build_current_m33_confirmation_pending",
             },
             "mobile_boot_flow": [
                 {"step": "load_public_config", "endpoint": "/api/rehab-arm/app/v1/public-config", "auth_required": False},
@@ -205,7 +207,7 @@ def api_public_config(request: Request):
                     {
                         "code": "APK_FRONTEND_API_WIRING",
                         "status": "pass",
-                        "description": "Debug APK 1.0.6 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, renders backend care timeline/daily care plan, can execute safe workflow actions through /me/workflow/actions, and includes the Android native SPP bridge.",
+                        "description": "Debug APK 1.0.7 loads public-config/catalog/workflow, uses Bearer token login, overlays backend workflow/readiness, renders backend care timeline/daily care plan, can execute safe workflow actions through /me/workflow/actions, and includes Android native SPP send plus inbound ACK/sensor upload.",
                     },
                     {
                         "code": "HARDWARE_PROTOCOL_PACKET_MAP",
@@ -215,7 +217,7 @@ def api_public_config(request: Request):
                     {
                         "code": "PHONE_NATIVE_BLUETOOTH_BRIDGE",
                         "status": "debug_bridge_available",
-                        "description": "APK 1.0.6 includes a Capacitor/Android Bluetooth Classic SPP bridge. User release still needs physical pairing/send/ACK validation with current M33 firmware.",
+                        "description": "APK 1.0.7 includes a Capacitor/Android Bluetooth Classic SPP bridge with inbound ACK/sensor evidence upload. User release still needs physical pairing/send/ACK validation with current M33 firmware.",
                     },
                 ],
                 "required_frontend_work": [
@@ -313,6 +315,11 @@ def api_list_ble_messages(device_id: str, request: Request, db: Session = Depend
 @router.post("/devices/{device_id}/ble/messages/{message_id}/ack")
 def api_ack_ble_message(device_id: str, message_id: str, payload: RehabAppBleAckCreate, request: Request, db: Session = Depends(get_db)):
     return ok(update_ble_message_ack(db, _user_id(db, request), device_id, message_id, payload.ack_status, payload.ack_payload))
+
+
+@router.post("/devices/{device_id}/legacy-spp/inbound")
+def api_record_legacy_spp_inbound(device_id: str, payload: RehabAppLegacySppInboundCreate, request: Request, db: Session = Depends(get_db)):
+    return ok(record_legacy_spp_inbound(db, _user_id(db, request), device_id, payload))
 
 
 @router.post("/training-plans")

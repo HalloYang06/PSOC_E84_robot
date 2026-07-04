@@ -182,16 +182,16 @@
           <dt>包名</dt>
           <dd>com.lingdong.rehabarm</dd>
           <dt>版本</dt>
-          <dd>1.0.6 debug</dd>
+          <dd>1.0.7 debug</dd>
           <dt>大小</dt>
-          <dd>4,180,750 bytes</dd>
+          <dd>4,181,238 bytes</dd>
           <dt>SHA256</dt>
-          <dd>673282444B58F198895A5F9A036A22542A9B0BA41F615F1809925FE60753CB05</dd>
+          <dd>386309ED8FF507A878817C7744AB4E69E944D1C22FEC32BD16DD34B229897802</dd>
         </dl>
       </section>
 
       <section>
-        <h2>1.0.6 更新</h2>
+        <h2>1.0.7 更新</h2>
         <ol>
           <li>内置云端 API：<code>http://106.55.62.122:8011</code>。</li>
           <li>启动后读取 <code>public-config</code> 和 <code>catalog</code>，不再静默只显示本地预览数据。</li>
@@ -202,12 +202,14 @@
           <li>新增真实康复历史面板：从 <code>/me.care_timeline</code> 渲染训练记录、报告、AI 草稿和离线证据，不再依赖本地静态历史卡片。</li>
           <li>新增 Android 原生 Bluetooth Classic SPP 桥：计划同步后可把后端生成的 <code>legacy_transport_frame.wire_text</code> 写入已配对 M33 设备。</li>
           <li>蓝牙发送只接受后端标记 <code>sendable=true</code> 的旧协议帧；App 不伪造 M33 ACK，也不释放急停。</li>
+          <li>新增 M33 旧协议回包上传：Android 收到 <code>memory_ack</code>、<code>execute_ack</code>、<code>sensor</code> 或 <code>error</code> 后会提交到后端作为证据。</li>
+          <li>SPP 回包只证明传输/设备回包，不会自动把计划改成 <code>m33_accepted</code>；正式执行仍等待 M33 决策链路。</li>
           <li>内部测试账号：<code>3245056131@qq.com</code> / <code>1234</code>。</li>
         </ol>
       </section>
 
       <section>
-        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.6 仅加入旧 SPP 传输桥；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
+        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.7 已加入旧 SPP 发送和回包证据上传；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
       </section>
     </main>
   </body>

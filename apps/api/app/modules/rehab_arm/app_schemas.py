@@ -174,6 +174,14 @@ class RehabAppBleAckCreate(BaseModel):
     ack_payload: dict = Field(default_factory=dict)
 
 
+class RehabAppLegacySppInboundCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    raw_text: str = Field(min_length=1, max_length=4096)
+    related_message_id: str = ""
+    transport_event: dict = Field(default_factory=dict)
+
+
 class RehabAppTrainingReportReviewCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -182,9 +182,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "legacy_spp_profile_available"
     assert release_checks["PHONE_NATIVE_BLUETOOTH_BRIDGE"]["status"] == "debug_bridge_available"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
-    assert config_data["downloads"]["debug_apk_version"] == "1.0.6"
-    assert config_data["downloads"]["debug_apk_sha256"] == "673282444B58F198895A5F9A036A22542A9B0BA41F615F1809925FE60753CB05"
-    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_timeline_legacy_spp_native_bridge_debug_build_current_m33_confirmation_pending"
+    assert config_data["downloads"]["debug_apk_version"] == "1.0.7"
+    assert config_data["downloads"]["debug_apk_sha256"] == "386309ED8FF507A878817C7744AB4E69E944D1C22FEC32BD16DD34B229897802"
+    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_timeline_legacy_spp_native_bridge_inbound_ack_debug_build_current_m33_confirmation_pending"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
     catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
     assert catalog_response.status_code == 200
@@ -534,6 +534,42 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert ble_ack.json()["data"]["ack_status"] == "acknowledged"
     assert ble_ack.json()["data"]["ack_payload"]["m33_authority"] == "final_safety_authority"
     assert ble_ack.json()["data"]["ack_payload"]["control_boundary"] == "ble_ack_evidence_only_not_motion_permission"
+
+    legacy_ack = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/legacy-spp/inbound",
+        headers=auth_headers(owner_token),
+        json={
+            "raw_text": f'{{"type":"memory_ack","action_id":"{plan["id"]}:v1","status":"ok"}}\n',
+            "related_message_id": ble_message["id"],
+            "transport_event": {"deviceName": "RehabRobotArm"},
+        },
+    )
+    assert legacy_ack.status_code == 200
+    legacy_ack_data = legacy_ack.json()["data"]
+    assert legacy_ack_data["status"] == "matched"
+    assert legacy_ack_data["ack_status"] == "acknowledged"
+    assert legacy_ack_data["related_message"]["ack_payload"]["legacy_message_type"] == "memory_ack"
+    assert legacy_ack_data["related_message"]["ack_payload"]["does_not_set_m33_acceptance"] is True
+    assert legacy_ack_data["control_boundary"] == "legacy_spp_inbound_evidence_only_not_motion_permission"
+
+    sync_after_legacy_ack = client.get("/api/rehab-arm/app/v1/devices", headers=auth_headers(owner_token))
+    assert sync_after_legacy_ack.status_code == 200
+    assert sync_after_legacy_ack.json()["data"][0]["latest_sync"]["sync_status"] == "pending"
+
+    legacy_sensor = client.post(
+        f"/api/rehab-arm/app/v1/devices/{device['id']}/legacy-spp/inbound",
+        headers=auth_headers(owner_token),
+        json={
+            "raw_text": '{"type":"sensor","mode":"idle","elbow_angle":12.5,"emg_ch1":0.13}\n',
+            "transport_event": {"deviceName": "RehabRobotArm"},
+        },
+    )
+    assert legacy_sensor.status_code == 200
+    legacy_sensor_data = legacy_sensor.json()["data"]
+    assert legacy_sensor_data["status"] == "diagnostic_recorded"
+    assert legacy_sensor_data["diagnostic"]["snapshot_type"] == "legacy_spp_sensor"
+    assert legacy_sensor_data["diagnostic"]["payload"]["parsed_json"]["elbow_angle"] == 12.5
+    assert legacy_sensor_data["diagnostic"]["control_boundary"] == "diagnostic_snapshot_only_not_motion_permission"
 
     unsafe_ble_message = client.post(
         f"/api/rehab-arm/app/v1/devices/{device['id']}/ble/messages",
