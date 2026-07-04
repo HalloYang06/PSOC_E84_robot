@@ -72,6 +72,15 @@ python -m http.server 4177 --bind 127.0.0.1
 4. Keep the safety boundary visible: App sync submits structured training data for M33 review only. It is not motion permission and must not release emergency stop.
 5. On Android Chrome, use "Add to Home screen" from the browser menu. The PWA includes standalone display metadata and maskable PNG icons for install preview.
 
+### Phone click-through checks
+
+From the cloud phone preview, log in with the test account and verify these user-visible states:
+
+- `我的 -> 配对新设备` opens `bluetooth-debug.html`. In a browser/PWA it should explain that Classic SPP needs the Android native package and system Bluetooth pairing first.
+- `我的 -> 云端同步` refreshes `/me` data and shows `已刷新云端康复数据。`; it must not try to sync a training plan.
+- `设备 -> 一键同步训练计划` should show `还没有可信康复设备...` when no trusted M33/PSoC binding exists. It must not claim local/demo sync success.
+- The top status strip should say `已连接后端，待绑定设备` when authenticated but no trusted device exists.
+
 ## Rehab Arm App Backend Closed Loop
 
 Mobile App backend namespace:

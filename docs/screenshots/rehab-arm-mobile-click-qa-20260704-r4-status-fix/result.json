@@ -1,0 +1,27 @@
+{
+  "results": [
+    {
+      "case": "device-status",
+      "status": "已连接后端，待绑定设备｜下一步：审核 AI 训练草稿",
+      "bodyStart": "已连接后端，待绑定设备｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n8\n训练计划\n康复工作流\nsetup_required\n完成首次设置\n先补齐康复档案、可信设备和训练计划，手机端才进入训练闭环。\n下一步：审核 AI 训练草稿\n当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。\n动作队列：审核 AI 训练草稿 / 查看 AI 训练草稿 / 接受为训练计划 / 查看已接受计划\n阻塞：完成首次设置 / 审核 AI 训练草稿\n禁止：direct_motor_command / can_frame_send "
+    },
+    {
+      "case": "device-sync-toast",
+      "toast": "还没有可信康复设备；请进入蓝牙调试绑定 M33/PSoC 后再同步计划。",
+      "status": "已连接后端，待绑定设备｜下一步：审核 AI 训练草稿"
+    },
+    {
+      "case": "profile-pair",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/bluetooth-debug.html",
+      "status": "已连接后端，待绑定设备｜下一步：审核 AI 训练草稿",
+      "toast": ""
+    },
+    {
+      "case": "profile-cloud-sync",
+      "url": "http://106.55.62.122:3001/rehab-arm-mobile/profile.html?qa=1783174719253&sync",
+      "status": "已连接后端，待绑定设备｜下一步：审核 AI 训练草稿",
+      "toast": "已刷新云端康复数据。"
+    }
+  ],
+  "errors": []
+}

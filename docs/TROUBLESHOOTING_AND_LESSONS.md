@@ -23,6 +23,7 @@
 - User-view deployment lesson: local QA can pass while the user still sees the old cloud package. Capture a cloud screenshot before/after deployment when the complaint is "I cannot see the change"; the stale cloud profile page still showed `Oct 2023`, `4 本周训练次数`, `System OK`, and debug panels even after the local fix.
 - Profile empty-state lesson: do not let first paint imply device readiness. Replace `System OK`, `患者 A`, fake M33/EMG bindings, and enabled voice/collaboration labels with authenticated backend state or clear `待登录/待同步/待邀请` language.
 - Mobile full-page QA lesson: keyword scans catch obvious fake values, but `bodyStart` review catches split text such as `8` + `/12`, residual M33 "执行中" copy, and static EMG confidence that a single search term can miss. For every App page that implies live physiology or motion, read the rendered text after bridge hydration and force unknown values to `待同步/待报告/待审核`.
+- Mobile bridge replacement lesson: broad text replacement can corrupt bridge-owned UI such as `[data-arm-status]`, toast, workflow, and evidence panels. When cleaning Stitch demo copy, skip bridge nodes and avoid replacing generic brand fragments like `ArmControl`; otherwise the App can show misleading states such as `待绑定后端` or `灵动康复 等待绑定 M33` even though the backend is connected.
 
 ## 2026-07-03
 

@@ -1,0 +1,11 @@
+{
+  "result": {
+    "status": "已连接后端，待绑定设备｜下一步：审核 AI 训练草稿",
+    "hasOldBrand": false,
+    "hasBadBrand": false,
+    "hasNewBrand": true,
+    "bodyStart": "已连接后端，待绑定设备｜下一步：审核 AI 训练草稿\n今日康复进度\n审核 AI 训练草稿\n还没有绑定设备；可以先规划训练，正式训练前再连接设备。\n8\n训练计划\n康复工作流\nsetup_required\n完成首次设置\n先补齐康复档案、可信设备和训练计划，手机端才进入训练闭环。\n下一步：审核 AI 训练草稿\n当前下一步需要先进入对应页面补资料，或等待硬件协议/M33 决策。\n动作队列：审核 AI 训练草稿 / 查看 AI 训练草稿 / 接受为训练计划 / 查看已接受计划\n阻塞：完成首次设置 / 审核 AI 训练草稿\n禁止：direct_motor_command / can_frame_send / m33_safety_override / motion_permission_granted_by_app\nApp 只显示流程证据；真实运动许可仍由 M33 最终裁决。\nclinical_notes\n灵动康复 ArmControl\nsmart_toy\ncheck_circle\n系统状态\n\n设备状态：等待绑定与审核\n\n系统架构图\nsmartphone\n手机 APP\nhub\n等待协议门控 (Gatekeeper)\nmemory\nM55\ndns\nNanoPi\nprecision_manufacturing\n机械臂\n当前连接\n等待绑定设备\nbluetooth_connected\n等待绑定康复设备",
+    "overflow": false
+  },
+  "errors": []
+}

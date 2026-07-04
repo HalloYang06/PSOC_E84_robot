@@ -178,6 +178,11 @@
     });
   }
 
+  function isBridgeNode(node) {
+    const parent = node && node.parentElement;
+    return Boolean(parent && parent.closest("[data-arm-status], [data-arm-toast], [data-arm-login], [data-arm-workflow], [data-arm-evidence]"));
+  }
+
   function statusTone(state) {
     if (!state.online) return { bg: "#fff7ed", border: "#fed7aa", color: "#9a3412" };
     if (!state.authenticated) return { bg: "#eff6ff", border: "#bfdbfe", color: "#1d4ed8" };
@@ -202,7 +207,8 @@
   function userStatusText(state) {
     if (!state.online) return "网络未连接，请检查后端服务";
     if (!state.authenticated) return "请登录后同步康复数据";
-    return `已同步｜下一步：${userNextAction(state)}`;
+    const prefix = (state.devices || []).length ? "已连接后端" : "已连接后端，待绑定设备";
+    return `${prefix}｜下一步：${userNextAction(state)}`;
   }
 
   function upsertStatusStrip(state) {
@@ -280,6 +286,7 @@
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     while (walker.nextNode()) {
       const node = walker.currentNode;
+      if (isBridgeNode(node)) continue;
       const text = node.nodeValue || "";
       const hit = candidates.find((candidate) => text.includes(candidate));
       if (hit) {
@@ -295,6 +302,7 @@
     const nodes = [];
     while (walker.nextNode()) nodes.push(walker.currentNode);
     nodes.forEach((node) => {
+      if (isBridgeNode(node)) return;
       let text = node.nodeValue || "";
       candidates.forEach((candidate) => {
         text = text.split(candidate).join(String(value));
@@ -666,6 +674,7 @@
     const workflow = state.workflow || {};
     const phase = workflow.phase || {};
     const nextAction = workflow.next_action || {};
+    replaceAll(["RoboRehab Controller", "RoboRehab 控制器", "RoboRehab"], "灵动康复 ArmControl");
     replaceAll(["M33 ACTIVE", "状态：M33 已允许执行", "M33 已允许执行"], "M33 待协议/待审核");
     replaceAll(["M33 状态：准备就绪，允许安全训练"], "设备状态：等待绑定与审核");
     replaceAll(["已扫描蓝牙"], devices.length ? "已绑定设备" : "等待绑定设备");
@@ -722,7 +731,7 @@
     renderProfileTrainingActivity(state);
     if (current === "device.html") {
       const device = devices[0];
-      replaceFirst(["M33-Cortex", "ArmControl"], device ? device.ble_name || device.m33_device_id : "等待绑定 M33");
+      replaceFirst(["M33-Cortex", "ArmControl-Alpha", "ArmControl-Session", "ArmControl-Workflow"], device ? device.ble_name || device.m33_device_id : "等待绑定 M33");
       replaceFirst(["已连接"], device && device.trust_status === "trusted" ? "已绑定" : "待绑定");
       replaceAll(["安全门控 (Gatekeeper)"], "等待协议门控 (Gatekeeper)");
       replaceAll(["120ms", "45ms"], "待上报");
@@ -1325,6 +1334,16 @@
 
   async function handlePrimaryAction(label) {
     const state = readState();
+    if (label.includes("配对新设备") || label.includes("蓝牙调试") || label.includes("实机验证")) {
+      navigate("bluetooth-debug.html");
+      toast("进入蓝牙调试；请先在 Android 系统蓝牙里配对 M33/PSoC，再由 App 读取已配对设备。");
+      return;
+    }
+    if (label.includes("云端同步")) {
+      await refreshFromBackend();
+      toast("已刷新云端康复数据。");
+      return;
+    }
     if (label.includes("新建计划") || label.includes("生成 AI 草稿") || label.includes("AI 生成")) {
       if (pageName() !== "ai-plan.html") {
         navigate("ai-plan.html");
@@ -1352,8 +1371,16 @@
     if (label.includes("同步")) {
       const plan = state.plans && state.plans[0];
       const device = state.devices && state.devices[0];
-      if (!token() || !plan || !device) {
-        toast("请先登录并完成设备/计划；App 不使用本地 demo 同步。", "warn");
+      if (!token()) {
+        toast("请先登录；App 不使用本地 demo 同步。", "warn");
+        return;
+      }
+      if (!plan) {
+        toast("还没有训练计划；请先在 AI 规划或训练库生成/创建计划。", "warn");
+        return;
+      }
+      if (!device) {
+        toast("还没有可信康复设备；请进入蓝牙调试绑定 M33/PSoC 后再同步计划。", "warn");
         return;
       }
       const sync = await api(`/api/rehab-arm/app/v1/training-plans/${plan.id}/sync-to-device`, {
