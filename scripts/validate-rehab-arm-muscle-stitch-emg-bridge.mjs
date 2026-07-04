@@ -29,6 +29,22 @@ const requiredPatterns = [
     pattern: /Feature Extraction Monitor/,
   },
   {
+    label: "M55/model inference rows are collected for visible Stitch display",
+    pattern: /const modelInferenceRows =/,
+  },
+  {
+    label: "visible Stitch model inference panel sync helper",
+    pattern: /const syncStitchModelInference = \(\) =>/,
+  },
+  {
+    label: "stable DOM marker for model inference evidence",
+    pattern: /data-codex-model-inference/,
+  },
+  {
+    label: "model relay response is included in inference display sources",
+    pattern: /model_relay_response/,
+  },
+  {
     label: "CH1 stale baseline value is overwritten",
     pattern: /\["基线 15µV",\s*emgChannelTexts\[0\]\]/,
   },

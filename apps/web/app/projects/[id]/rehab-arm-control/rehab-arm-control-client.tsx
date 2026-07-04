@@ -5745,6 +5745,57 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       const assistActive = currentSemanticMode === "assistive_emg";
       const confidenceText = firstPrediction?.detail.match(/\d+%/)?.[0]?.replace("%", "") || (assistActive ? "85" : "0");
       const intentText = firstPrediction?.value || (assistActive ? "助力意图监听" : "等待动作意图");
+      const relayInferenceSummary = text(
+        modelRelaySuggestion.detail
+          ?? modelRelayResponse.summary
+          ?? modelRelayResponse.reply
+          ?? modelRelayResponse.message
+          ?? xiaozhiSession.reply
+          ?? xiaozhiReplyPayload.reply,
+        "",
+      );
+      const modelInferenceSource = firstPrediction?.confidence !== null && firstPrediction?.confidence !== undefined
+        ? "sensor_state.model_outputs"
+        : Object.keys(modelRelayResponse).length
+          ? "model_relay_response"
+          : Object.keys(xiaozhiSession).length || Object.keys(xiaozhiReplyPayload).length
+            ? "xiaozhi_session"
+            : "waiting";
+      const modelInferenceConfidence = firstPrediction?.confidence !== null && firstPrediction?.confidence !== undefined
+        ? `${Math.round((firstPrediction.confidence ?? 0) * 100)}%`
+        : Number.isFinite(routeConfidence) && routeConfidence > 0
+          ? `${Math.round(routeConfidence * 100)}%`
+          : confidenceText !== "0" ? `${confidenceText}%` : "未上报";
+      const modelIntentText = firstPrediction?.confidence !== null && firstPrediction?.confidence !== undefined
+        ? intentText
+        : text(
+          modelRelaySemantic.mode
+            ?? xiaozhiSession.kind
+            ?? xiaozhiReplyPayload.kind,
+          currentSemanticMode ? semanticActionModeLabel(currentSemanticMode) : "等待推理",
+        );
+      const modelInferenceRows = [
+        {
+          label: "模型结果",
+          value: modelIntentText,
+          detail: firstPrediction?.detail || relayInferenceSummary || effectiveLanguageSummary || "等待 M55 / 模型推理结果",
+        },
+        {
+          label: "置信度",
+          value: modelInferenceConfidence,
+          detail: `source: ${modelInferenceSource}`,
+        },
+        {
+          label: "语义模式",
+          value: semanticActionModeLabel(currentSemanticMode),
+          detail: semanticModeLabel || relayBoundaryText,
+        },
+        ...predictionRows.slice(0, 2).map((row) => ({
+          label: row.label,
+          value: row.value,
+          detail: row.detail,
+        })),
+      ].filter((row) => text(row.value, "") || text(row.detail, "")).slice(0, 4);
       const emgChannelTexts = Array.from({ length: 4 }, (_, index) => (
         muscleRows[index]?.displayValue || "0.000V / ADC 0"
       ));
@@ -5827,6 +5878,30 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           }
         });
       };
+      const syncStitchModelInference = () => {
+        const panel = Array.from(doc.querySelectorAll<HTMLElement>(".glass-panel"))
+          .find((node) => (
+            !!node.querySelector(".waveform-container")
+            && !!node.querySelector('[data-role="muscle-refresh"]')
+          ));
+        if (!panel) return;
+        let inferenceStrip = panel.querySelector<HTMLElement>("#codex-model-inference-strip");
+        if (!inferenceStrip) {
+          inferenceStrip = doc.createElement("div");
+          inferenceStrip.id = "codex-model-inference-strip";
+          const statusGrid = panel.querySelector<HTMLElement>(".grid.grid-cols-4.gap-4.mb-4");
+          statusGrid?.insertAdjacentElement("afterend", inferenceStrip);
+        }
+        inferenceStrip.setAttribute("data-codex-model-inference", "true");
+        inferenceStrip.className = "grid grid-cols-4 gap-3 mb-3";
+        inferenceStrip.innerHTML = modelInferenceRows.map((row) => `
+          <div class="rounded border border-primary/20 bg-primary/5 px-3 py-2 min-w-0">
+            <div class="font-data-tabular text-[9px] text-on-surface-variant truncate">${escapeHtml(row.label)}</div>
+            <div class="font-data-tabular text-xs text-primary truncate">${escapeHtml(row.value)}</div>
+            <div class="font-data-tabular text-[9px] text-on-surface-variant truncate">${escapeHtml(row.detail)}</div>
+          </div>
+        `).join("");
+      };
       setText("h1", "VLA 控制台");
       setText("h2", intentText);
       setNthText(".font-telemetry-data.text-display-lg", 0, confidenceText);
@@ -5866,6 +5941,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         ["© 2024 Industrial Robotics. Safety Protocol v4.2 Active.", "VLA Rehab Arm · M55 肌电证据 / M33 最终安全裁决"],
       ]);
       syncStitchMuscleTelemetry();
+      syncStitchModelInference();
       const muscleSnapshot = () => ({
         exported_at: new Date().toISOString(),
         project_id: projectId,
@@ -5883,6 +5959,9 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         m55_inference: {
           intent: intentText,
           confidence_percent: Number(confidenceText) || 0,
+          source: modelInferenceSource,
+          summary: relayInferenceSummary,
+          visible_rows: modelInferenceRows,
           predictions: predictionRows,
         },
         emg_channels: muscleRows,
@@ -7319,6 +7398,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     modelRelayProvider.external_call_ok,
     modelRelayEvents,
     modelRelayResponse,
+    modelRelaySemantic.mode,
     modelRelaySuggestion.detail,
     motionAllowed,
     motors,
@@ -7330,6 +7410,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     qualityReady,
     recentEndEffectorMemory?.label,
     recentTargetMemory?.label,
+    routeConfidence,
     routeConfidenceText,
     routeSourceText,
     relayBoundaryText,
@@ -7396,9 +7477,9 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     visualServoReady,
     wiringBadCount,
     wiringHealth.overall,
+    xiaozhiReplyPayload,
+    xiaozhiSession,
     xiaozhiWsUrl,
-    xiaozhiSession.session_id,
-    xiaozhiSession.ui_state,
     updateRelayProvider,
   ]);
 
