@@ -31,7 +31,7 @@ PSoC 作为唯一总线汇聚点，完成两件事：
 - `EMG_raw(2B) + EMG_filt(2B) + HR_raw(2B) + HR_filt(1B) + flags(1B)`
 
 ### 3.2 健康帧（`0x7C3`）
-- `state(1B) + err_cnt(2B) + q_fill(1B) + reserved(4B)`
+- `state(1B) + err_cnt(2B) + q_fill(1B) + rx_count(2B) + tx_count(2B)`
 
 ## 4. PSoC 统一内部数据模型（建议）
 ```c
@@ -46,6 +46,8 @@ typedef struct
     uint8_t node_state;
     uint16_t node_err_cnt;
     uint8_t node_q_fill;
+    uint16_t node_rx_cnt;
+    uint16_t node_tx_cnt;
 } sensor_node_sample_t;
 ```
 

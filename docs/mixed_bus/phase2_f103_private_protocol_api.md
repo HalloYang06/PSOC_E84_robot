@@ -16,7 +16,7 @@
 - `int32_t can_proto_encode_sensor(const fusion_snapshot_t *snapshot, can_message_t *message);`
   - 输入：融合快照
   - 输出：`0x7C2` 传感帧（8字节）
-- `int32_t can_proto_encode_health(node_state_t state, uint16_t error_count, uint8_t q_fill, can_message_t *message);`
+- `int32_t can_proto_encode_health(node_state_t state, uint16_t error_count, uint8_t q_fill, uint16_t rx_count, uint16_t tx_count, can_message_t *message);`
   - 输出：`0x7C3` 健康帧（8字节）
 - `int32_t can_proto_decode_control(const can_message_t *message, can_proto_command_t *command);`
   - 输入：`0x7C0` 控制帧
@@ -62,7 +62,8 @@
 - Byte0: `state`（INIT/RUN/DEGRADED/FAULT）
 - Byte1~2: `err_cnt`（小端）
 - Byte3: `q_fill`（发送队列占用）
-- Byte4~7: 预留
+- Byte4~5: `rx_count`（F103 已从 FIFO0 拉取的标准数据帧计数，小端）
+- Byte6~7: `tx_count`（F103 已成功提交到 CAN mailbox 的发送帧计数，小端）
 
 ## 4. 命令集（当前实现）
 - `0x01 CAN_CMD_SET_RATE`：设置采样/发送频率
