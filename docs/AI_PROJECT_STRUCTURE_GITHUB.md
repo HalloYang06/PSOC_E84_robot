@@ -96,6 +96,14 @@ AI model relay boundary:
 - Model output is suggestion/dry-run/evidence only. The browser must not send CAN frames, raw motor setpoints, torque/current, raw position/velocity, M33 overrides, or emergency-stop release commands.
 - `/model-relay-lab` remains the advanced/full lab route, but normal VLA demos should use the same-level `AI / 模型` module instead of navigating away from the control room.
 
+Shared AI relay split:
+
+- The platform may use one server-side provider configuration (`REHAB_ARM_MODEL_RELAY_*`) for both XiaoZhi/L and App training planning, but the records must be separated by channel metadata.
+- XiaoZhi/L route: `client_type = xiaozhi`, `purpose = semantic_route`, `scope = vla_mode_dispatch`. It consumes M55/XiaoZhi voice or transcript input, writes `model_relay_response`, `vla_language_context`, `vla_language_gate`, and XiaoZhi session evidence, and may classify modes such as `chat`, `fetch_object`, `training`, `assistive_emg`, `vision_servo`, `diagnostics`, or `data_collection`. It must not be changed by App training-planner work.
+- App route: `client_type = app`, `relay_channel = app_training_planner`, `purpose = training_plan_draft`, `scope = rehab_training_planning`. It is exposed through `/api/rehab-arm/app/v1/ai-training-drafts/generate` and `/api/rehab-arm/app/v1/training-reports/{report_id}/draft-next-plan`, writes `rehab_app_ai_training_draft` records plus `rehab_app.ai_training_draft.generated` audit events, and returns high-level training-plan drafts only.
+- Shared visibility is allowed in the control room logs and model pages, but shared visibility is not shared authority. XiaoZhi can route a language mode; App can draft a rehabilitation plan; neither path grants real motion, direct CAN, raw motor command, M33 override, emergency-stop release, or App-granted motion permission.
+- App public config exposes `rehab_app.ai_relay_contract` so phone/PWA/native shells can discover the App planner endpoints without reusing XiaoZhi WebSocket or L transport details.
+
 ## Rehab Arm Mobile App Slice
 
 Branch: `app/rehab-arm-mobile-stitch`
@@ -151,6 +159,7 @@ Closed-loop backend contract:
 - Finished training sessions are locked for progress/finish updates. Later report, review, and next-draft steps read the locked session evidence instead of mutating it.
 - Once a training report exists for a session, late EMG/intent uploads for that session are rejected with `TRAINING_REPORT_ALREADY_GENERATED`; repeated report generation returns the existing report instead of recalculating it.
 - AI training draft endpoints are draft-only: generate, list by `all/open/accepted`, read, accept-to-plan. Accepted drafts become normal training plans and still require M33 sync and acceptance before a training session record can start.
+- App AI training drafts reuse the server-side model relay provider settings but carry `relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, `scope=rehab_training_planning`, and `does_not_touch_xiaozhi_l=true` in `context_snapshot.ai_planner`. These fields are the contract that keeps App planning separate from XiaoZhi/L semantic routing while still letting platform logs show both.
 - Platform sync endpoints are evidence/review only and must not be interpreted as motion permission.
 - Diagnostic upload endpoints store M33/mobile snapshots for review: `POST /devices/{device_id}/diagnostic-upload` and `GET /devices/{device_id}/diagnostics`.
 - Offline queue endpoints (`POST/GET /offline-queue`, `POST /offline-queue/replay`) are evidence-only. The replay whitelist is limited to diagnostic upload, training-session progress, EMG summary, M55 intent summary, and platform sync; motor or CAN-like operations are rejected.

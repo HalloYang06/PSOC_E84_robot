@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import uuid
 import json
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.common.errors import AppError
+from app.settings import get_settings
 from app.db.models.audit_log import AuditLog
 from app.db.models.rehab_arm_app import (
     RehabAppAiTrainingDraft,
@@ -28,6 +31,22 @@ from app.db.models.rehab_arm_app import (
     RehabAppTrainingSession,
     RehabAppUserProfile,
 )
+
+
+DANGEROUS_AI_PLAN_KEYS = {
+    "can_frame",
+    "can_frames",
+    "motor_command",
+    "motor_commands",
+    "current",
+    "torque",
+    "raw_position",
+    "raw_velocity",
+    "m33_override",
+    "override",
+    "release_estop",
+    "emergency_stop_release",
+}
 from app.modules.audit.service import create_audit_log
 
 from .app_schemas import (
@@ -5196,6 +5215,142 @@ def _draft_plan_from_context(input_text: str, context_snapshot: dict) -> dict:
     }
 
 
+def _relay_chat_url(base_url: str) -> str:
+    cleaned = str(base_url or "").strip().rstrip("/")
+    if not cleaned:
+        return ""
+    if cleaned.endswith("/chat/completions"):
+        return cleaned
+    if cleaned.endswith("/v1"):
+        return f"{cleaned}/chat/completions"
+    return f"{cleaned}/v1/chat/completions"
+
+
+def _contains_dangerous_ai_plan_key(value) -> bool:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if str(key).strip().lower() in DANGEROUS_AI_PLAN_KEYS:
+                return True
+            if _contains_dangerous_ai_plan_key(item):
+                return True
+    if isinstance(value, list):
+        return any(_contains_dangerous_ai_plan_key(item) for item in value)
+    return False
+
+
+def _coerce_ai_generated_plan(raw_plan: dict, fallback: dict) -> dict:
+    if not isinstance(raw_plan, dict) or _contains_dangerous_ai_plan_key(raw_plan):
+        return dict(fallback)
+    allowed = {
+        "title",
+        "source",
+        "goal",
+        "target_joints",
+        "movement_type",
+        "sets",
+        "reps",
+        "duration_sec",
+        "target_angle_range",
+        "speed_level",
+        "assist_level",
+        "emg_policy",
+        "safety_constraints",
+        "status",
+    }
+    candidate = {key: raw_plan[key] for key in allowed if key in raw_plan}
+    candidate.setdefault("source", "ai_generated")
+    candidate.setdefault("status", "draft")
+    if "movement_type" not in candidate:
+        candidate["movement_type"] = fallback["movement_type"]
+    try:
+        normalized = _normalize_training_plan_data(candidate)
+        plan = RehabAppTrainingPlanCreate(**normalized).model_dump()
+    except Exception:
+        return dict(fallback)
+    plan["source"] = "ai_generated"
+    plan["status"] = "draft"
+    plan["control_boundary"] = "ai_draft_only_not_execution_permission"
+    return plan
+
+
+def _call_external_ai_training_planner(input_text: str, context_snapshot: dict, fallback: dict) -> tuple[dict, dict]:
+    settings = get_settings()
+    base_url = str(settings.rehab_arm_model_relay_base_url or "").strip()
+    model = str(settings.rehab_arm_model_relay_model or "").strip()
+    api_key = str(settings.rehab_arm_model_relay_api_key or "").strip()
+    provider = str(settings.rehab_arm_model_relay_provider or "openai_compatible").strip() or "openai_compatible"
+    evidence = {
+        "schema_version": "rehab_app_ai_planner_call_v1",
+        "relay_channel": "app_training_planner",
+        "client_type": "app",
+        "purpose": "training_plan_draft",
+        "scope": "rehab_training_planning",
+        "shared_model_relay_config": True,
+        "does_not_touch_xiaozhi_l": True,
+        "provider": provider,
+        "model": model or "not_configured",
+        "external_enabled": bool(settings.rehab_arm_model_relay_external_enabled),
+        "status": "fallback_rule_based",
+        "api_key_exposed_to_app": False,
+        "control_boundary": "ai_planner_call_evidence_only_not_motion_permission",
+    }
+    if not settings.rehab_arm_model_relay_external_enabled:
+        evidence["error"] = "external_disabled"
+        return dict(fallback), evidence
+    if not base_url or not model or not api_key:
+        evidence["error"] = "model_relay_config_incomplete"
+        return dict(fallback), evidence
+    system = (
+        "You are a rehabilitation training-plan draft generator for a wearable arm exoskeleton. "
+        "Return JSON only. Required top-level keys: generated_plan, risk_notes. "
+        "generated_plan must contain only high-level rehab plan fields: title, goal, movement_type, "
+        "target_joints, sets, reps, duration_sec, target_angle_range, speed_level, assist_level, "
+        "emg_policy, safety_constraints, status. "
+        "Never output CAN frames, motor current, torque, raw position, raw velocity, M33 overrides, "
+        "emergency-stop release, or direct motor commands. This is draft-only and never motion permission."
+    )
+    body = {
+        "model": model,
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {"role": "system", "content": system},
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "input_text": input_text,
+                        "context_snapshot": context_snapshot,
+                        "fallback_plan": fallback,
+                        "allowed_movement_types": sorted(REHAB_APP_MOVEMENT_CATALOG.keys()),
+                        "control_boundary": "ai_draft_only_not_execution_permission",
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        ],
+    }
+    request = urllib.request.Request(
+        _relay_chat_url(base_url),
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={"authorization": f"Bearer {api_key}", "content-type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+        data = json.loads(raw)
+        content = (((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+        parsed = json.loads(content) if content else {}
+    except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        evidence["error"] = f"external_call_failed:{type(exc).__name__}"
+        return dict(fallback), evidence
+    generated_plan = _coerce_ai_generated_plan(parsed.get("generated_plan") or parsed, fallback)
+    evidence["status"] = "external_used" if generated_plan != fallback else "external_rejected_fallback_rule_based"
+    evidence["risk_notes"] = [str(item)[:240] for item in (parsed.get("risk_notes") or [])[:5]] if isinstance(parsed.get("risk_notes"), list) else []
+    return generated_plan, evidence
+
+
 def _persist_ai_training_draft(db: Session, user_id: str, input_text: str, context_snapshot: dict, generated_plan: dict, risk_notes: list[str]) -> dict:
     draft = RehabAppAiTrainingDraft(
         user_id=user_id,
@@ -5222,9 +5377,20 @@ def _persist_ai_training_draft(db: Session, user_id: str, input_text: str, conte
 
 
 def generate_ai_training_draft(db: Session, user_id: str, input_text: str, context_snapshot: dict) -> dict:
-    generated_plan = _draft_plan_from_context(input_text, context_snapshot)
-    risk_notes = ["AI 只生成草稿，不代表执行许可", "必须同步到 M33 并获得 m33_accepted 后才能开始训练记录"]
-    return _persist_ai_training_draft(db, user_id, input_text, context_snapshot, generated_plan, risk_notes)
+    fallback_plan = _draft_plan_from_context(input_text, context_snapshot)
+    generated_plan, ai_evidence = _call_external_ai_training_planner(input_text, context_snapshot, fallback_plan)
+    merged_context = {
+        **(context_snapshot or {}),
+        "ai_planner": ai_evidence,
+        "control_boundary": "ai_planner_context_only_not_motion_permission",
+    }
+    risk_notes = [
+        "AI 只生成草稿，不代表执行许可",
+        "必须同步到 M33 并获得 m33_accepted 后才能开始训练记录",
+    ]
+    if ai_evidence.get("status") != "external_used":
+        risk_notes.append(f"模型调用未用于最终草稿：{ai_evidence.get('error') or ai_evidence.get('status')}")
+    return _persist_ai_training_draft(db, user_id, input_text, merged_context, generated_plan, risk_notes)
 
 
 def list_ai_training_drafts(db: Session, user_id: str, status: str = "all", limit: int = 50) -> list[dict]:

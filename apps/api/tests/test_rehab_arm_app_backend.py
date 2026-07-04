@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -162,6 +163,18 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert config_data["rehab_app"]["workflow_endpoint"] == "/api/rehab-arm/app/v1/me/workflow"
     assert config_data["rehab_app"]["workflow_action_endpoint"] == "/api/rehab-arm/app/v1/me/workflow/actions"
     assert config_data["rehab_app"]["catalog_endpoint"] == "/api/rehab-arm/app/v1/catalog"
+    assert config_data["rehab_app"]["ai_training_draft_generate_endpoint"] == "/api/rehab-arm/app/v1/ai-training-drafts/generate"
+    assert config_data["rehab_app"]["ai_training_drafts_endpoint"] == "/api/rehab-arm/app/v1/ai-training-drafts"
+    assert config_data["rehab_app"]["ai_training_relay_audit_endpoint"] == "/api/rehab-arm/app/v1/safety-audit"
+    assert config_data["rehab_app"]["ai_relay_contract"] == {
+        "client_type": "app",
+        "purpose": "training_plan_draft",
+        "scope": "rehab_training_planning",
+        "shared_provider_config": "rehab_arm_model_relay",
+        "does_not_touch_xiaozhi_l": True,
+        "record_sources": ["rehab_app_ai_training_draft", "rehab_app_safety_audit"],
+        "control_boundary": "app_ai_training_planner_draft_only_not_motion_permission",
+    }
     assert config_data["rehab_app"]["m33_legacy_spp_profile_path"] == "data.m33_legacy_spp_profile"
     assert config_data["m33_legacy_spp_profile"]["transport"] == "bluetooth_classic_spp_rfcomm"
     assert config_data["m33_legacy_spp_profile"]["standard_uuid"] == "00001101-0000-1000-8000-00805F9B34FB"
@@ -182,9 +195,9 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "legacy_spp_profile_available"
     assert release_checks["PHONE_NATIVE_BLUETOOTH_BRIDGE"]["status"] == "debug_bridge_available"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
-    assert config_data["downloads"]["debug_apk_version"] == "1.0.8"
-    assert config_data["downloads"]["debug_apk_sha256"] == "772B5D618CA4553C25E2A10B6F79254DDE968D143B3E1BE1F8F21D6604D3705C"
-    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_timeline_stitch_bluetooth_debug_spp_pairing_frame_ack_sensor_debug_build_current_m33_confirmation_pending"
+    assert config_data["downloads"]["debug_apk_version"] == "1.0.9"
+    assert config_data["downloads"]["debug_apk_sha256"] == "155EEBB6B4FA1C001DD82744B3F4A92356B757784EBC3778444F755AA2C020BF"
+    assert config_data["downloads"]["debug_apk_status"] == "backend_connected_workflow_action_timeline_stitch_bluetooth_debug_spp_pairing_backend_bind_frame_ack_sensor_debug_build_current_m33_confirmation_pending"
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
     catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
     assert catalog_response.status_code == 200
@@ -1559,6 +1572,12 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     draft = draft_response.json()["data"]
     assert draft["control_boundary"] == "ai_draft_only_not_execution_permission"
     assert draft["generated_plan"]["control_boundary"] == "ai_draft_only_not_execution_permission"
+    assert draft["context_snapshot"]["ai_planner"]["status"] == "fallback_rule_based"
+    assert draft["context_snapshot"]["ai_planner"]["client_type"] == "app"
+    assert draft["context_snapshot"]["ai_planner"]["purpose"] == "training_plan_draft"
+    assert draft["context_snapshot"]["ai_planner"]["scope"] == "rehab_training_planning"
+    assert draft["context_snapshot"]["ai_planner"]["does_not_touch_xiaozhi_l"] is True
+    assert draft["context_snapshot"]["ai_planner"]["api_key_exposed_to_app"] is False
 
     open_drafts = client.get("/api/rehab-arm/app/v1/ai-training-drafts?status=open", headers=auth_headers(owner_token))
     assert open_drafts.status_code == 200
@@ -1617,6 +1636,7 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     patched = patch_response.json()["data"]
     assert patched["reps"] == 7
     assert patched["version"] == 2
+
 
     archive_response = client.post(
         f"/api/rehab-arm/app/v1/training-plans/{plan['id']}/archive",
@@ -1704,6 +1724,81 @@ def test_rehab_arm_app_plan_edit_ai_draft_and_platform_sync(tmp_path, monkeypatc
     accepted_followup_bootstrap = client.get("/api/rehab-arm/app/v1/me", headers=auth_headers(owner_token))
     assert accepted_followup_bootstrap.status_code == 200
     assert accepted_followup_bootstrap.json()["data"]["accepted_plan_guide"]["status"] == "preflight_required"
+
+def test_rehab_arm_app_ai_training_draft_uses_configured_model(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_SYNC_STORAGE_DIR", str(tmp_path))
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED", "true")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_PROVIDER", "openai_compatible_test")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_BASE_URL", "https://model.example/v1")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_MODEL", "rehab-planner-test")
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_API_KEY", "secret-not-exposed")
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            content = {
+                "generated_plan": {
+                    "title": "Model adjusted elbow plan",
+                    "goal": "Reduce fatigue while preserving elbow range",
+                    "movement_type": "elbow_flexion",
+                    "sets": 3,
+                    "reps": 7,
+                    "duration_sec": 540,
+                    "assist_level": 0.35,
+                    "speed_level": "slow",
+                    "target_angle_range": {"min_deg": 12, "max_deg": 55},
+                    "emg_policy": {"intent_source": "m55"},
+                    "safety_constraints": {"require_fresh_m33_heartbeat": True},
+                },
+                "risk_notes": ["therapist review recommended"],
+            }
+            return json.dumps({"choices": [{"message": {"content": json.dumps(content)}}]}).encode("utf-8")
+
+    def fake_urlopen(request, timeout=0):
+        assert request.full_url == "https://model.example/v1/chat/completions"
+        assert timeout == 10
+        assert request.headers["Authorization"] == "Bearer secret-not-exposed"
+        return _FakeResponse()
+
+    monkeypatch.setattr("app.modules.rehab_arm.app_service.urllib.request.urlopen", fake_urlopen)
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+    try:
+        owner_token, _owner_user_id = _issue_rehab_app_token()
+        draft_response = client.post(
+            "/api/rehab-arm/app/v1/ai-training-drafts/generate",
+            headers=auth_headers(owner_token),
+            json={
+                "input_text": "Generate a safer elbow plan from recent fatigue.",
+                "context_snapshot": {"movement_type": "elbow_flexion", "sets": 1, "reps": 4},
+            },
+        )
+        assert draft_response.status_code == 200
+        draft = draft_response.json()["data"]
+        assert draft["generated_plan"]["title"] == "Model adjusted elbow plan"
+        assert draft["generated_plan"]["sets"] == 3
+        assert draft["generated_plan"]["reps"] == 7
+        assert draft["generated_plan"]["control_boundary"] == "ai_draft_only_not_execution_permission"
+        assert draft["context_snapshot"]["ai_planner"]["status"] == "external_used"
+        assert draft["context_snapshot"]["ai_planner"]["provider"] == "openai_compatible_test"
+        assert draft["context_snapshot"]["ai_planner"]["model"] == "rehab-planner-test"
+        assert draft["context_snapshot"]["ai_planner"]["relay_channel"] == "app_training_planner"
+        assert draft["context_snapshot"]["ai_planner"]["client_type"] == "app"
+        assert draft["context_snapshot"]["ai_planner"]["purpose"] == "training_plan_draft"
+        assert draft["context_snapshot"]["ai_planner"]["scope"] == "rehab_training_planning"
+        assert draft["context_snapshot"]["ai_planner"]["shared_model_relay_config"] is True
+        assert draft["context_snapshot"]["ai_planner"]["does_not_touch_xiaozhi_l"] is True
+        assert draft["context_snapshot"]["ai_planner"]["api_key_exposed_to_app"] is False
+        assert "secret-not-exposed" not in str(draft)
+    finally:
+        get_settings.cache_clear()
+
 
 
 def test_rehab_arm_app_daily_action_prioritizes_offline_sync_without_active_session(tmp_path, monkeypatch) -> None:

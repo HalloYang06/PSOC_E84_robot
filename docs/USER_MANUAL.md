@@ -14,6 +14,31 @@
 5. Keep `control_boundary` set to `stereo_vision_context_only_not_motion_permission`.
 6. Use the returned `vla_vision_context` only as high-level input for the main line.
 
+### Optional end-effector ONNX detector
+
+The NanoPi read-only collector can attach the user-trained `end_effector` / `gripper_tip` YOLOv8 ONNX detector to the stereo evidence path. This does not grant motion permission; it only adds detector evidence to `stereo_vision_context`.
+
+```powershell
+python scripts\nanopi-rehab-arm-collect-and-upload.py `
+  --project-id e201f41c-25a6-46e1-baf8-be6dcb83284c `
+  --device-id nanopi-m5 `
+  --robot-id rehab-arm-alpha `
+  --capture-stereo-keyframes `
+  --left-camera-index 0 `
+  --right-camera-index 1 `
+  --left-flip hv `
+  --right-flip hv `
+  --flip-applied-before-detection `
+  --end-effector-onnx D:\vla_dataset\20260627_213112\runs\end_effector_v1_cpu_416_e10\weights\best.onnx
+```
+
+Expected evidence fields:
+
+- `stereo_context.detections.left/right[]` contains real OpenCV DNN / YOLO outputs.
+- `stereo_context.end_effector_object` is the highest-confidence `end_effector`.
+- `stereo_context.gripper_tip_object` is the highest-confidence `gripper_tip`.
+- `control_boundary` remains `stereo_vision_context_only_not_motion_permission`.
+
 ## Rehab Arm 3D Twin URDF / IK Check
 
 Cloud control room:
@@ -126,6 +151,81 @@ Use `device_operational_guide` for the phone device card. It reports whether a t
 Use `safety_review_guide` for historical critical safety blockers. If a finished/cancelled/paused session still has an unreviewed critical event, it returns the blocking session/event plus actions to view events and record an approved/conditional `safety_review`. It does not release emergency stop or grant motion permission.
 
 Use `accepted_plan_guide` after an AI draft has been accepted into a training plan. It routes the phone through trusted-device binding, M33 sync, M33 decision, preflight/readiness, and start-record creation. It closes the AI-planning loop without treating the accepted plan as execution permission.
+
+### App AI 中转站调用
+
+The App uses the same server-side model-provider configuration as the platform model relay, but it does not call or modify the XiaoZhi/L WebSocket path. Discover the App contract with:
+
+```http
+GET /api/rehab-arm/app/v1/public-config
+```
+
+Read `data.rehab_app.ai_relay_contract`. Expected values are `client_type=app`, `purpose=training_plan_draft`, `scope=rehab_training_planning`, and `does_not_touch_xiaozhi_l=true`.
+
+Call flow:
+
+1. Login and keep the returned token.
+
+```http
+POST /api/auth/session
+Authorization: none
+Content-Type: application/json
+
+{"email":"3245056131@qq.com","password":"1234"}
+```
+
+2. Ask the App planner for a draft. The API key for the external model stays on the server; the phone only sends training context.
+
+```http
+POST /api/rehab-arm/app/v1/ai-training-drafts/generate
+Authorization: Bearer {access_token}
+Content-Type: application/json
+
+{
+  "input_text": "根据今天训练情况，生成下一次更安全的肘关节训练计划",
+  "context_snapshot": {
+    "movement_type": "elbow_flexion",
+    "sets": 2,
+    "reps": 6,
+    "daily_training_summary": {
+      "completed_sets": 2,
+      "fatigue": "mild",
+      "pain_after": 3
+    },
+    "latest_emg_summary": {
+      "biceps": 0.62,
+      "triceps": 0.31
+    },
+    "m55_intent_summary": {
+      "predicted_action": "elbow_flexion",
+      "confidence": 0.81
+    }
+  }
+}
+```
+
+3. Inspect the draft and audit evidence:
+
+```http
+GET /api/rehab-arm/app/v1/ai-training-drafts?status=open
+GET /api/rehab-arm/app/v1/safety-audit
+```
+
+4. Accept a draft only after human review:
+
+```http
+POST /api/rehab-arm/app/v1/ai-training-drafts/{draft_id}/accept
+```
+
+5. Sync the accepted plan to M33 and wait for M33 acceptance before starting a training session:
+
+```http
+POST /api/rehab-arm/app/v1/training-plans/{plan_id}/sync-to-device
+POST /api/rehab-arm/app/v1/devices/{device_id}/m33-status
+POST /api/rehab-arm/app/v1/training-sessions/start
+```
+
+The response draft contains `context_snapshot.ai_planner`. Use those fields for platform logs: `relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, and `scope=rehab_training_planning`. XiaoZhi/L records remain under model relay / voice relay / L mode logs, so App and XiaoZhi evidence can be displayed together without sharing control authority.
 
 Mobile diagnostic and offline replay:
 
@@ -257,64 +357,25 @@ Current debug APK download:
 http://106.55.62.122:3001/downloads/rehab-arm/lingdong-rehab-arm-debug.apk
 ```
 
-Browser QA entry for the packaged mobile surface:
-
-```text
-http://106.55.62.122:3001/rehab-arm-mobile/home.html
-```
-
 APK details:
 
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0.8 debug
-versionCode: 9
-size: 4,188,454 bytes
-sha256: 772B5D618CA4553C25E2A10B6F79254DDE968D143B3E1BE1F8F21D6604D3705C
+version: 1.0.9 debug
+versionCode: 10
+size: 4,189,022 bytes
+sha256: 155EEBB6B4FA1C001DD82744B3F4A92356B757784EBC3778444F755AA2C020BF
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
-
-APK 1.0.7 behavior:
-
-```text
-- Starts with cloud API base http://106.55.62.122:8011
-- Loads /api/rehab-arm/app/v1/public-config and /catalog
-- Shows a login panel when no token is stored
-- Stores data.access_token after /api/auth/session
-- Calls /api/rehab-arm/app/v1/me with Authorization: Bearer {access_token}
-- Shows a real backend evidence panel and suppresses static success claims when gates are blocked
-- Calls /api/rehab-arm/app/v1/me/workflow and shows backend phase, next action, action queue, blockers, and forbidden actions
-- Calls /api/rehab-arm/app/v1/me/workflow/actions for backend-allowed safe workflow actions
-- Renders a real care timeline from the `/api/rehab-arm/app/v1/me` response `care_timeline` for sessions, reports, AI drafts, and offline evidence
-- Includes Android native Bluetooth Classic SPP bridge for already paired M33 devices. During plan sync, the phone creates a backend `training_plan_push` BLE-message and writes `legacy_transport_frame.wire_text` only when the backend marks it `sendable=true`. Android `legacySppData` callbacks upload `memory_ack`, `execute_ack`, `stop_ack`, `sensor`, or `error` frames to the backend as evidence.
-```
-
-Use the existing cloud test account `3245056131@qq.com` / `1234` for internal verification only. This debug build is still not a medical device release: it displays backend workflow/readiness evidence and does not grant BLE, CAN, motor, or M33 override authority.
-
-Workflow action execution:
-
-```text
-POST /api/rehab-arm/app/v1/me/workflow/actions
-{"action_code":"GENERATE_TRAINING_REPORT","payload":{}}
-```
-
-The backend only executes actions present in the current workflow queue and rejects forbidden motion/hardware actions such as direct motor commands, CAN frame send, M33 override, emergency-stop release, M33 decision spoofing, or App-granted motion permission.
-
-The same endpoint can complete first-run setup when the returned workflow action queue exposes `PROFILE_REQUIRED`, `TRUSTED_DEVICE_REQUIRED`, or `TRAINING_PLAN_REQUIRED`. Send the payload advertised by the current action. Project-scoped device binding with `platform_project_id` must use `/api/rehab-arm/app/v1/devices/bind` so project write authorization is checked.
-
-When the action queue exposes `SYNC_PLAN_TO_M33`, the phone may call `/me/workflow/actions` with `{"action_code":"SYNC_PLAN_TO_M33","payload":{}}` to create the backend plan-sync evidence record. The expected result is `sync_status=pending`; M33 acceptance or rejection still requires the real M33 decision path and is not App-granted motion permission.
-
-When the action queue exposes `PREFLIGHT_CHECK_REQUIRED`, the phone may call `/me/workflow/actions` with pain/checklist notes merged into the advertised payload. The backend requires the current plan/device/sync to already be M33 accepted, and may still return pain-review or incomplete-checklist blockers.
-
 
 Current user-release gate:
 
 ```text
 status: blocked
-reason: APK 1.0.8 connects to backend public-config/catalog/bootstrap/workflow, renders backend care timeline/daily workflow state, can execute safe workflow actions, includes the Android native Bluetooth Classic SPP bridge, and now exposes a Stitch-designed Bluetooth debug / M33 validation page. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
-hardware_protocol: legacy SPP profile available; UUID 00001101-0000-1000-8000-00805F9B34FB with newline-delimited UTF-8 JSON. Real device pairing, frame send, and ACK/sensor evidence must be tested on Android hardware before motion-adjacent UX can be certified.
+reason: APK 1.0.9 connects to backend public-config/catalog/bootstrap/workflow, renders backend care timeline/daily workflow state, can execute safe workflow actions, includes the Android native Bluetooth Classic SPP bridge, and exposes a Stitch-designed Bluetooth debug / M33 validation page that can bind a paired SPP device as a backend trusted device. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
+hardware_protocol: legacy SPP profile available; UUID 00001101-0000-1000-8000-00805F9B34FB with newline-delimited UTF-8 JSON. Real Android pairing, backend device binding, frame send, and ACK/sensor evidence must be tested on hardware before motion-adjacent UX can be certified.
 ```
 
 Backend readiness endpoints:
@@ -324,10 +385,9 @@ GET /api/rehab-arm/app/v1/public-config
 GET /api/rehab-arm/app/v1/me
 GET /api/rehab-arm/app/v1/me/workflow
 POST /api/rehab-arm/app/v1/me/workflow/actions
-POST /api/rehab-arm/app/v1/devices/{device_id}/legacy-spp/inbound
 ```
 
-`public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, old SPP protocol availability, debug native phone-bridge status, and physical hardware-validation blockers. Authenticated `/me/workflow` is the phone workflow contract for `phase`, `next_action`, `action_queue`, `blockers`, primary entity ids, and `forbidden_actions`. These responses are workflow/evidence guidance only and do not grant Bluetooth send authority, CAN, motor, or M33 override authority.
+`public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, old SPP protocol availability, and native phone-bridge blockers. These responses are workflow/evidence guidance only and do not grant Bluetooth send authority, CAN, motor, or M33 override authority.
 
 Authenticated `/me.daily_care_plan` is the phone home source for the user's current daily checklist. It includes the primary task, next action, blocker details, progress totals, counts, and a short care-timeline preview. Frontend shells should render this field instead of using demo progress cards or recomputing the task order.
 
@@ -341,7 +401,7 @@ Bluetooth debug / M33 validation page:
 Device page -> 蓝牙调试 / 实机验证
 ```
 
-On an Android install, first pair the M33/PSoC SPP device in system Bluetooth settings. Then open the App, log in, enter the device page, open `蓝牙调试 / 实机验证`, tap `读取已配对设备`, connect the target device, sync a training plan to generate a backend `legacy_transport_frame`, then tap `发送后端批准帧`. The page should show TX/RX/API evidence after `memory_ack`, `execute_ack`, `sensor`, or `error` returns from M33. In normal browser/PWA mode it should show `仅 Web/无权限`, because Web Bluetooth does not support Classic SPP.
+On an Android install, first pair the M33/PSoC SPP device in system Bluetooth settings. Then open the App, log in, enter the device page, open `蓝牙调试 / 实机验证`, tap `读取已配对设备`, tap `绑定` on the target device to write it to `/devices/bind`, tap `连接`, sync a training plan to generate a backend `legacy_transport_frame`, then tap `发送后端批准帧`. The page should show TX/RX/API evidence after `memory_ack`, `execute_ack`, `sensor`, or `error` returns from M33. In normal browser/PWA mode it should show `仅 Web/无权限`, because Web Bluetooth does not support Classic SPP.
 
 Safety boundary: the debug page does not expose CAN frames, raw motor commands, motor current/torque/position/velocity, M33 override, or emergency-stop release. SPP ACKs prove transport/device response only; they do not automatically mark a plan as M33-accepted.
 
@@ -366,17 +426,6 @@ On the rehab-arm control-room page, open the `AI模型` workspace from the top n
 
 Safety rule: AI model output is review/dry-run evidence only. It does not send CAN frames, motor current, motor torque, raw joint position/velocity, M33 overrides, or emergency-stop release commands.
 
-
-## Rehab Arm Mobile Catalog
-
-Frontend shells should load the backend catalog instead of hard-coding demo movements:
-
-```http
-GET /api/rehab-arm/app/v1/catalog
-```
-
-The response contains profile options, supported training movements, default angle ranges, EMG policy templates, safety-constraint templates, and `unsupported_policy`. Creating or updating a training plan with a movement outside `catalog.training_movements` returns `TRAINING_MOVEMENT_UNSUPPORTED` and points back to the catalog endpoint. Catalog values are options and evidence only; they are not medical diagnosis or motion permission.
-
 ## Rehab Arm Cloud Backend Verification
 
 Current cloud backend deployment:
@@ -384,7 +433,7 @@ Current cloud backend deployment:
 ```text
 Web: http://106.55.62.122:3001
 API: http://106.55.62.122:8011
-build_sha: 7a9c6099
+build_sha: 17d7e78b2b10
 build_ref: app/rehab-arm-mobile-stitch
 ```
 
@@ -394,43 +443,4 @@ Verify Web/API alignment:
 python scripts\check_web_api_alignment.py --web-base http://106.55.62.122:3001 --api-base http://106.55.62.122:8011 --project-id e201f41c-25a6-46e1-baf8-be6dcb83284c
 ```
 
-Pass criteria: ok is true, direct API and Web proxy deployment metadata match, and /api/rehab-arm/app/v1/me returns workflow guidance only. App HTTP responses do not grant BLE, CAN, motor, or M33 override authority.
-
-## Rehab Arm App Profile Setup
-
-The first-run profile action can be called with only the fields advertised by `/api/rehab-arm/app/v1/me.onboarding_guide.next_step.payload_hint`:
-
-```http
-PATCH /api/rehab-arm/app/v1/me/profile
-```
-
-Example payload:
-
-```json
-{
-  "affected_side": "left",
-  "rehab_stage": "early_active",
-  "pain_baseline": 2,
-  "medical_constraints": ["no overhead motion"]
-}
-```
-
-If `name` is omitted on first creation, the backend stores a default profile name. Later partial PATCH calls preserve existing fields unless a field is explicitly sent.
-
-APK status note: the current debug APK download is still the 2026-07-02 build. Backend cloud fixes are live for clients that call `http://106.55.62.122:8011`, but the packaged Capacitor pages still need frontend/Stitch login and API-base wiring before publishing a new user-ready APK.
-
-Profile setup is complete only when `affected_side`, `rehab_stage`, and `pain_baseline` are present. `/api/rehab-arm/app/v1/me.onboarding_guide.next_step.missing_fields` lists any remaining profile fields.
-
-## Rehab Arm Mobile Public Config
-
-Frontend shells and the Android wrapper can discover the backend contract without a token:
-
-```http
-GET /api/rehab-arm/app/v1/public-config
-```
-
-The response includes `api_base`, login/session endpoints, `/api/rehab-arm/app/v1/me`, profile setup requirements, current debug APK metadata, and `rehab_app_public_config_only_not_auth_token_or_motion_permission`. It does not return credentials or grant hardware authority.
-
-The mobile public config also returns `mobile_boot_flow` and `release_gate`. Frontend shells should read `data.access_token` from `/api/auth/session`, send `Authorization: Bearer {access_token}`, then call `/api/auth/me` and `/api/rehab-arm/app/v1/me`. A `release_gate.status` of `blocked` means the downloadable APK is still a preview shell, not a user-ready build.
-
-Mobile API CORS defaults include `capacitor://localhost`, `https://localhost`, and `http://localhost`. Override or extend them with `REHAB_ARM_APP_CORS_ORIGINS` when the Android wrapper uses a different WebView origin. A valid preflight should return `access-control-allow-origin` for the mobile origin before the APK is considered ready to call the cloud API.
+Pass criteria: `ok` is `true`, direct API and Web proxy deployment metadata match, and `/api/rehab-arm/app/v1/me` returns workflow guidance only. App HTTP responses do not grant BLE, CAN, motor, or M33 override authority.
