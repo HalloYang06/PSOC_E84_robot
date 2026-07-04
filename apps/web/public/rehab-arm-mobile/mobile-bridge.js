@@ -718,7 +718,14 @@
     const input = document.querySelector("[data-arm-ai-input]");
     const inputText = (input && input.value ? input.value.trim() : "") || "根据当前康复档案、疼痛、疲劳和最近肌电生成下一次轻量训练草稿。";
     const state = readState();
+    const loadingState = { ...state, lastAiDraft: null, lastAcceptedAiPlan: null, lastAcceptedAiDraftId: "" };
+    writeState(loadingState);
+    setText("[data-role='ai-draft-title']", "正在生成 AI 训练草稿");
+    setText("[data-role='ai-draft-sets-reps']", "请稍候");
+    setText("[data-role='ai-draft-assist']", "-");
+    setText("[data-role='ai-draft-explain']", "正在调用后端 AI 训练规划链路；生成期间不能接受旧草稿。");
     document.querySelectorAll("[data-arm-ai-generate]").forEach((button) => { button.disabled = true; });
+    document.querySelectorAll("[data-arm-ai-accept]").forEach((button) => { button.disabled = true; });
     try {
       const draft = await api("/api/rehab-arm/app/v1/ai-training-drafts/generate", {
         method: "POST",
