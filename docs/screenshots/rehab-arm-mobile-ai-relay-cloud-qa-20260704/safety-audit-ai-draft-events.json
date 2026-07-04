@@ -1,0 +1,82 @@
+[
+  {
+    "action": "rehab_app.ai_training_draft.generated",
+    "resource_type": "rehab_app_ai_training_draft",
+    "after": {
+      "relay_channel": "app_training_planner",
+      "client_type": "app",
+      "purpose": "training_plan_draft",
+      "scope": "rehab_training_planning",
+      "does_not_touch_xiaozhi_l": true,
+      "planner_status": "external_used",
+      "source": "app_ai_plan_page",
+      "movement_type": "elbow_flexion",
+      "control_boundary": "ai_draft_only_not_execution_permission"
+    },
+    "created_at": "2026-07-04T13:22:06"
+  },
+  {
+    "action": "rehab_app.ai_training_draft.generated",
+    "resource_type": "rehab_app_ai_training_draft",
+    "after": {
+      "relay_channel": "app_training_planner",
+      "client_type": "app",
+      "purpose": "training_plan_draft",
+      "scope": "rehab_training_planning",
+      "does_not_touch_xiaozhi_l": true,
+      "planner_status": "external_used",
+      "source": "app_ai_training_draft_generate",
+      "movement_type": "elbow_flexion",
+      "control_boundary": "ai_draft_only_not_execution_permission"
+    },
+    "created_at": "2026-07-04T13:21:33"
+  },
+  {
+    "action": "rehab_app.ai_training_draft.generated",
+    "resource_type": "rehab_app_ai_training_draft",
+    "after": {
+      "relay_channel": "app_training_planner",
+      "client_type": "app",
+      "purpose": "training_plan_draft",
+      "scope": "rehab_training_planning",
+      "does_not_touch_xiaozhi_l": true,
+      "planner_status": "fallback_rule_based",
+      "source": "app_ai_plan_page",
+      "movement_type": "elbow_flexion",
+      "control_boundary": "ai_draft_only_not_execution_permission"
+    },
+    "created_at": "2026-07-04T13:18:45"
+  },
+  {
+    "action": "rehab_app.ai_training_draft.generated",
+    "resource_type": "rehab_app_ai_training_draft",
+    "after": {
+      "relay_channel": "app_training_planner",
+      "client_type": "app",
+      "purpose": "training_plan_draft",
+      "scope": "rehab_training_planning",
+      "does_not_touch_xiaozhi_l": true,
+      "planner_status": "fallback_rule_based",
+      "source": "app_ai_plan_page",
+      "movement_type": "elbow_flexion",
+      "control_boundary": "ai_draft_only_not_execution_permission"
+    },
+    "created_at": "2026-07-04T12:59:05"
+  },
+  {
+    "action": "rehab_app.ai_training_draft.generated",
+    "resource_type": "rehab_app_ai_training_draft",
+    "after": {
+      "relay_channel": "app_training_planner",
+      "client_type": "app",
+      "purpose": "training_plan_draft",
+      "scope": "rehab_training_planning",
+      "does_not_touch_xiaozhi_l": true,
+      "planner_status": "external_used",
+      "source": "app_ai_plan_page",
+      "movement_type": "elbow_flexion",
+      "control_boundary": "ai_draft_only_not_execution_permission"
+    },
+    "created_at": "2026-07-04T10:34:51"
+  }
+]

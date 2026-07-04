@@ -1,0 +1,22 @@
+{
+  "httpStatus": 200,
+  "draftId": "e40f911e-cb77-4512-9bc1-83e47286f467",
+  "title": "安全强化版肘屈曲训练",
+  "planner": {
+    "schema_version": "rehab_app_ai_planner_call_v1",
+    "relay_channel": "app_training_planner",
+    "client_type": "app",
+    "purpose": "training_plan_draft",
+    "scope": "rehab_training_planning",
+    "shared_model_relay_config": true,
+    "does_not_touch_xiaozhi_l": true,
+    "provider": "qwen",
+    "model": "qwen-plus",
+    "external_enabled": true,
+    "status": "external_used",
+    "api_key_exposed_to_app": false,
+    "control_boundary": "ai_planner_call_evidence_only_not_motion_permission",
+    "risk_notes": []
+  },
+  "dangerousKeys": null
+}

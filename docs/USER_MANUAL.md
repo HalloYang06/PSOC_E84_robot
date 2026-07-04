@@ -459,7 +459,7 @@ Current cloud backend deployment:
 ```text
 Web: http://106.55.62.122:3001
 API: http://106.55.62.122:8011
-build_sha: 17d7e78b2b10
+build_sha: 3215c1b4
 build_ref: app/rehab-arm-mobile-stitch
 ```
 
@@ -470,3 +470,13 @@ python scripts\check_web_api_alignment.py --web-base http://106.55.62.122:3001 -
 ```
 
 Pass criteria: `ok` is `true`, direct API and Web proxy deployment metadata match, and `/api/rehab-arm/app/v1/me` returns workflow guidance only. App HTTP responses do not grant BLE, CAN, motor, or M33 override authority.
+
+Verify App AI planner cloud path:
+
+```text
+Open http://106.55.62.122:3001/rehab-arm-mobile/ai-plan.html
+Log in with the App test account.
+Tap 生成 AI 草稿.
+```
+
+Pass criteria: the page shows `模型已调用：qwen-plus`, not `model_relay_config_incomplete`; the returned draft keeps `context_snapshot.ai_planner.relay_channel=app_training_planner`, `client_type=app`, `purpose=training_plan_draft`, `scope=rehab_training_planning`, and `does_not_touch_xiaozhi_l=true`; no API key is exposed to the App; and no CAN, motor current/torque, raw position/velocity, M33 override, or emergency-stop-release controls appear.
