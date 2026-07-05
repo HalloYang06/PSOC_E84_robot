@@ -5680,6 +5680,12 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       const stageRoot = doc.getElementById("urdf-runtime-stage");
       const stitchUrdfPanel = doc.getElementById("urdf-import-panel");
       if (stitchUrdfPanel) {
+        stitchUrdfPanel.style.position = "fixed";
+        stitchUrdfPanel.style.right = "24px";
+        stitchUrdfPanel.style.bottom = "24px";
+        stitchUrdfPanel.style.width = "min(320px, calc(100vw - 112px))";
+        stitchUrdfPanel.style.maxHeight = "min(42vh, 260px)";
+        stitchUrdfPanel.style.overflow = "auto";
         stitchUrdfPanel.style.zIndex = "36";
         stitchUrdfPanel.style.pointerEvents = "auto";
       }
@@ -5821,8 +5827,11 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
         const openStitchUrdfImport = (event: Event) => {
           event.preventDefault();
           event.stopPropagation();
-          stitchUrdfInput.value = "";
-          stitchUrdfInput.click();
+          const liveUrdfInput =
+            doc.querySelector<HTMLInputElement>('#codex-twin-runtime-stage [class*="urdfToolbar"] input[type="file"][data-testid="rehab-urdf-file"]')
+            ?? stitchUrdfInput;
+          liveUrdfInput.value = "";
+          liveUrdfInput.click();
         };
         if (stitchUrdfDropzone) stitchUrdfDropzone.onclick = openStitchUrdfImport;
         if (stitchUrdfTrigger) stitchUrdfTrigger.onclick = openStitchUrdfImport;
