@@ -39,6 +39,7 @@ export type DashboardDevice = {
   device_model?: AnyRecord;
   model_relay_response?: AnyRecord;
   mode_maturity?: AnyRecord;
+  vla_closed_loop_status?: AnyRecord;
   xiaozhi_session?: AnyRecord;
 };
 
@@ -4360,6 +4361,11 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   };
   const backendModeMaturity = record(selected?.mode_maturity);
   const backendModeRows = asArray<AnyRecord>(backendModeMaturity.modes);
+  const backendClosedLoop = record(selected?.vla_closed_loop_status);
+  const backendClosedLoopPipeline = asArray<AnyRecord>(backendClosedLoop.pipeline);
+  const closedLoopActionState = text(backendClosedLoop.action_state, "");
+  const closedLoopNextStep = text(backendClosedLoop.next_step, "");
+  const closedLoopBlockers = asArray<string>(backendClosedLoop.blockers);
   const currentSemanticMode = text(
     backendModeMaturity.active_mode,
     text(modelRelaySemantic.mode, routeModeFallback[routeClass] || ""),
@@ -6449,12 +6455,20 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           camera_to_robot_calibrated: Boolean(cameraToRobotReady),
         },
         planner: {
-          dry_run_gate: dryRunGateLabel(dryRunGateState),
+          dry_run_gate: closedLoopActionState || dryRunGateLabel(dryRunGateState),
           dry_run_allowed: Boolean(dryRunCandidateAllowed),
-          reason: dryRunGateReason,
-          next_step: pixelServo.nextStep,
+          reason: closedLoopBlockers.length ? closedLoopBlockers.join(", ") : dryRunGateReason,
+          next_step: closedLoopNextStep || pixelServo.nextStep,
           loop_policy: "continuous_visual_servo_approach",
         },
+        vla_closed_loop_status: Object.keys(backendClosedLoop).length
+          ? backendClosedLoop
+          : {
+              schema_version: "frontend_vla_closed_loop_fallback_v1",
+              action_state: dryRunGateState,
+              next_step: pixelServo.nextStep,
+              control_boundary: "vla_closed_loop_status_only_not_motion_permission",
+            },
         ik_candidate: {
           status: text(ikCandidate.ik_status, "waiting_for_robot_frame_target"),
           target_robot_frame: record(ikCandidate.target_robot_frame),
@@ -6492,8 +6506,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       setText('[data-role="planner-v-target"]', targetLabel);
       setText('[data-role="planner-end-effector"]', endEffectorLabel);
       setText('[data-role="planner-depth-state"]', cameraToRobotReady ? "camera_to_robot ready" : stereoDepth !== null ? "stereo_depth ready / 外参待定" : "等待深度/标定");
-      setText('[data-role="planner-dry-run-gate"]', dryRunGateLabel(dryRunGateState));
-      setText('[data-role="planner-dry-run-reason"]', dryRunGateReason);
+      setText('[data-role="planner-dry-run-gate"]', closedLoopActionState ? closedLoopActionState.replaceAll("_", " ") : dryRunGateLabel(dryRunGateState));
+      setText('[data-role="planner-dry-run-reason"]', closedLoopBlockers.length ? `${closedLoopNextStep || "等待下一步"}：${closedLoopBlockers.join(" / ")}` : dryRunGateReason);
       setText('[data-role="planner-candidate-allowed"]', dryRunCandidateAllowed ? "候选可生成" : "保持观察");
       setText('[data-role="planner-mujoco-state"]', plannerMujocoState);
       setText('[data-role="planner-m33-state"]', plannerM33State);
@@ -6539,14 +6553,22 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       setText('[data-role="planner-action-preview"] code', JSON.stringify(plannerCandidate, null, 2));
       setText('[data-role="planner-m33"]', `安全边界：${motionAllowed ? "M33 候选通过，仍需硬件裁决" : "M33 保持锁定"}；浏览器只展示候选 A 字段，不发送 CAN/M33 控制。`);
       const loopLabels = Array.from(doc.querySelectorAll<HTMLElement>('[data-role="planner-loop-state"] .font-label-caps'));
-      const loopValues = [
-        hasLanguageTask ? "L 已输入" : "等待 L 指令",
-        hasStereoTargetForGate ? "V 目标已入场" : "等待 V 目标",
-        visualServoReady ? "目标+末端可配对" : visualServoStateText,
-        dryRunCandidateAllowed ? "Dry-run 候选生成" : dryRunGateLabel(dryRunGateState),
-        simulationReady ? "仿真已回传" : "等待仿真验证",
-        motionAllowed ? "M33 候选" : "M33 锁定",
-      ];
+      const backendLoopValues = backendClosedLoopPipeline.map((item) => {
+        const label = text(item.stage, "");
+        const state = text(item.state, "");
+        const detail = text(item.detail, "");
+        return [label, state, detail].filter(Boolean).join(" ");
+      }).filter(Boolean);
+      const loopValues = backendLoopValues.length >= 5
+        ? backendLoopValues
+        : [
+            hasLanguageTask ? "L 已输入" : "等待 L 指令",
+            hasStereoTargetForGate ? "V 目标已入场" : "等待 V 目标",
+            visualServoReady ? "目标+末端可配对" : visualServoStateText,
+            dryRunCandidateAllowed ? "Dry-run 候选生成" : dryRunGateLabel(dryRunGateState),
+            simulationReady ? "仿真已回传" : "等待仿真验证",
+            motionAllowed ? "M33 候选" : "M33 锁定",
+          ];
       loopValues.forEach((value, index) => {
         if (loopLabels[index]) loopLabels[index].textContent = value;
       });
@@ -7383,8 +7405,13 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
   }, [
     absoluteImageUrl,
     activeModule,
+    backendClosedLoop,
+    backendClosedLoopPipeline,
     cameraToRobotReady,
     clampedRenderCount,
+    closedLoopActionState,
+    closedLoopBlockers,
+    closedLoopNextStep,
     currentSafetyState,
     currentSemanticMode,
     devices,

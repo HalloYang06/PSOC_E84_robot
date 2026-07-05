@@ -59,6 +59,8 @@ V-to-A coordinate handoff:
 - If only camera-frame coordinates exist, A may display them for review but must not label them as robot-frame coordinates and must not generate a robot-frame motion candidate unless a safe manual/simulation target source is explicitly selected.
 - The same A schema must support both real V coordinates and no-target manual platform coordinates for demos: `source = vision_calibrated | manual_platform | simulation_test`.
 - Every handoff object should carry freshness, calibration id, source, confidence or quality gate, and a control boundary so logs can prove why A generated or refused a candidate.
+- Dashboard devices expose `vla_closed_loop_status` (`rehab_arm_vla_closed_loop_status_v1`) as the unified read-only L/V/A/SIM/M33 explanation layer. It summarizes `active_mode`, `action_state`, `next_step`, `blockers`, and a five-stage `pipeline` (`L`, `V`, `A`, `SIM`, `M33`) with per-stage readiness and `control_boundary = vla_closed_loop_status_only_not_motion_permission`.
+- `vla_closed_loop_status` must stay explanatory only. It may tell the platform why the current state is `hold_observe`, `ready_for_ik`, `ready_for_shadow_review`, `dry_run_review_ready`, or `candidate_review_ready`; it must not grant motion, publish ROS hardware topics, send CAN frames, bypass M33, or reinterpret camera-frame coordinates as robot-frame coordinates.
 
 Next closed-loop AI ownership:
 

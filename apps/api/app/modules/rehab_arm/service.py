@@ -2942,6 +2942,159 @@ def build_mode_maturity(
     }
 
 
+def _dict_payload(record: dict[str, Any], key: str = "payload") -> dict[str, Any]:
+    payload = record.get(key) if isinstance(record.get(key), dict) else {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _has_numeric_xyz(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    for key in ("x_m", "y_m", "z_m"):
+        try:
+            number = float(value.get(key))
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(number):
+            return False
+    return True
+
+
+def _stage_row(stage: str, label: str, ready: bool, state: str, detail: str) -> dict[str, Any]:
+    return {
+        "stage": stage,
+        "label": label,
+        "ready": ready,
+        "state": state,
+        "detail": detail,
+        "control_boundary": "vla_closed_loop_status_only_not_motion_permission",
+    }
+
+
+def build_vla_closed_loop_status(
+    model_relay_response: dict[str, Any],
+    stereo_vision_context: dict[str, Any],
+    ik_candidate: dict[str, Any],
+    safety_status: dict[str, Any],
+    simulation_readiness: dict[str, Any],
+) -> dict[str, Any]:
+    active_mode = _latest_semantic_mode(model_relay_response)
+    stereo_payload = _dict_payload(stereo_vision_context)
+    ik_payload = _dict_payload(ik_candidate)
+    ik_response = ik_payload.get("candidate_response") if isinstance(ik_payload.get("candidate_response"), dict) else {}
+    sim_payload = _dict_payload(simulation_readiness)
+
+    l_ready = active_mode in {"fetch_object", "vision_servo"}
+    target_gate = stereo_payload.get("target_quality_gate") if isinstance(stereo_payload.get("target_quality_gate"), dict) else {}
+    visual_lock = stereo_payload.get("visual_lock_stability") if isinstance(stereo_payload.get("visual_lock_stability"), dict) else {}
+    target_ready = target_gate.get("state") == "candidate_accepted" or bool(stereo_payload.get("target_object"))
+    end_effector_ready = bool(stereo_payload.get("end_effector_object"))
+    visual_lock_ready = visual_lock.get("stable_for_dry_run") is True or target_ready
+    robot_frame_ready = _has_numeric_xyz(stereo_payload.get("target_3d_robot_frame"))
+    camera_frame_ready = _has_numeric_xyz(stereo_payload.get("target_3d_camera_frame"))
+    ik_status = str(ik_response.get("ik_status") or "").strip()
+    a_ready = ik_status in {"candidate_ready", "candidate_approximate"}
+    sim_ready = bool(sim_payload.get("ready") or sim_payload.get("mujoco_ready") or sim_payload.get("simulation_ready"))
+    m33_ready = safety_status.get("motion_allowed") is True
+
+    blockers: list[str] = []
+    if active_mode == "chat":
+        blockers.append("chat_mode_isolated_from_robot_action")
+    elif not l_ready:
+        blockers.append("l_semantic_mode_not_fetch_or_vision_servo")
+    if l_ready and not target_ready:
+        blockers.append("vision_target_missing_or_rejected")
+    if l_ready and not end_effector_ready:
+        blockers.append("end_effector_missing")
+    if l_ready and target_ready and end_effector_ready and not robot_frame_ready:
+        blockers.append("camera_to_robot_transform_missing")
+    if robot_frame_ready and not a_ready:
+        blockers.append("ik_candidate_missing_or_blocked")
+    if a_ready and not sim_ready:
+        blockers.append("mujoco_shadow_validation_missing")
+    if a_ready and sim_ready and not m33_ready:
+        blockers.append("m33_safety_gate_not_open")
+
+    if active_mode == "chat":
+        action_state = "chat_only"
+        next_step = "keep_chat_isolated"
+    elif not l_ready:
+        action_state = "hold_observe"
+        next_step = "wait_l_fetch_or_vision_servo_semantic_mode"
+    elif not target_ready or not end_effector_ready:
+        action_state = "hold_observe"
+        next_step = "wait_visual_target_and_end_effector"
+    elif not robot_frame_ready:
+        action_state = "hold_observe"
+        next_step = "wait_camera_to_robot_transform_or_manual_target"
+    elif not a_ready:
+        action_state = "ready_for_ik"
+        next_step = "generate_ik_candidate"
+    elif not sim_ready:
+        action_state = "ready_for_shadow_review"
+        next_step = "run_mujoco_shadow_validation"
+    elif not m33_ready:
+        action_state = "dry_run_review_ready"
+        next_step = "wait_m33_safety_gate"
+    else:
+        action_state = "candidate_review_ready"
+        next_step = "operator_review_before_real_motion"
+
+    pipeline = [
+        _stage_row("L", "语义模式", l_ready, "ready" if l_ready else ("isolated" if active_mode == "chat" else "waiting"), active_mode),
+        _stage_row(
+            "V",
+            "视觉目标",
+            target_ready and end_effector_ready and visual_lock_ready,
+            "ready" if target_ready and end_effector_ready and visual_lock_ready else "waiting",
+            "target_and_end_effector_locked" if target_ready and end_effector_ready and visual_lock_ready else "waiting_target_or_end_effector",
+        ),
+        _stage_row("A", "IK 候选", a_ready, "ready" if a_ready else ("waiting" if robot_frame_ready else "blocked"), ik_status or "waiting_robot_frame_target"),
+        _stage_row("SIM", "MuJoCo 影子", sim_ready, "ready" if sim_ready else "waiting", str(sim_payload.get("state") or sim_payload.get("detail") or "waiting_shadow")),
+        _stage_row("M33", "安全裁决", m33_ready, "ready" if m33_ready else "locked", str(safety_status.get("detail") or safety_status.get("state") or "m33_final_authority_required")),
+    ]
+
+    return {
+        "schema_version": "rehab_arm_vla_closed_loop_status_v1",
+        "active_mode": active_mode,
+        "action_state": action_state,
+        "next_step": next_step,
+        "blockers": blockers,
+        "l": {
+            "ready": l_ready,
+            "mode": active_mode,
+            "control_boundary": "vla_l_semantic_only_not_motion_permission",
+        },
+        "v": {
+            "target_ready": target_ready,
+            "end_effector_ready": end_effector_ready,
+            "visual_lock_ready": visual_lock_ready,
+            "camera_frame_ready": camera_frame_ready,
+            "robot_frame_ready": robot_frame_ready,
+            "target_3d_camera_frame": stereo_payload.get("target_3d_camera_frame") if camera_frame_ready else None,
+            "target_3d_robot_frame": stereo_payload.get("target_3d_robot_frame") if robot_frame_ready else None,
+            "control_boundary": "stereo_depth_evidence_only_not_motion_permission",
+        },
+        "a": {
+            "ready": a_ready,
+            "ik_status": ik_status or "waiting",
+            "source": str(ik_response.get("source") or ik_payload.get("source") or "waiting"),
+            "control_boundary": IK_CONTROL_BOUNDARY,
+        },
+        "simulation": {
+            "ready": sim_ready,
+            "control_boundary": "mujoco_shadow_dry_run_only_not_motion_permission",
+        },
+        "m33": {
+            "ready": m33_ready,
+            "motion_allowed": m33_ready,
+            "control_boundary": "m33_final_authority_required",
+        },
+        "pipeline": pipeline,
+        "control_boundary": "vla_closed_loop_status_only_not_motion_permission",
+    }
+
+
 def _relay_chat_url(base_url: str) -> str:
     cleaned = base_url.strip().rstrip("/")
     if not cleaned:
@@ -3399,6 +3552,13 @@ def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
             sensor_state,
             simulation_readiness,
         )
+        vla_closed_loop_status = build_vla_closed_loop_status(
+            model_relay_response,
+            stereo_vision_context,
+            ik_candidate,
+            safety_status,
+            simulation_readiness,
+        )
         devices.append(
             {
                 "device_id": device_id,
@@ -3430,6 +3590,7 @@ def build_dashboard(project_id: str | None = None) -> dict[str, Any]:
                 "wiring_health": build_wiring_health(device_id),
                 "safety_status": safety_status,
                 "mode_maturity": mode_maturity,
+                "vla_closed_loop_status": vla_closed_loop_status,
                 "voice_relay": voice_relay,
                 "vla_plan_candidate": vla_plan_candidate,
                 "ik_candidate": ik_candidate,
