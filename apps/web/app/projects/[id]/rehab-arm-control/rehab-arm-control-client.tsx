@@ -2522,6 +2522,7 @@ function Arm3DOverview({
         const end = new THREE.Mesh(new THREE.SphereGeometry(0.045, 24, 16), jointMaterial);
         end.position.copy(cursor);
         group.add(end);
+        return group;
       }
 
       function applyJointValues(robot: AnyRecord) {
@@ -2548,7 +2549,8 @@ function Arm3DOverview({
 
       async function addUrdfOrPlaceholder() {
         if (!urdfText) {
-          addDemoArmModel();
+          const demoArm = addDemoArmModel();
+          frameMetricRobot(demoArm);
           setUrdfState("demo");
           return;
         }
@@ -2608,7 +2610,8 @@ function Arm3DOverview({
           frameMetricRobot(robot);
           setUrdfState("loaded");
         } catch {
-          addDemoArmModel();
+          const demoArm = addDemoArmModel();
+          frameMetricRobot(demoArm);
           setUrdfState("failed");
         }
       }
