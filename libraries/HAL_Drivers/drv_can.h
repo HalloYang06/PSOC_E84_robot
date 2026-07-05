@@ -62,4 +62,27 @@ rt_ssize_t ifx_can_direct_recv(struct rt_can_msg *msg);
 void ifx_can_direct_set_raw_rx_pause(rt_bool_t pause);
 void ifx_can_direct_set_tx_verbose(rt_bool_t verbose);
 
+typedef struct
+{
+    rt_bool_t ready;
+    rt_uint32_t bitrate;
+    rt_uint32_t pclk_hz;
+    rt_uint32_t cccr;
+    rt_uint32_t psr;
+    rt_uint32_t ecr;
+    rt_uint32_t ir;
+    rt_uint32_t rxf0s;
+    rt_uint32_t txbrp;
+    rt_uint32_t txbto;
+    rt_uint32_t txbcf;
+    rt_uint32_t tx_timeout_count;
+    rt_uint32_t tx_send_fail_count;
+    rt_uint32_t rx_extract_fail_count;
+    rt_uint32_t rx_fifo0_lost_count;
+    rt_uint32_t rx_fifo0_full_count;
+    rt_uint32_t tx_pending_suppressed_count;
+} ifx_can_direct_diag_t;
+
+rt_err_t ifx_can_direct_get_diag(ifx_can_direct_diag_t *out);
+
 #endif /* __DRV_CAN_H__ */

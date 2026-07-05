@@ -20,6 +20,10 @@
 
 #ifdef BSP_USING_CAN
 
+#ifndef CANFD_ECR
+#define CANFD_ECR(base, chan) (((CANFD_Type *)(base))->CH[chan].M_TTCAN.ECR)
+#endif
+
 #ifndef IFX_CAN_FORCE_CLASSIC
 #define IFX_CAN_FORCE_CLASSIC 1
 #endif
@@ -62,6 +66,13 @@ static volatile rt_bool_t g_can_direct_raw_rx_pause = RT_FALSE;
 static volatile rt_bool_t g_can_direct_tx_verbose = RT_FALSE;
 static rt_uint32_t g_can_direct_tx_pending_suppressed = 0;
 static rt_uint8_t g_can_direct_tx_index = 0U;
+static rt_uint32_t g_can_direct_tx_timeout_count = 0U;
+static rt_uint32_t g_can_direct_tx_send_fail_count = 0U;
+static rt_uint32_t g_can_direct_rx_extract_fail_count = 0U;
+static rt_uint32_t g_can_direct_rx_fifo0_lost_count = 0U;
+static rt_uint32_t g_can_direct_rx_fifo0_full_count = 0U;
+static rt_bool_t g_can_direct_rx_fifo0_lost_latched = RT_FALSE;
+static rt_bool_t g_can_direct_rx_fifo0_full_latched = RT_FALSE;
 #ifdef BSP_USING_CANFD0
 static rt_uint32_t g_can_direct_bitrate = 1000000U;
 static cy_stc_canfd_bitrate_t g_can_direct_nominal_bitrate;
@@ -752,6 +763,14 @@ rt_err_t ifx_can_direct_init(void)
     can->irq_mask = 0U;
     can->tx_pending_mask = 0U;
     g_can_direct_tx_index = 0U;
+    g_can_direct_tx_pending_suppressed = 0U;
+    g_can_direct_tx_timeout_count = 0U;
+    g_can_direct_tx_send_fail_count = 0U;
+    g_can_direct_rx_extract_fail_count = 0U;
+    g_can_direct_rx_fifo0_lost_count = 0U;
+    g_can_direct_rx_fifo0_full_count = 0U;
+    g_can_direct_rx_fifo0_lost_latched = RT_FALSE;
+    g_can_direct_rx_fifo0_full_latched = RT_FALSE;
     g_can_direct_ready = RT_TRUE;
 
     rt_kprintf("[drv_can] direct ready bitrate=%lu pclk=%lu nbtp=0x%08lx rxf0s=0x%08lx\n",
@@ -886,6 +905,7 @@ rt_err_t ifx_can_direct_send(const struct rt_can_msg *msg)
                                                  &can->context);
     if (result != CY_CANFD_SUCCESS)
     {
+        g_can_direct_tx_send_fail_count++;
         rt_kprintf("[drv_can] direct send failed box=%u ret=%d\n",
                    (unsigned int)tx_index,
                    result);
@@ -921,6 +941,7 @@ rt_err_t ifx_can_direct_send(const struct rt_can_msg *msg)
     {
         g_can_direct_tx_pending_suppressed++;
     }
+    g_can_direct_tx_timeout_count++;
     ifx_canfd0_cancel_tx_buffer(can, tx_index);
     return -RT_ETIMEOUT;
 #else
@@ -944,6 +965,32 @@ rt_ssize_t ifx_can_direct_recv(struct rt_can_msg *msg)
     }
 
     f0s = CANFD_RXF0S(can->config->can_x, can->config->channel);
+    if ((f0s & CANFD_CH_M_TTCAN_RXF0S_RF0L_Msk) != 0U)
+    {
+        if (!g_can_direct_rx_fifo0_lost_latched)
+        {
+            g_can_direct_rx_fifo0_lost_count++;
+        }
+        g_can_direct_rx_fifo0_lost_latched = RT_TRUE;
+    }
+    else
+    {
+        g_can_direct_rx_fifo0_lost_latched = RT_FALSE;
+    }
+
+    if ((f0s & CANFD_CH_M_TTCAN_RXF0S_F0F_Msk) != 0U)
+    {
+        if (!g_can_direct_rx_fifo0_full_latched)
+        {
+            g_can_direct_rx_fifo0_full_count++;
+        }
+        g_can_direct_rx_fifo0_full_latched = RT_TRUE;
+    }
+    else
+    {
+        g_can_direct_rx_fifo0_full_latched = RT_FALSE;
+    }
+
     fill = _FLD2VAL(CANFD_CH_M_TTCAN_RXF0S_F0FL, f0s);
     if (fill == 0U)
     {
@@ -964,6 +1011,7 @@ rt_ssize_t ifx_can_direct_recv(struct rt_can_msg *msg)
                                              &can->context);
     if (result != CY_CANFD_SUCCESS)
     {
+        g_can_direct_rx_extract_fail_count++;
         rt_kprintf("[drv_can] direct recv failed ret=%d f0s=0x%08lx\n",
                    result,
                    (unsigned long)f0s);
@@ -990,6 +1038,51 @@ rt_ssize_t ifx_can_direct_recv(struct rt_can_msg *msg)
 
     return (rt_ssize_t)sizeof(*msg);
 #else
+    return -RT_ERROR;
+#endif
+}
+
+rt_err_t ifx_can_direct_get_diag(ifx_can_direct_diag_t *out)
+{
+#ifdef BSP_USING_CANFD0
+    struct ifx_can *can = &can_obj[CANFD0_INDEX];
+
+    if (out == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+
+    rt_memset(out, 0, sizeof(*out));
+    out->ready = g_can_direct_ready;
+    out->bitrate = g_can_direct_bitrate;
+    out->tx_timeout_count = g_can_direct_tx_timeout_count;
+    out->tx_send_fail_count = g_can_direct_tx_send_fail_count;
+    out->rx_extract_fail_count = g_can_direct_rx_extract_fail_count;
+    out->rx_fifo0_lost_count = g_can_direct_rx_fifo0_lost_count;
+    out->rx_fifo0_full_count = g_can_direct_rx_fifo0_full_count;
+    out->tx_pending_suppressed_count = g_can_direct_tx_pending_suppressed;
+
+    if (!g_can_direct_ready)
+    {
+        return -RT_ERROR;
+    }
+
+    can->config = &can_config[CANFD0_INDEX];
+    out->pclk_hz = Cy_SysClk_PeriPclkGetFrequency(PCLK_CANFD0_CLOCK_CAN_EN0,
+                                                  CY_SYSCLK_DIV_8_BIT,
+                                                  4U);
+    out->cccr = CANFD_CCCR(can->config->can_x, can->config->channel);
+    out->psr = CANFD_PSR(can->config->can_x, can->config->channel);
+    out->ecr = CANFD_ECR(can->config->can_x, can->config->channel);
+    out->ir = CANFD_IR(can->config->can_x, can->config->channel);
+    out->rxf0s = CANFD_RXF0S(can->config->can_x, can->config->channel);
+    out->txbrp = CANFD_TXBRP(can->config->can_x, can->config->channel);
+    out->txbto = CANFD_TXBTO(can->config->can_x, can->config->channel);
+    out->txbcf = CANFD_TXBCF(can->config->can_x, can->config->channel);
+
+    return RT_EOK;
+#else
+    RT_UNUSED(out);
     return -RT_ERROR;
 #endif
 }

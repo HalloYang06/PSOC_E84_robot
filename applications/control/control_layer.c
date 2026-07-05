@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "drv_can.h"
+#include "can_metrics.h"
 #include "control_layer.h"
 #include "control_layer_cfg.h"
 #include "rehab_mode_manager.h"
@@ -748,10 +749,18 @@ static rt_err_t ctrl_can_send(rt_uint32_t id, rt_uint8_t ide, const rt_uint8_t *
 
 #if CONTROL_CAN_USE_DIRECT_PDL
     written = ifx_can_direct_send(&msg);
-    return (written == RT_EOK) ? RT_EOK : -RT_ERROR;
+    {
+        rt_err_t ret = (written == RT_EOK) ? RT_EOK : -RT_ERROR;
+        can_metrics_record_tx(&msg, ret);
+        return ret;
+    }
 #else
     written = rt_device_write(s_can_dev, 0, &msg, sizeof(msg));
-    return (written == sizeof(msg)) ? RT_EOK : -RT_ERROR;
+    {
+        rt_err_t ret = (written == sizeof(msg)) ? RT_EOK : -RT_ERROR;
+        can_metrics_record_tx(&msg, ret);
+        return ret;
+    }
 #endif
 }
 
@@ -2774,6 +2783,8 @@ static void ctrl_handle_can_message(const struct rt_can_msg *msg)
 {
     control_ros_command_t ros_cmd;
 
+    can_metrics_record_rx(msg);
+
     if (ctrl_handle_nanopi_heartbeat(msg))
     {
         s_dbg_rx_heartbeat++;
@@ -2925,6 +2936,11 @@ static void ctrl_poll_can_messages(void)
         drained++;
     }
 #endif
+
+    if (drained >= CONTROL_CAN_RX_DRAIN_LIMIT)
+    {
+        can_metrics_record_rx_drain_limit();
+    }
 }
 
 #if !CONTROL_CAN_USE_DIRECT_PDL
@@ -3108,6 +3124,7 @@ int control_layer_init(const char *can_name)
 
     rt_kprintf("[control] init step7 direct open ret=%d\n", result);
     rt_kprintf("[control] init step8 direct rx poll mode\n");
+    can_metrics_reset();
 #else
     open_flags = (rt_uint16_t)(RT_DEVICE_FLAG_RDWR | RT_DEVICE_FLAG_INT_RX | RT_DEVICE_FLAG_INT_TX);
     rt_kprintf("[control] init step6 open can flags=0x%04X\n", open_flags);
