@@ -1071,6 +1071,20 @@ def _detection_count(detections: Any) -> int:
     return 0
 
 
+def _detection_has_label(detections: Any, patterns: tuple[str, ...]) -> bool:
+    items: list[Any] = []
+    if isinstance(detections, list):
+        items = detections
+    elif isinstance(detections, dict):
+        nested = detections.get("items") or detections.get("detections") or detections.get("objects")
+        items = nested if isinstance(nested, list) else list(detections.values())
+    for item in items:
+        label = _target_label(item).lower()
+        if label and any(pattern in label for pattern in patterns):
+            return True
+    return False
+
+
 def _visual_lock_summary(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {
@@ -2987,8 +3001,16 @@ def build_vla_closed_loop_status(
     l_ready = active_mode in {"fetch_object", "vision_servo"}
     target_gate = stereo_payload.get("target_quality_gate") if isinstance(stereo_payload.get("target_quality_gate"), dict) else {}
     visual_lock = stereo_payload.get("visual_lock_stability") if isinstance(stereo_payload.get("visual_lock_stability"), dict) else {}
-    target_ready = target_gate.get("state") == "candidate_accepted" or bool(stereo_payload.get("target_object"))
-    end_effector_ready = bool(stereo_payload.get("end_effector_object"))
+    detections = stereo_payload.get("detections")
+    target_ready = (
+        target_gate.get("state") == "candidate_accepted"
+        or bool(stereo_payload.get("target_object"))
+        or _detection_has_label(detections, ("cup", "bottle", "water", "target"))
+    )
+    end_effector_ready = bool(stereo_payload.get("end_effector_object")) or _detection_has_label(
+        detections,
+        ("gripper", "end_effector", "tool_tip", "tip"),
+    )
     visual_lock_ready = visual_lock.get("stable_for_dry_run") is True or target_ready
     robot_frame_ready = _has_numeric_xyz(stereo_payload.get("target_3d_robot_frame"))
     camera_frame_ready = _has_numeric_xyz(stereo_payload.get("target_3d_camera_frame"))
