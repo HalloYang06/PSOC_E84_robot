@@ -740,6 +740,10 @@
     return Number.isFinite(number) ? number : fallback;
   }
 
+  const EMG_ALERT_NORMALIZED_THRESHOLD = 0.7;
+  const EMG_ALERT_RAW_ADC_THRESHOLD = Math.round(4095 * EMG_ALERT_NORMALIZED_THRESHOLD);
+  const EMG_ALERT_VOLTAGE_THRESHOLD = EMG_ALERT_RAW_ADC_THRESHOLD * 3.3 / 4095;
+
   function latestEmgChannels(latestEmg) {
     const defaults = [
       { channel: "ch1", muscle: "biceps" },
@@ -753,13 +757,15 @@
       const rawAdc = Math.round(numberOr(source.raw_adc, 0));
       const voltage = numberOr(source.voltage_v, rawAdc * 3.3 / 4095);
       const normalized = numberOr(source.normalized, rawAdc ? rawAdc / 4095 : 0);
+      const overThreshold = normalized >= EMG_ALERT_NORMALIZED_THRESHOLD || rawAdc >= EMG_ALERT_RAW_ADC_THRESHOLD;
       return {
         channel: String(source.channel || fallback.channel).toUpperCase(),
         muscle: source.muscle || source.muscle_name || fallback.muscle,
         rawAdc,
         voltage,
         normalized,
-        connected: Boolean(source.connected || rawAdc > 0)
+        connected: Boolean(source.connected || rawAdc > 0),
+        overThreshold
       };
     });
   }
@@ -809,17 +815,17 @@
       '<div>',
       '<div style="font-size:12px;color:#0f766e;font-weight:900;letter-spacing:.04em">SERVER EMG LIVE</div>',
       `<div style="font-size:17px;font-weight:900;margin-top:2px">${hasLiveChannels ? "四路肌电服务器下发" : "等待服务器肌电"}</div>`,
-      `<div style="color:#475569;margin-top:2px">来源 ${escapeHtml(source)} · 设备 ${escapeHtml(deviceId || "--")} · fresh ${escapeHtml(freshness)}</div>`,
+      `<div style="color:#475569;margin-top:2px">来源 ${escapeHtml(source)} · 设备 ${escapeHtml(deviceId || "--")} · fresh ${escapeHtml(freshness)} · 红色阈值 ${Math.round(EMG_ALERT_NORMALIZED_THRESHOLD * 100)}% / ${EMG_ALERT_RAW_ADC_THRESHOLD} ADC / ${EMG_ALERT_VOLTAGE_THRESHOLD.toFixed(2)} V</div>`,
       "</div>",
       `<div style="border:1px solid #bae6fd;border-radius:8px;padding:8px 10px;background:#ecfeff;min-width:132px"><div style="color:#0369a1">M55 推理</div><div style="font-size:16px;font-weight:900;color:#0f172a">${escapeHtml(model.label)}</div><div style="color:#475569">置信度 ${escapeHtml(confidenceText)}</div></div>`,
       "</div>",
       '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:8px">',
       ...channels.map((channel) => [
-        `<div style="border:1px solid ${channel.connected ? "#67e8f9" : "#e2e8f0"};border-radius:8px;padding:10px;background:${channel.connected ? "#ecfeff" : "#ffffff"}">`,
-        `<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:900">${escapeHtml(channel.channel)}</span><span style="color:${channel.connected ? "#0891b2" : "#94a3b8"}">${channel.connected ? "active" : "0"}</span></div>`,
+        `<div style="border:1px solid ${channel.overThreshold ? "#f87171" : channel.connected ? "#67e8f9" : "#e2e8f0"};border-radius:8px;padding:10px;background:${channel.overThreshold ? "#fef2f2" : channel.connected ? "#ecfeff" : "#ffffff"}">`,
+        `<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:900">${escapeHtml(channel.channel)}</span><span style="color:${channel.overThreshold ? "#dc2626" : channel.connected ? "#0891b2" : "#94a3b8"}">${channel.overThreshold ? "high" : channel.connected ? "active" : "0"}</span></div>`,
         `<div style="color:#475569;margin-top:2px">${escapeHtml(channel.muscle)}</div>`,
-        `<div style="font-size:18px;font-weight:900;margin-top:6px">${channel.rawAdc}</div>`,
-        `<div style="color:#64748b">ADC · ${channel.voltage.toFixed(3)} V · ${Math.round(channel.normalized * 100)}%</div>`,
+        `<div style="font-size:18px;font-weight:900;margin-top:6px;color:${channel.overThreshold ? "#dc2626" : "#0f172a"}">${channel.rawAdc}</div>`,
+        `<div style="color:${channel.overThreshold ? "#b91c1c" : "#64748b"}">ADC · ${channel.voltage.toFixed(3)} V · ${Math.round(channel.normalized * 100)}%</div>`,
         "</div>"
       ].join("")),
       "</div>"
