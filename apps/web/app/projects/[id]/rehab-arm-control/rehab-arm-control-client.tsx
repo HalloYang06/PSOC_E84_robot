@@ -5553,6 +5553,8 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       ikPanel.style.right = "24px";
       ikPanel.style.width = "380px";
       ikPanel.style.zIndex = "30";
+      ikPanel.style.maxHeight = "calc(100vh - 360px)";
+      ikPanel.style.overflowY = "auto";
       const ikSource = ikPanel.querySelector<HTMLSelectElement>('[data-role="ik-source"]');
       if (ikSource) ikSource.value = displayedIkSourceInput;
       const syncIkInputs = (commitState = false) => {
@@ -5646,6 +5648,11 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       });
       doc.getElementById("codex-twin-real-bridge")?.remove();
       const stageRoot = doc.getElementById("urdf-runtime-stage");
+      const stitchUrdfPanel = doc.getElementById("urdf-import-panel");
+      if (stitchUrdfPanel) {
+        stitchUrdfPanel.style.zIndex = "36";
+        stitchUrdfPanel.style.pointerEvents = "auto";
+      }
       let host = doc.getElementById("codex-twin-runtime-stage") as HTMLElement | null;
       if (!host && stageRoot) {
         host = doc.createElement("div");
@@ -5659,13 +5666,14 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           compatStyle.textContent = `
             #codex-twin-runtime-stage {
               overflow: hidden;
+              pointer-events: auto;
             }
             #codex-twin-runtime-stage [class*="stitchTwinStageOverlay"] {
               position: absolute !important;
               inset: 0 !important;
               width: 100% !important;
               height: 100% !important;
-              pointer-events: none !important;
+              pointer-events: auto !important;
             }
             #codex-twin-runtime-stage [class*="armOverviewPanel"] {
               position: absolute !important;
@@ -5676,7 +5684,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               border: 0 !important;
               background: transparent !important;
               box-shadow: none !important;
-              pointer-events: none !important;
+              pointer-events: auto !important;
             }
             #codex-twin-runtime-stage [class*="panelHead"],
             #codex-twin-runtime-stage [class*="armTelemetryStrip"],
@@ -5690,6 +5698,7 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
             #codex-twin-runtime-stage [class*="armCanvas"] {
               position: absolute !important;
               inset: 0 !important;
+              z-index: 1 !important;
               width: 100% !important;
               height: 100% !important;
               min-height: 100% !important;
@@ -5711,12 +5720,32 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
               bottom: 24px !important;
               left: auto !important;
               top: auto !important;
-              z-index: 20 !important;
-              width: 300px !important;
-              max-height: 170px !important;
+              z-index: 80 !important;
+              width: min(320px, calc(100vw - 140px)) !important;
+              max-height: min(46vh, 260px) !important;
               overflow: auto !important;
               pointer-events: auto !important;
-              opacity: 0.001 !important;
+              opacity: 1 !important;
+              visibility: visible !important;
+              display: block !important;
+              border: 1px solid rgba(76, 215, 246, 0.55) !important;
+              background: rgba(9, 13, 18, 0.92) !important;
+              box-shadow: 0 0 18px rgba(76, 215, 246, 0.2) !important;
+            }
+            #codex-twin-runtime-stage [class*="urdfToolbar"]:not([open]) {
+              width: auto !important;
+              max-height: 46px !important;
+              overflow: visible !important;
+            }
+            #codex-twin-runtime-stage [class*="urdfToolbar"] > summary {
+              min-height: 38px !important;
+              display: flex !important;
+              align-items: center !important;
+              padding: 0 12px !important;
+              cursor: pointer !important;
+            }
+            #codex-twin-runtime-stage [class*="urdfToolbar"] label {
+              cursor: pointer !important;
             }
           `;
           doc.head.appendChild(compatStyle);
