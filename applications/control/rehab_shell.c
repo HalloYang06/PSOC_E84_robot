@@ -54,7 +54,7 @@ static void rehab_shell_print_status(void)
     rehab_service_status_t status;
 
     rehab_service_get_status(&status);
-    rt_kprintf("rehab status mode=%s source=%u joint=%s m33_joint=%u fresh=%u detail=%u assist=%u torque_x1000=%d vel_x1000=%d current_x1000=%d limit_x1000=%d gain_x1000=%d pid_kp_x1000=%d pid_ki_x1000=%d pid_kd_x1000=%d pid_load_x1000=%d pid_speed_x1000=%d pid_err_x1000=%d pid_trim_x1000=%d sat=%u record_count=%u playback_index=%u last=%d\n",
+    rt_kprintf("rehab status mode=%s source=%u joint=%s m33_joint=%u fresh=%u detail=%u assist=%u torque_x1000=%d vel_x1000=%d current_x1000=%d limit_x1000=%d gain_x1000=%d pid_kp_x1000=%d pid_ki_x1000=%d pid_kd_x1000=%d pid_load_x1000=%d pid_speed_x1000=%d pid_err_x1000=%d pid_trim_x1000=%d adrc_err_x1000=%d adrc_z1_x1000=%d adrc_z2_x1000=%d adrc_z3_x1000=%d adrc_trim_x1000=%d sat=%u record_count=%u playback_index=%u last=%d\n",
                rehab_shell_mode_name(status.mode),
                (unsigned int)status.source,
                rehab_joint_map_name(status.joint),
@@ -74,6 +74,11 @@ static void rehab_shell_print_status(void)
                rehab_shell_scaled(status.pid_speed_level),
                rehab_shell_scaled(status.pid_error),
                rehab_shell_scaled(status.pid_trim_current_a),
+               rehab_shell_scaled(status.adrc_error),
+               rehab_shell_scaled(status.adrc_z1),
+               rehab_shell_scaled(status.adrc_z2),
+               rehab_shell_scaled(status.adrc_z3),
+               rehab_shell_scaled(status.adrc_trim_current_a),
                status.output_saturated ? 1U : 0U,
                (unsigned int)status.record_count,
                (unsigned int)status.playback_index,
@@ -134,6 +139,24 @@ static void rehab_shell_print_params(void)
                rehab_shell_scaled(params.resist_pid.kd_speed),
                rehab_shell_scaled(params.resist_pid.integral_limit),
                rehab_shell_scaled(params.resist_pid.trim_limit));
+    rt_kprintf("rehab adrc assist_adrc=%u resist_adrc=%u assist_target_x1000=%d assist_b0_x1000=%d assist_kp_x1000=%d assist_kd_x1000=%d assist_dist_x1000=%d assist_trim_x1000=%d resist_target_x1000=%d resist_b0_x1000=%d resist_kp_x1000=%d resist_kd_x1000=%d resist_dist_x1000=%d resist_trim_x1000=%d beta_x1000=%d/%d/%d\n",
+               params.assist_adrc_enabled ? 1U : 0U,
+               params.resist_adrc_enabled ? 1U : 0U,
+               rehab_shell_scaled(params.assist_adrc.target),
+               rehab_shell_scaled(params.assist_adrc.b0),
+               rehab_shell_scaled(params.assist_adrc.kp),
+               rehab_shell_scaled(params.assist_adrc.kd),
+               rehab_shell_scaled(params.assist_adrc.disturbance_gain),
+               rehab_shell_scaled(params.assist_adrc.trim_limit),
+               rehab_shell_scaled(params.resist_adrc.target),
+               rehab_shell_scaled(params.resist_adrc.b0),
+               rehab_shell_scaled(params.resist_adrc.kp),
+               rehab_shell_scaled(params.resist_adrc.kd),
+               rehab_shell_scaled(params.resist_adrc.disturbance_gain),
+               rehab_shell_scaled(params.resist_adrc.trim_limit),
+               rehab_shell_scaled(params.assist_adrc.beta1),
+               rehab_shell_scaled(params.assist_adrc.beta2),
+               rehab_shell_scaled(params.assist_adrc.beta3));
 }
 
 static rt_bool_t rehab_shell_apply_cfg(rehab_strategy_params_t *params, const char *key, float value)
@@ -198,6 +221,14 @@ static rt_bool_t rehab_shell_apply_cfg(rehab_strategy_params_t *params, const ch
     else if (strcmp(key, "resist_pid_enable") == 0)
     {
         params->resist_adaptive_pid_enabled = (value != 0.0f) ? RT_TRUE : RT_FALSE;
+    }
+    else if (strcmp(key, "assist_adrc_enable") == 0)
+    {
+        params->assist_adrc_enabled = (value != 0.0f) ? RT_TRUE : RT_FALSE;
+    }
+    else if (strcmp(key, "resist_adrc_enable") == 0)
+    {
+        params->resist_adrc_enabled = (value != 0.0f) ? RT_TRUE : RT_FALSE;
     }
     else if (strcmp(key, "pid_load_low") == 0)
     {
@@ -303,6 +334,69 @@ static rt_bool_t rehab_shell_apply_cfg(rehab_strategy_params_t *params, const ch
     {
         params->resist_pid.trim_limit = value;
     }
+    else if (strcmp(key, "assist_adrc_target") == 0)
+    {
+        params->assist_adrc.target = value;
+    }
+    else if (strcmp(key, "resist_adrc_target") == 0)
+    {
+        params->resist_adrc.target = value;
+    }
+    else if (strcmp(key, "assist_adrc_b0") == 0)
+    {
+        params->assist_adrc.b0 = value;
+    }
+    else if (strcmp(key, "resist_adrc_b0") == 0)
+    {
+        params->resist_adrc.b0 = value;
+    }
+    else if (strcmp(key, "adrc_beta1") == 0)
+    {
+        params->assist_adrc.beta1 = value;
+        params->resist_adrc.beta1 = value;
+    }
+    else if (strcmp(key, "adrc_beta2") == 0)
+    {
+        params->assist_adrc.beta2 = value;
+        params->resist_adrc.beta2 = value;
+    }
+    else if (strcmp(key, "adrc_beta3") == 0)
+    {
+        params->assist_adrc.beta3 = value;
+        params->resist_adrc.beta3 = value;
+    }
+    else if (strcmp(key, "assist_adrc_kp") == 0)
+    {
+        params->assist_adrc.kp = value;
+    }
+    else if (strcmp(key, "assist_adrc_kd") == 0)
+    {
+        params->assist_adrc.kd = value;
+    }
+    else if (strcmp(key, "assist_adrc_disturbance") == 0)
+    {
+        params->assist_adrc.disturbance_gain = value;
+    }
+    else if (strcmp(key, "assist_adrc_trim") == 0)
+    {
+        params->assist_adrc.trim_limit = value;
+    }
+    else if (strcmp(key, "resist_adrc_kp") == 0)
+    {
+        params->resist_adrc.kp = value;
+    }
+    else if (strcmp(key, "resist_adrc_kd") == 0)
+    {
+        params->resist_adrc.kd = value;
+    }
+    else if (strcmp(key, "resist_adrc_disturbance") == 0)
+    {
+        params->resist_adrc.disturbance_gain = value;
+    }
+    else if (strcmp(key, "resist_adrc_trim") == 0)
+    {
+        params->resist_adrc.trim_limit = value;
+    }
     else if (strcmp(key, "resist_max") == 0)
     {
         params->resist_max_current_a = value;
@@ -361,7 +455,7 @@ int rehab(int argc, char **argv)
         }
         if (argc < 4)
         {
-            rt_kprintf("usage: rehab cfg direction|active_min|active_max|active_gain|assist_max|assist_gain|adaptive_enable|adaptive_base|adaptive_load|adaptive_max|adaptive_step|assist_pid_enable|resist_pid_enable|pid_load_low|pid_load_high|pid_speed_low|pid_speed_high|assist_pid_*|resist_pid_*|resist_dir|resist_max|resist_gain <value>\n");
+            rt_kprintf("usage: rehab cfg direction|active_min|active_max|active_gain|assist_max|assist_gain|adaptive_enable|adaptive_base|adaptive_load|adaptive_max|adaptive_step|assist_pid_enable|resist_pid_enable|pid_load_low|pid_load_high|pid_speed_low|pid_speed_high|assist_pid_*|resist_pid_*|assist_adrc_*|resist_adrc_*|adrc_beta1|adrc_beta2|adrc_beta3|resist_dir|resist_max|resist_gain <value>\n");
             rehab_shell_print_params();
             return 0;
         }

@@ -33,6 +33,19 @@ typedef struct
 
 typedef struct
 {
+    float target;
+    float b0;
+    float beta1;
+    float beta2;
+    float beta3;
+    float kp;
+    float kd;
+    float disturbance_gain;
+    float trim_limit;
+} rehab_adrc_profile_t;
+
+typedef struct
+{
     float follow_direction;
     float resist_direction;
     float active_min_current_a;
@@ -47,12 +60,16 @@ typedef struct
     float adaptive_assist_gain_step_a_per_nm;
     rt_bool_t assist_adaptive_pid_enabled;
     rt_bool_t resist_adaptive_pid_enabled;
+    rt_bool_t assist_adrc_enabled;
+    rt_bool_t resist_adrc_enabled;
     float adaptive_pid_load_low_nm;
     float adaptive_pid_load_high_nm;
     float adaptive_pid_speed_low_rad_s;
     float adaptive_pid_speed_high_rad_s;
     rehab_adaptive_pid_profile_t assist_pid;
     rehab_adaptive_pid_profile_t resist_pid;
+    rehab_adrc_profile_t assist_adrc;
+    rehab_adrc_profile_t resist_adrc;
     float resist_max_current_a;
     float resist_current_gain_a_per_rad_s;
 } rehab_strategy_params_t;
@@ -71,6 +88,11 @@ typedef struct
     float pid_speed_level;
     float pid_error;
     float pid_trim_current_a;
+    float adrc_error;
+    float adrc_z1;
+    float adrc_z2;
+    float adrc_z3;
+    float adrc_trim_current_a;
     rt_bool_t current_saturated;
     rt_bool_t engaged;
 } rehab_strategy_output_t;

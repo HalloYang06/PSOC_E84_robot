@@ -28,6 +28,8 @@ def main():
     active_c = read_text("applications/control/rehab_active_follow.c")
     adaptive_pid_c = read_text("applications/control/rehab_adaptive_pid.c")
     adaptive_pid_h = read_text("applications/control/rehab_adaptive_pid.h")
+    adrc_c = read_text("applications/control/rehab_adrc.c")
+    adrc_h = read_text("applications/control/rehab_adrc.h")
     assist_c = read_text("applications/control/rehab_assist_strategy.c")
     resist_c = read_text("applications/control/rehab_resist_strategy.c")
     strategy_h = read_text("applications/control/rehab_strategy.h")
@@ -56,6 +58,15 @@ def main():
         "#define CONTROL_REHAB_RESIST_PID_ENABLE",
         "#define CONTROL_REHAB_RESIST_PID_KP_SPEED",
         "#define CONTROL_REHAB_RESIST_PID_KD_SPEED",
+        "#define CONTROL_REHAB_ASSIST_ADRC_ENABLE",
+        "#define CONTROL_REHAB_RESIST_ADRC_ENABLE",
+        "#define CONTROL_REHAB_ASSIST_ADRC_B0",
+        "#define CONTROL_REHAB_RESIST_ADRC_B0",
+        "#define CONTROL_REHAB_ADRC_BETA1",
+        "#define CONTROL_REHAB_ADRC_BETA2",
+        "#define CONTROL_REHAB_ADRC_BETA3",
+        "#define CONTROL_REHAB_ASSIST_ADRC_TRIM_LIMIT_A",
+        "#define CONTROL_REHAB_RESIST_ADRC_TRIM_LIMIT_A",
         "#define CONTROL_REHAB_RESIST_CURRENT_GAIN_A_PER_RAD_S",
         "#define CONTROL_REHAB_TRAJECTORY_MAX_SAMPLES",
     ):
@@ -104,11 +115,20 @@ def main():
         "adaptive_pid_speed_low_rad_s",
         "adaptive_pid_speed_high_rad_s",
         "rehab_adaptive_pid_profile_t",
+        "rehab_adrc_profile_t",
         "float target",
         "float kp_load",
         "float kd_speed",
         "assist_pid",
         "resist_pid",
+        "assist_adrc_enabled",
+        "resist_adrc_enabled",
+        "assist_adrc",
+        "resist_adrc",
+        "adrc_z1",
+        "adrc_z2",
+        "adrc_z3",
+        "adrc_trim_current_a",
     ):
         require(strategy_h, needle, "rehab_strategy.h")
 
@@ -125,6 +145,23 @@ def main():
         "trim_limit",
     ):
         require(adaptive_pid_h + adaptive_pid_c, needle, "rehab_adaptive_pid")
+
+    for needle in (
+        "rehab_adrc_reset",
+        "rehab_adrc_step",
+        "rehab_adrc_state_t",
+        "rehab_adrc_observation_t",
+        "float z1",
+        "float z2",
+        "float z3",
+        "last_trim",
+        "beta1",
+        "beta2",
+        "beta3",
+        "disturbance_gain",
+        "trim_limit",
+    ):
+        require(adrc_h + adrc_c, needle, "rehab_adrc")
 
     for needle in (
         "control_get_motor_feedback",
@@ -144,6 +181,10 @@ def main():
         "s_rehab.status.pid_kp",
         "s_rehab.status.pid_load_level",
         "s_rehab.status.pid_trim_current_a",
+        "s_rehab.status.adrc_z1",
+        "s_rehab.status.adrc_z2",
+        "s_rehab.status.adrc_z3",
+        "s_rehab.status.adrc_trim_current_a",
         "s_rehab.status.output_saturated",
         "rehab_resist_strategy_reset(&s_rehab.resist_state)",
         "CONTROL_MOTOR_CURRENT_CONTROL_MAX_A",
@@ -177,18 +218,26 @@ def main():
     require(assist_c, "params->assist_adaptive_pid_enabled", "rehab_assist_strategy.c")
     require(assist_c, "rehab_adaptive_pid_step", "rehab_assist_strategy.c")
     require(assist_c, "params->assist_pid", "rehab_assist_strategy.c")
+    require(assist_c, "params->assist_adrc_enabled", "rehab_assist_strategy.c")
+    require(assist_c, "rehab_adrc_step", "rehab_assist_strategy.c")
+    require(assist_c, "params->assist_adrc", "rehab_assist_strategy.c")
     require(assist_c, "out->effective_gain", "rehab_assist_strategy.c")
     require(assist_c, "out->pid_kp", "rehab_assist_strategy.c")
     require(assist_c, "out->pid_trim_current_a", "rehab_assist_strategy.c")
+    require(assist_c, "out->adrc_trim_current_a", "rehab_assist_strategy.c")
     require(assist_c, "out->current_saturated", "rehab_assist_strategy.c")
     require(resist_c, "REHAB_STRATEGY_OUTPUT_CURRENT", "rehab_resist_strategy.c")
     require(resist_c, "params->resist_current_gain_a_per_rad_s", "rehab_resist_strategy.c")
     require(resist_c, "params->resist_adaptive_pid_enabled", "rehab_resist_strategy.c")
     require(resist_c, "rehab_adaptive_pid_step", "rehab_resist_strategy.c")
     require(resist_c, "params->resist_pid", "rehab_resist_strategy.c")
+    require(resist_c, "params->resist_adrc_enabled", "rehab_resist_strategy.c")
+    require(resist_c, "rehab_adrc_step", "rehab_resist_strategy.c")
+    require(resist_c, "params->resist_adrc", "rehab_resist_strategy.c")
     require(resist_c, "out->effective_gain", "rehab_resist_strategy.c")
     require(resist_c, "out->pid_kp", "rehab_resist_strategy.c")
     require(resist_c, "out->pid_trim_current_a", "rehab_resist_strategy.c")
+    require(resist_c, "out->adrc_trim_current_a", "rehab_resist_strategy.c")
     require(resist_c, "out->current_saturated", "rehab_resist_strategy.c")
 
     require(shell_c, "MSH_CMD_EXPORT(rehab", "rehab_shell.c")
@@ -203,10 +252,14 @@ def main():
     require(shell_c, "pid_kp_x1000", "rehab_shell.c")
     require(shell_c, "pid_load_x1000", "rehab_shell.c")
     require(shell_c, "pid_trim_x1000", "rehab_shell.c")
+    require(shell_c, "adrc_z1_x1000", "rehab_shell.c")
+    require(shell_c, "adrc_trim_x1000", "rehab_shell.c")
     require(shell_c, "sat=%u", "rehab_shell.c")
     require(shell_c, "adaptive=%u", "rehab_shell.c")
     require(shell_c, "assist_pid=%u", "rehab_shell.c")
     require(shell_c, "resist_pid=%u", "rehab_shell.c")
+    require(shell_c, "assist_adrc=%u", "rehab_shell.c")
+    require(shell_c, "resist_adrc=%u", "rehab_shell.c")
     require(shell_c, "adaptive_enable", "rehab_shell.c")
     require(shell_c, "adaptive_base", "rehab_shell.c")
     require(shell_c, "adaptive_load", "rehab_shell.c")
@@ -218,6 +271,15 @@ def main():
     require(shell_c, "resist_pid_enable", "rehab_shell.c")
     require(shell_c, "resist_pid_kp_speed", "rehab_shell.c")
     require(shell_c, "resist_pid_kd_speed", "rehab_shell.c")
+    require(shell_c, "assist_adrc_enable", "rehab_shell.c")
+    require(shell_c, "resist_adrc_enable", "rehab_shell.c")
+    require(shell_c, "assist_adrc_b0", "rehab_shell.c")
+    require(shell_c, "resist_adrc_b0", "rehab_shell.c")
+    require(shell_c, "adrc_beta1", "rehab_shell.c")
+    require(shell_c, "adrc_beta2", "rehab_shell.c")
+    require(shell_c, "adrc_beta3", "rehab_shell.c")
+    require(shell_c, "assist_adrc_trim", "rehab_shell.c")
+    require(shell_c, "resist_adrc_trim", "rehab_shell.c")
     forbid(shell_c, "CONTROL_REHAB_ASSIST_LIMIT_CUR_A", "rehab_shell.c")
 
     for needle in (

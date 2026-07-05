@@ -57,6 +57,11 @@ typedef struct
     float pid_speed_level;
     float pid_error;
     float pid_trim_current_a;
+    float adrc_error;
+    float adrc_z1;
+    float adrc_z2;
+    float adrc_z3;
+    float adrc_trim_current_a;
     rt_bool_t output_saturated;
     rt_uint8_t sequence;
     rt_uint8_t active_slot;

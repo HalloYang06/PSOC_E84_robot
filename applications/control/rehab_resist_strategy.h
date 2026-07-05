@@ -2,10 +2,12 @@
 #define __REHAB_RESIST_STRATEGY_H__
 
 #include "rehab_adaptive_pid.h"
+#include "rehab_adrc.h"
 
 typedef struct
 {
     rehab_adaptive_pid_state_t pid_state;
+    rehab_adrc_state_t adrc_state;
 } rehab_resist_strategy_state_t;
 
 void rehab_resist_strategy_reset(rehab_resist_strategy_state_t *state);

@@ -103,6 +103,10 @@ static void rehab_service_default_params(rehab_strategy_params_t *out)
         (CONTROL_REHAB_ASSIST_PID_ENABLE != 0U) ? RT_TRUE : RT_FALSE;
     out->resist_adaptive_pid_enabled =
         (CONTROL_REHAB_RESIST_PID_ENABLE != 0U) ? RT_TRUE : RT_FALSE;
+    out->assist_adrc_enabled =
+        (CONTROL_REHAB_ASSIST_ADRC_ENABLE != 0U) ? RT_TRUE : RT_FALSE;
+    out->resist_adrc_enabled =
+        (CONTROL_REHAB_RESIST_ADRC_ENABLE != 0U) ? RT_TRUE : RT_FALSE;
     out->adaptive_pid_load_low_nm = CONTROL_REHAB_PID_LOAD_LOW_NM;
     out->adaptive_pid_load_high_nm = CONTROL_REHAB_PID_LOAD_HIGH_NM;
     out->adaptive_pid_speed_low_rad_s = CONTROL_REHAB_PID_SPEED_LOW_RAD_S;
@@ -129,6 +133,24 @@ static void rehab_service_default_params(rehab_strategy_params_t *out)
     out->resist_pid.kd_speed = CONTROL_REHAB_RESIST_PID_KD_SPEED;
     out->resist_pid.integral_limit = CONTROL_REHAB_RESIST_PID_INTEGRAL_LIMIT;
     out->resist_pid.trim_limit = CONTROL_REHAB_RESIST_PID_TRIM_LIMIT_A;
+    out->assist_adrc.target = CONTROL_REHAB_ASSIST_ADRC_TARGET_NM;
+    out->assist_adrc.b0 = CONTROL_REHAB_ASSIST_ADRC_B0;
+    out->assist_adrc.beta1 = CONTROL_REHAB_ADRC_BETA1;
+    out->assist_adrc.beta2 = CONTROL_REHAB_ADRC_BETA2;
+    out->assist_adrc.beta3 = CONTROL_REHAB_ADRC_BETA3;
+    out->assist_adrc.kp = CONTROL_REHAB_ASSIST_ADRC_KP;
+    out->assist_adrc.kd = CONTROL_REHAB_ASSIST_ADRC_KD;
+    out->assist_adrc.disturbance_gain = CONTROL_REHAB_ASSIST_ADRC_DISTURBANCE_GAIN;
+    out->assist_adrc.trim_limit = CONTROL_REHAB_ASSIST_ADRC_TRIM_LIMIT_A;
+    out->resist_adrc.target = CONTROL_REHAB_RESIST_ADRC_TARGET_RAD_S;
+    out->resist_adrc.b0 = CONTROL_REHAB_RESIST_ADRC_B0;
+    out->resist_adrc.beta1 = CONTROL_REHAB_ADRC_BETA1;
+    out->resist_adrc.beta2 = CONTROL_REHAB_ADRC_BETA2;
+    out->resist_adrc.beta3 = CONTROL_REHAB_ADRC_BETA3;
+    out->resist_adrc.kp = CONTROL_REHAB_RESIST_ADRC_KP;
+    out->resist_adrc.kd = CONTROL_REHAB_RESIST_ADRC_KD;
+    out->resist_adrc.disturbance_gain = CONTROL_REHAB_RESIST_ADRC_DISTURBANCE_GAIN;
+    out->resist_adrc.trim_limit = CONTROL_REHAB_RESIST_ADRC_TRIM_LIMIT_A;
     out->resist_max_current_a = CONTROL_REHAB_RESIST_LIMIT_CUR_A;
     out->resist_current_gain_a_per_rad_s = CONTROL_REHAB_RESIST_CURRENT_GAIN_A_PER_RAD_S;
 }
@@ -163,6 +185,35 @@ static void rehab_service_sanitize_pid_profile(rehab_adaptive_pid_profile_t *pro
     profile->integral_limit =
         rehab_service_positive_or_default(profile->integral_limit,
                                           defaults->integral_limit);
+    profile->trim_limit = rehab_service_clamp_current_limit(profile->trim_limit,
+                                                            defaults->trim_limit);
+}
+
+static void rehab_service_sanitize_adrc_profile(rehab_adrc_profile_t *profile,
+                                                const rehab_adrc_profile_t *defaults)
+{
+    if ((profile == RT_NULL) || (defaults == RT_NULL))
+    {
+        return;
+    }
+
+    profile->target = rehab_service_nonnegative_or_default(profile->target,
+                                                           defaults->target);
+    profile->b0 = rehab_service_positive_or_default(profile->b0,
+                                                    defaults->b0);
+    profile->beta1 = rehab_service_positive_or_default(profile->beta1,
+                                                       defaults->beta1);
+    profile->beta2 = rehab_service_positive_or_default(profile->beta2,
+                                                       defaults->beta2);
+    profile->beta3 = rehab_service_positive_or_default(profile->beta3,
+                                                       defaults->beta3);
+    profile->kp = rehab_service_nonnegative_or_default(profile->kp,
+                                                       defaults->kp);
+    profile->kd = rehab_service_nonnegative_or_default(profile->kd,
+                                                       defaults->kd);
+    profile->disturbance_gain =
+        rehab_service_nonnegative_or_default(profile->disturbance_gain,
+                                             defaults->disturbance_gain);
     profile->trim_limit = rehab_service_clamp_current_limit(profile->trim_limit,
                                                             defaults->trim_limit);
 }
@@ -219,6 +270,10 @@ static void rehab_service_sanitize_params(rehab_strategy_params_t *params)
         params->assist_adaptive_pid_enabled ? RT_TRUE : RT_FALSE;
     params->resist_adaptive_pid_enabled =
         params->resist_adaptive_pid_enabled ? RT_TRUE : RT_FALSE;
+    params->assist_adrc_enabled =
+        params->assist_adrc_enabled ? RT_TRUE : RT_FALSE;
+    params->resist_adrc_enabled =
+        params->resist_adrc_enabled ? RT_TRUE : RT_FALSE;
     params->adaptive_pid_load_low_nm =
         rehab_service_nonnegative_or_default(params->adaptive_pid_load_low_nm,
                                              defaults.adaptive_pid_load_low_nm);
@@ -243,6 +298,8 @@ static void rehab_service_sanitize_params(rehab_strategy_params_t *params)
     }
     rehab_service_sanitize_pid_profile(&params->assist_pid, &defaults.assist_pid);
     rehab_service_sanitize_pid_profile(&params->resist_pid, &defaults.resist_pid);
+    rehab_service_sanitize_adrc_profile(&params->assist_adrc, &defaults.assist_adrc);
+    rehab_service_sanitize_adrc_profile(&params->resist_adrc, &defaults.resist_adrc);
     params->resist_max_current_a = rehab_service_clamp_current_limit(params->resist_max_current_a,
                                                                      defaults.resist_max_current_a);
     params->resist_current_gain_a_per_rad_s =
@@ -307,6 +364,11 @@ static void rehab_service_clear_observation_locked(void)
     s_rehab.status.pid_speed_level = 0.0f;
     s_rehab.status.pid_error = 0.0f;
     s_rehab.status.pid_trim_current_a = 0.0f;
+    s_rehab.status.adrc_error = 0.0f;
+    s_rehab.status.adrc_z1 = 0.0f;
+    s_rehab.status.adrc_z2 = 0.0f;
+    s_rehab.status.adrc_z3 = 0.0f;
+    s_rehab.status.adrc_trim_current_a = 0.0f;
     s_rehab.status.output_saturated = RT_FALSE;
 }
 
@@ -337,6 +399,11 @@ static void rehab_service_update_observation_locked(const control_motor_feedback
         s_rehab.status.pid_speed_level = out->pid_speed_level;
         s_rehab.status.pid_error = out->pid_error;
         s_rehab.status.pid_trim_current_a = out->pid_trim_current_a;
+        s_rehab.status.adrc_error = out->adrc_error;
+        s_rehab.status.adrc_z1 = out->adrc_z1;
+        s_rehab.status.adrc_z2 = out->adrc_z2;
+        s_rehab.status.adrc_z3 = out->adrc_z3;
+        s_rehab.status.adrc_trim_current_a = out->adrc_trim_current_a;
         s_rehab.status.output_saturated = out->current_saturated;
     }
     else
@@ -351,6 +418,11 @@ static void rehab_service_update_observation_locked(const control_motor_feedback
         s_rehab.status.pid_speed_level = 0.0f;
         s_rehab.status.pid_error = 0.0f;
         s_rehab.status.pid_trim_current_a = 0.0f;
+        s_rehab.status.adrc_error = 0.0f;
+        s_rehab.status.adrc_z1 = 0.0f;
+        s_rehab.status.adrc_z2 = 0.0f;
+        s_rehab.status.adrc_z3 = 0.0f;
+        s_rehab.status.adrc_trim_current_a = 0.0f;
         s_rehab.status.output_saturated = RT_FALSE;
     }
 }
