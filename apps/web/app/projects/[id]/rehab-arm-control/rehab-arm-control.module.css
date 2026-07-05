@@ -2307,6 +2307,23 @@
   white-space: nowrap;
 }
 
+.urdfImportButton {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: 1px solid rgba(117, 247, 221, 0.34);
+  border-radius: 8px;
+  background: rgba(117, 247, 221, 0.18);
+  color: #ecffff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .urdfToolbar input {
   max-width: 210px;
   color: rgba(236, 255, 255, 0.76);

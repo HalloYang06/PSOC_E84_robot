@@ -2028,6 +2028,7 @@ function Arm3DOverview({
   const jointValues = useMemo(() => jointValueMapFromMotors(motors), [motors]);
   const positionsRef = useRef(positions);
   const jointValuesRef = useRef(jointValues);
+  const urdfFileInputRef = useRef<HTMLInputElement | null>(null);
   const sceneDataRef = useRef({
     badWiringChecks: [] as AnyRecord[],
     motors: [] as AnyRecord[],
@@ -2783,10 +2784,29 @@ function Arm3DOverview({
         <p className={flowStyles.jointFlowHint}>这些数值只用于网页预览和校准核对，不会写回 NanoPi、M33 或电机驱动。</p>
       </details>
       <details className={styles.urdfToolbar}>
-        <summary>模型包 / URDF 导入</summary>
+        <summary
+          onClick={(event) => {
+            if (!stageMode) return;
+            event.preventDefault();
+            urdfFileInputRef.current?.click();
+          }}
+        >
+          模型包 / URDF 导入
+        </summary>
+        <button
+          type="button"
+          className={styles.urdfImportButton}
+          onClick={(event) => {
+            event.preventDefault();
+            urdfFileInputRef.current?.click();
+          }}
+        >
+          选择 URDF / ZIP
+        </button>
         <label>
           <span>导入本机模型包</span>
           <input
+            ref={urdfFileInputRef}
             type="file"
             accept=".zip,.urdf,.xml"
             data-testid="rehab-urdf-file"
@@ -5774,8 +5794,23 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
       }
       const stitchUrdfInput = doc.querySelector<HTMLInputElement>('#urdf-import-panel input[type="file"][data-testid="rehab-urdf-file"]');
       const stitchUrdfDropzone = stitchUrdfInput?.parentElement as HTMLElement | null;
-      if (stitchUrdfInput && stitchUrdfInput.dataset.codexBound !== "true") {
-        stitchUrdfInput.dataset.codexBound = "true";
+      let stitchUrdfTrigger = doc.getElementById("codex-urdf-import-trigger") as HTMLButtonElement | null;
+      if (stitchUrdfInput && !stitchUrdfTrigger) {
+        stitchUrdfTrigger = doc.createElement("button");
+        stitchUrdfTrigger.id = "codex-urdf-import-trigger";
+        stitchUrdfTrigger.type = "button";
+        stitchUrdfTrigger.textContent = "选择 URDF / ZIP";
+        stitchUrdfTrigger.style.marginTop = "10px";
+        stitchUrdfTrigger.style.padding = "8px 12px";
+        stitchUrdfTrigger.style.border = "1px solid rgba(76, 215, 246, 0.5)";
+        stitchUrdfTrigger.style.borderRadius = "6px";
+        stitchUrdfTrigger.style.background = "rgba(76, 215, 246, 0.14)";
+        stitchUrdfTrigger.style.color = "#4cd7f6";
+        stitchUrdfTrigger.style.fontWeight = "800";
+        stitchUrdfTrigger.style.cursor = "pointer";
+        (stitchUrdfDropzone ?? stitchUrdfInput.parentElement ?? stitchUrdfPanel)?.appendChild(stitchUrdfTrigger);
+      }
+      if (stitchUrdfInput) {
         stitchUrdfInput.onchange = (event) => {
           const file = (event.currentTarget as HTMLInputElement).files?.[0] ?? null;
           if (!file) return;
@@ -5783,13 +5818,14 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           const currentModelLabel = doc.querySelector<HTMLElement>("#urdf-import-panel span.font-data-tabular");
           if (currentModelLabel) currentModelLabel.textContent = `当前模型: ${file.name}`;
         };
-      }
-      if (stitchUrdfInput && stitchUrdfDropzone && stitchUrdfDropzone.dataset.codexBound !== "true") {
-        stitchUrdfDropzone.dataset.codexBound = "true";
-        stitchUrdfDropzone.onclick = (event) => {
+        const openStitchUrdfImport = (event: Event) => {
           event.preventDefault();
+          event.stopPropagation();
+          stitchUrdfInput.value = "";
           stitchUrdfInput.click();
         };
+        if (stitchUrdfDropzone) stitchUrdfDropzone.onclick = openStitchUrdfImport;
+        if (stitchUrdfTrigger) stitchUrdfTrigger.onclick = openStitchUrdfImport;
       }
       if (twinImportRequest?.file) {
         const currentModelLabel = doc.querySelector<HTMLElement>("#urdf-import-panel span.font-data-tabular");
