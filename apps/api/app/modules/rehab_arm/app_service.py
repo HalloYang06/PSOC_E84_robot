@@ -5,6 +5,7 @@ import json
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -561,6 +562,190 @@ def _emg_dict(summary: RehabAppEmgSummary) -> dict:
         "created_at": summary.created_at,
         "control_boundary": "emg_summary_only_not_motion_permission",
     }
+
+
+LIVE_EMG_CHANNELS = (
+    ("ch1", "biceps"),
+    ("ch2", "triceps"),
+    ("ch3", "forearm_flexors"),
+    ("ch4", "reserved"),
+)
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _int_or_zero(value: Any) -> int:
+    number = _float_or_none(value)
+    return int(number) if number is not None else 0
+
+
+def _emg_channel_key(value: Any, index: int) -> str:
+    raw = str(value or f"ch{index + 1}").strip().lower().replace("_", "").replace("-", "")
+    if raw.isdigit():
+        return f"ch{raw}"
+    if raw.startswith("channel"):
+        return f"ch{raw.removeprefix('channel')}"
+    return raw if raw.startswith("ch") else f"ch{index + 1}"
+
+
+def _normalize_live_emg_channels(emg: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_channels = emg.get("channels") if isinstance(emg.get("channels"), list) else []
+    by_channel: dict[str, dict[str, Any]] = {}
+    for index, item in enumerate(raw_channels):
+        if not isinstance(item, dict):
+            continue
+        by_channel[_emg_channel_key(item.get("channel"), index)] = item
+
+    unit = str(emg.get("unit") or "adc_count")
+    normalized_channels: list[dict[str, Any]] = []
+    for index, (channel, default_muscle) in enumerate(LIVE_EMG_CHANNELS):
+        source = by_channel.get(channel)
+        if source is None and index < len(raw_channels) and isinstance(raw_channels[index], dict):
+            source = raw_channels[index]
+        source = source or {}
+        raw_adc = _int_or_zero(source.get("raw_adc") or source.get("adc") or source.get("adc_count"))
+        voltage_v = _float_or_none(source.get("voltage_v") or source.get("voltage"))
+        if voltage_v is None:
+            voltage_v = round(raw_adc * 3.3 / 4095.0, 3)
+        normalized = _float_or_none(source.get("normalized") or source.get("value") or source.get("activation"))
+        if normalized is None:
+            normalized = round(raw_adc / 4095.0, 4) if raw_adc else 0.0
+        normalized_channels.append(
+            {
+                "channel": channel,
+                "muscle": str(source.get("muscle") or source.get("muscle_name") or default_muscle),
+                "raw_adc": raw_adc,
+                "unit": unit,
+                "voltage_v": round(float(voltage_v), 3),
+                "normalized": round(float(normalized), 4),
+                "connected": bool(source) and raw_adc > 0,
+                "quality": source.get("quality") if isinstance(source.get("quality"), dict) else {},
+            }
+        )
+    return normalized_channels
+
+
+def _live_emg_quality(emg: dict[str, Any]) -> str:
+    quality = emg.get("quality") if isinstance(emg.get("quality"), dict) else {}
+    return str(quality.get("status") or emg.get("contact_quality") or "unknown")
+
+
+def _live_emg_from_sensor_state(
+    record: dict[str, Any] | None,
+    *,
+    app_device: RehabAppDeviceBinding,
+    platform_device_id: str,
+) -> dict | None:
+    if not isinstance(record, dict):
+        return None
+    payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+    emg = payload.get("emg") if isinstance(payload.get("emg"), dict) else {}
+    if not emg:
+        return None
+    project_id = str(record.get("project_id") or payload.get("project_id") or payload.get("projectId") or "").strip()
+    if app_device.platform_project_id and project_id and project_id != app_device.platform_project_id:
+        return None
+
+    channels = _normalize_live_emg_channels(emg)
+    raw_values = [channel["raw_adc"] for channel in channels]
+    normalized_values = [float(channel["normalized"]) for channel in channels]
+    record_ts = _float_or_none(record.get("ts_unix"))
+    payload_ts = _float_or_none(payload.get("ts_unix"))
+    now_ts = datetime.now(timezone.utc).timestamp()
+    freshness_ms = int(max(0, now_ts - (record_ts or now_ts)) * 1000)
+    first_channel = channels[0]
+    intent_prediction = payload.get("intent_prediction") if isinstance(payload.get("intent_prediction"), dict) else {}
+    model_outputs = payload.get("model_outputs") if isinstance(payload.get("model_outputs"), dict) else {}
+    if not intent_prediction and isinstance(emg.get("intent_prediction"), dict):
+        intent_prediction = emg["intent_prediction"]
+    if not model_outputs and isinstance(emg.get("model_outputs"), dict):
+        model_outputs = emg["model_outputs"]
+
+    return {
+        "id": f"live-sensor-state:{platform_device_id}",
+        "user_id": app_device.user_id,
+        "session_id": "",
+        "source": "live_sensor_state",
+        "platform_project_id": project_id or app_device.platform_project_id,
+        "platform_device_id": platform_device_id,
+        "app_device_id": app_device.id,
+        "m33_device_id": app_device.m33_device_id,
+        "sensor_state_record_ts_unix": record_ts,
+        "sensor_state_payload_ts_unix": payload_ts,
+        "freshness_ms": freshness_ms,
+        "schema_version": str(emg.get("schema_version") or "rehab_arm_emg4_adc_v1"),
+        "sample_rate_hz": _float_or_none(emg.get("sample_rate_hz")),
+        "channel_count": len(channels),
+        "channels": channels,
+        "channel": first_channel["channel"],
+        "muscle_name": first_channel["muscle"],
+        "rms_avg": round(sum(normalized_values) / len(normalized_values), 4) if normalized_values else 0.0,
+        "peak": max(raw_values) if raw_values else 0,
+        "activation_avg": round(sum(normalized_values) / len(normalized_values), 4) if normalized_values else 0.0,
+        "fatigue_index": _float_or_none(payload.get("fatigue_score") or emg.get("fatigue_index")),
+        "contact_quality": _live_emg_quality(emg),
+        "intent_prediction": intent_prediction,
+        "model_outputs": model_outputs,
+        "created_at": datetime.fromtimestamp(record_ts, timezone.utc) if record_ts else None,
+        "control_boundary": "emg_live_sensor_state_only_not_motion_permission",
+    }
+
+
+def _live_emg_candidates_for_device(app_device: RehabAppDeviceBinding) -> list[dict]:
+    from .service import _device_latest, build_dashboard
+
+    candidates: list[dict] = []
+    seen_platform_devices: set[str] = set()
+    direct_device_id = str(app_device.m33_device_id or "").strip()
+    if direct_device_id:
+        mapped = _live_emg_from_sensor_state(
+            _device_latest(direct_device_id, "sensor_state"),
+            app_device=app_device,
+            platform_device_id=direct_device_id,
+        )
+        if mapped:
+            candidates.append(mapped)
+            seen_platform_devices.add(direct_device_id)
+
+    project_id = str(app_device.platform_project_id or "").strip()
+    if project_id:
+        dashboard = build_dashboard(project_id)
+        for device in dashboard.get("devices") or []:
+            if not isinstance(device, dict):
+                continue
+            platform_device_id = str(device.get("device_id") or "").strip()
+            if not platform_device_id or platform_device_id in seen_platform_devices:
+                continue
+            mapped = _live_emg_from_sensor_state(
+                device.get("sensor_state"),
+                app_device=app_device,
+                platform_device_id=platform_device_id,
+            )
+            if mapped:
+                candidates.append(mapped)
+                seen_platform_devices.add(platform_device_id)
+    return candidates
+
+
+def _latest_live_emg_summary(db: Session, user_id: str) -> dict | None:
+    devices = list(
+        db.scalars(
+            select(RehabAppDeviceBinding)
+            .where(RehabAppDeviceBinding.user_id == user_id, RehabAppDeviceBinding.trust_status != "revoked")
+            .order_by(RehabAppDeviceBinding.bound_at.desc())
+        )
+    )
+    candidates = [candidate for device in devices for candidate in _live_emg_candidates_for_device(device)]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: float(item.get("sensor_state_record_ts_unix") or 0))
 
 
 def _intent_dict(summary: RehabAppIntentInferenceSummary) -> dict:
@@ -5040,6 +5225,10 @@ def record_emg_summary(db: Session, user_id: str, payload: dict) -> dict:
 
 
 def latest_emg_summary(db: Session, user_id: str) -> dict | None:
+    live_summary = _latest_live_emg_summary(db, user_id)
+    if live_summary:
+        return live_summary
+
     summary = db.scalar(
         select(RehabAppEmgSummary)
         .where(RehabAppEmgSummary.user_id == user_id)

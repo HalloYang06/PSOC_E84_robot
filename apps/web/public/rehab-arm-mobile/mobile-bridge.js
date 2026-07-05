@@ -735,6 +735,99 @@
     }
   }
 
+  function numberOr(value, fallback = 0) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : fallback;
+  }
+
+  function latestEmgChannels(latestEmg) {
+    const defaults = [
+      { channel: "ch1", muscle: "biceps" },
+      { channel: "ch2", muscle: "triceps" },
+      { channel: "ch3", muscle: "forearm_flexors" },
+      { channel: "ch4", muscle: "reserved" }
+    ];
+    const sourceChannels = latestEmg && Array.isArray(latestEmg.channels) ? latestEmg.channels : [];
+    return defaults.map((fallback, index) => {
+      const source = sourceChannels[index] || {};
+      const rawAdc = Math.round(numberOr(source.raw_adc, 0));
+      const voltage = numberOr(source.voltage_v, rawAdc * 3.3 / 4095);
+      const normalized = numberOr(source.normalized, rawAdc ? rawAdc / 4095 : 0);
+      return {
+        channel: String(source.channel || fallback.channel).toUpperCase(),
+        muscle: source.muscle || source.muscle_name || fallback.muscle,
+        rawAdc,
+        voltage,
+        normalized,
+        connected: Boolean(source.connected || rawAdc > 0)
+      };
+    });
+  }
+
+  function latestEmgModel(latestEmg) {
+    const intent = latestEmg && latestEmg.intent_prediction ? latestEmg.intent_prediction : {};
+    const model = latestEmg && latestEmg.model_outputs ? latestEmg.model_outputs : {};
+    const candidates = Array.isArray(model.candidates) ? model.candidates : [];
+    const firstCandidate = candidates[0] || {};
+    const label = intent.predicted_action || model.summary || firstCandidate.label || "等待 M55 推理";
+    const confidence = intent.confidence != null ? intent.confidence : firstCandidate.confidence;
+    return { label, confidence: confidence == null ? null : numberOr(confidence, null) };
+  }
+
+  function removeLiveEmgPanel() {
+    const panel = document.querySelector("[data-arm-live-emg]");
+    if (panel) panel.remove();
+  }
+
+  function renderLiveEmgPanel(state) {
+    if (pageName() !== "emg.html") {
+      removeLiveEmgPanel();
+      return;
+    }
+    const latestEmg = state.latestEmg || null;
+    const channels = latestEmgChannels(latestEmg);
+    const model = latestEmgModel(latestEmg);
+    const hasLiveChannels = Boolean(latestEmg && Array.isArray(latestEmg.channels));
+    const deviceId = latestEmg && (latestEmg.platform_device_id || latestEmg.m33_device_id || latestEmg.app_device_id);
+    const source = latestEmg && latestEmg.source ? latestEmg.source : "waiting";
+    const confidenceText = model.confidence == null ? "等待同步" : `${Math.round(model.confidence * 100)}%`;
+    const freshness = latestEmg && latestEmg.freshness_ms != null ? `${Math.round(numberOr(latestEmg.freshness_ms, 0))} ms` : "--";
+    const panel = document.querySelector("[data-arm-live-emg]") || document.createElement("section");
+    panel.setAttribute("data-arm-live-emg", "true");
+    panel.style.cssText = [
+      "grid-column:1 / -1",
+      "padding:14px",
+      "border:1px solid #99f6e4",
+      "border-radius:8px",
+      "background:#f8fafc",
+      "box-shadow:0 10px 24px rgba(15,23,42,.08)",
+      "font:600 12px/1.5 Inter,system-ui,sans-serif",
+      "color:#0f172a"
+    ].join(";");
+    panel.innerHTML = [
+      '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap">',
+      '<div>',
+      '<div style="font-size:12px;color:#0f766e;font-weight:900;letter-spacing:.04em">SERVER EMG LIVE</div>',
+      `<div style="font-size:17px;font-weight:900;margin-top:2px">${hasLiveChannels ? "四路肌电服务器下发" : "等待服务器肌电"}</div>`,
+      `<div style="color:#475569;margin-top:2px">来源 ${escapeHtml(source)} · 设备 ${escapeHtml(deviceId || "--")} · fresh ${escapeHtml(freshness)}</div>`,
+      "</div>",
+      `<div style="border:1px solid #bae6fd;border-radius:8px;padding:8px 10px;background:#ecfeff;min-width:132px"><div style="color:#0369a1">M55 推理</div><div style="font-size:16px;font-weight:900;color:#0f172a">${escapeHtml(model.label)}</div><div style="color:#475569">置信度 ${escapeHtml(confidenceText)}</div></div>`,
+      "</div>",
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:8px">',
+      ...channels.map((channel) => [
+        `<div style="border:1px solid ${channel.connected ? "#67e8f9" : "#e2e8f0"};border-radius:8px;padding:10px;background:${channel.connected ? "#ecfeff" : "#ffffff"}">`,
+        `<div style="display:flex;justify-content:space-between;gap:8px"><span style="font-weight:900">${escapeHtml(channel.channel)}</span><span style="color:${channel.connected ? "#0891b2" : "#94a3b8"}">${channel.connected ? "active" : "0"}</span></div>`,
+        `<div style="color:#475569;margin-top:2px">${escapeHtml(channel.muscle)}</div>`,
+        `<div style="font-size:18px;font-weight:900;margin-top:6px">${channel.rawAdc}</div>`,
+        `<div style="color:#64748b">ADC · ${channel.voltage.toFixed(3)} V · ${Math.round(channel.normalized * 100)}%</div>`,
+        "</div>"
+      ].join("")),
+      "</div>"
+    ].join("");
+    const main = document.querySelector("main") || document.body;
+    if (!panel.parentNode) main.prepend(panel);
+  }
+
   function annotatePage(state) {
     const current = pageName();
     const bootstrap = state.bootstrap || {};
@@ -851,6 +944,7 @@
     }
     renderTrainingLibraryPage(state);
     if (current === "emg.html") {
+      renderLiveEmgPanel(state);
       replaceFirst(["肱二头肌", "biceps"], state.latestEmg ? state.latestEmg.muscle_name : "等待肌电记录");
       replaceAll(["Exoskeleton: Connected"], "设备待绑定");
       replaceAll(["实时肌肉等待记录与动作意图推断。M55 医疗审批生效中。"], "肌电和动作意图只显示后端记录；未连接 M55 时保持等待。");
@@ -864,6 +958,8 @@
       replaceAll(["屈曲"], "等待意图记录");
       replaceAll(["置信度: 98%"], "置信度：待同步");
       replaceAll(["CH3 88%", "CH1 42%"], "等待记录");
+    } else {
+      removeLiveEmgPanel();
     }
     if (current === "report.html") {
       const report = bootstrap.latest_report || {};
@@ -1582,11 +1678,22 @@
     });
   }
 
+  let liveEmgRefreshTimer = null;
+
+  function startLiveEmgRefreshLoop() {
+    if (pageName() !== "emg.html" || liveEmgRefreshTimer) return;
+    liveEmgRefreshTimer = window.setInterval(() => {
+      if (document.visibilityState === "hidden") return;
+      refreshFromBackend().catch(() => null);
+    }, 2000);
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     bindNav();
     bindActions();
     setupNativeSppInboundListener();
     upsertStatusStrip(readState());
     await refreshFromBackend();
+    startLiveEmgRefreshLoop();
   });
 })();
