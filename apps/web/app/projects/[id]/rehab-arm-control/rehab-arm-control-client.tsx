@@ -2603,6 +2603,13 @@ function Arm3DOverview({
               meshIndex += 1;
             }
           });
+          if (!meshIndex && !loadedMeshes) {
+            robotRef.current = null;
+            const demoArm = addDemoArmModel();
+            frameMetricRobot(demoArm);
+            setUrdfState("failed");
+            return;
+          }
           robot.position.set(0, 0, 0);
           robot.scale.setScalar(1);
           applyJointValues(robot);
