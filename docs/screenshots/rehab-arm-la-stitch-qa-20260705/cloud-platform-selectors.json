@@ -1,0 +1,142 @@
+[
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": null,
+    "text": "nanopi-m5",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": null,
+    "text": "nanopi-m55-cloud-vla-check",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": null,
+    "text": "nanopi-m55-cloud-vla",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": null,
+    "text": "nanopi-m5-isolation-check",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": null,
+    "text": "急停",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "overview",
+    "text": "CMD总控",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "vision",
+    "text": "V视觉",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "digital_twin",
+    "text": "3D孪生",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "muscle_assist",
+    "text": "EMG肌电",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "ai_model",
+    "text": "AI模型",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "mode_router",
+    "text": "L模式",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "training",
+    "text": "TRN训练",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "data_hub",
+    "text": "DATA数据",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "action_planner",
+    "text": "A动作",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "diagnostics",
+    "text": "IO诊断",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": "logs",
+    "text": "LOG日志",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": null,
+    "text": "STOP",
+    "href": null
+  },
+  {
+    "tag": "BUTTON",
+    "role": null,
+    "route": null,
+    "text": "fullscreen\n全屏视图",
+    "href": null
+  },
+  {
+    "tag": "A",
+    "role": null,
+    "route": null,
+    "text": "隐私政策",
+    "href": "#"
+  },
+  {
+    "tag": "A",
+    "role": null,
+    "route": null,
+    "text": "操作手册",
+    "href": "#"
+  }
+]

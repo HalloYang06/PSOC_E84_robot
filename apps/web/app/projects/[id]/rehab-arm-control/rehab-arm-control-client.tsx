@@ -4902,6 +4902,20 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
           width: calc(100vw - 72px) !important;
           height: calc(100vh - 56px) !important;
         }
+        body > div.flex {
+          margin-left: 72px !important;
+          margin-top: 56px !important;
+          width: calc(100vw - 72px) !important;
+          height: calc(100vh - 56px) !important;
+        }
+        body > div.flex > nav:first-child,
+        body > div.flex > aside:first-child {
+          display: none !important;
+        }
+        body > div.flex > main {
+          min-width: 0 !important;
+          flex: 1 1 auto !important;
+        }
         body > div.flex-1 > header.top-bar {
           display: none !important;
         }

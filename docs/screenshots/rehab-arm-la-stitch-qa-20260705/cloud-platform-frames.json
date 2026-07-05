@@ -1,0 +1,12 @@
+[
+  {
+    "url": "http://106.55.62.122:3001/projects/e201f41c-25a6-46e1-baf8-be6dcb83284c/rehab-arm-control",
+    "name": "",
+    "text": ""
+  },
+  {
+    "url": "http://106.55.62.122:3001/rehab-stitch/overview.html",
+    "name": "",
+    "text": "VLA 控制台\nnanopi-m5\nnanopi-m55-cloud-vla-check\nnanopi-m55-cloud-vla\nnanopi-m5-isolation-check\nLIVE\nREAD ONLY\n急停\nV\nREHAB\nCMD\n总控\nV\n视觉\n3D\n孪生\nEMG\n肌电\nAI\n模型\nL\n模式\nTRN\n训练\nDATA\n数据\nA\n动作\nIO\n诊断\nLOG\n日志\nSTOP\n左摄像头视角：激活 / STEREO_B1\n延迟: 12ms\n帧率: 60\n右摄像头视角：激活 / STEREO_B1\npsychology\n意图\nalt_route\n路由\nads_click\n目标\nedit_note\n规划\nterminal\n命令\n目标向量: [0.12, 0.85, 0.44]\n距离: 1.42m\n置信度: 98.2%\n电机遥测\n关节_01_位置\n112.4°\n关节_02_位置\n-45.1°\n核心温度\n38.2°C\nCAN 状态\n正常\n扭矩负载\n2.4Nm\nfullscreen\n全屏视图\nURDF 模型: VLA_R_V1\n已与物理实例_01同步\n求解精度\n0.0001ms\n预测引擎\ntrending_up\n辅助方向\n向上延伸\n置信评分\n94.8%\nEMG 通道 [4]\n通道_01: 肱二头肌长头\n0.82mV\n通道_02: 肱三头肌外侧\n0.14mV\n通道_03: 肱肌\n0.45mV\n通道_04: 三角肌前束\n1.12mV\n系统状态\n传感器: 稳定\n电极阻抗: < 5kΩ\n自适应增益: 自动开启\n模式编排\n\n意图分类与资源路由\n\n语言意图\n\"帮我拿那个烧杯\"\nexpand_more\nVLA 解析器 V4\n目标: 烧杯_01\n动作: 抓取并递送\nhub\nVLA 路由\n辅助模式\n聊天\n抓取模式\nV OBSERVE\n训练模式\n等待 V 目标\n稳定模式\nM33 LOCKED\n共享资源:\n> GPU 预留: 2.1GB\n> CAN 总线优先级: 高\n> 视觉管线: 立体同步\n[2026/07/05 14:34:49]\nstereo_vision_context: stereo_vision_context\n[2026/07/05 14:34:49]\ncamera_keyframe: 摄像头关键帧\n[2026/07/05 14:34:49]\ncamera_keyframe: 摄像头关键帧\n[2026/07/05 14:34:40]\nstereo_vision_context: stereo_vision_context\n[2026/07/05 14:34:40]\ncamera_keyframe: 摄像头关键帧\n[2026/07/05 14:34:40]\ncamera_keyframe: 摄像头关键帧\n[2026/07/05 14:34:31]\nstereo_vision_"
+  }
+]

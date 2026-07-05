@@ -3,488 +3,441 @@
 <html class="dark" lang="zh-CN"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>VLA 模式调度 / 语义路由控制台</title>
+<title>VLA AI 模型中继实验室 / 语义模式调度台</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&amp;family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
         tailwind.config = {
-          darkMode: "class",
-          theme: {
-            extend: {
-              "colors": {
-                      "on-tertiary": "#68000a",
-                      "on-surface-variant": "#bcc9cd",
-                      "on-secondary": "#472a00",
-                      "inverse-surface": "#e2e2e8",
-                      "on-primary-container": "#00424f",
-                      "inverse-on-surface": "#2f3035",
-                      "primary": "#4cd7f6",
-                      "on-primary": "#003640",
-                      "primary-fixed": "#acedff",
-                      "surface-bright": "#37393e",
-                      "tertiary-fixed": "#ffdad7",
-                      "error-container": "#93000a",
-                      "background": "#111318",
-                      "on-tertiary-fixed-variant": "#930013",
-                      "surface-dim": "#111318",
-                      "surface-container-lowest": "#0c0e12",
-                      "secondary-fixed-dim": "#ffb95f",
-                      "secondary": "#ffb95f",
-                      "secondary-container": "#ee9800",
-                      "on-surface": "#e2e2e8",
-                      "surface": "#111318",
-                      "on-tertiary-fixed": "#410004",
-                      "on-primary-fixed-variant": "#004e5c",
-                      "inverse-primary": "#00687a",
-                      "primary-container": "#06b6d4",
-                      "on-error-container": "#ffdad6",
-                      "on-secondary-container": "#5b3800",
-                      "tertiary": "#ffb3ad",
-                      "surface-container": "#1e2024",
-                      "primary-fixed-dim": "#4cd7f6",
-                      "on-primary-fixed": "#001f26",
-                      "on-secondary-fixed-variant": "#653e00",
-                      "on-tertiary-container": "#7e000f",
-                      "surface-tint": "#4cd7f6",
-                      "on-secondary-fixed": "#2a1700",
-                      "on-error": "#690005",
-                      "outline-variant": "#3d494c",
-                      "secondary-fixed": "#ffddb8",
-                      "error": "#ffb4ab",
-                      "surface-container-low": "#1a1c20",
-                      "surface-variant": "#333539",
-                      "surface-container-highest": "#333539",
-                      "surface-container-high": "#282a2e",
-                      "tertiary-fixed-dim": "#ffb3ad",
-                      "tertiary-container": "#ff817a",
-                      "outline": "#869397",
-                      "on-background": "#e2e2e8"
-              },
-              "borderRadius": {
-                      "DEFAULT": "0.125rem",
-                      "lg": "0.25rem",
-                      "xl": "0.5rem",
-                      "full": "0.75rem"
-              },
-              "spacing": {
-                      "margin": "32px",
-                      "panel-padding": "24px",
-                      "gutter": "16px",
-                      "unit": "4px"
-              },
-              "fontFamily": {
-                      "label-caps": [
-                              "JetBrains Mono"
-                      ],
-                      "headline-md": [
-                              "Geist"
-                      ],
-                      "data-tabular": [
-                              "JetBrains Mono"
-                      ],
-                      "display-lg": [
-                              "Geist"
-                      ],
-                      "body-base": [
-                              "Inter"
-                      ]
-              },
-              "fontSize": {
-                      "label-caps": [
-                              "11px",
-                              {
-                                      "lineHeight": "16px",
-                                      "letterSpacing": "0.1em",
-                                      "fontWeight": "700"
-                              }
-                      ],
-                      "headline-md": [
-                              "24px",
-                              {
-                                      "lineHeight": "32px",
-                                      "letterSpacing": "0.01em",
-                                      "fontWeight": "600"
-                              }
-                      ],
-                      "data-tabular": [
-                              "14px",
-                              {
-                                      "lineHeight": "20px",
-                                      "letterSpacing": "0.05em",
-                                      "fontWeight": "500"
-                              }
-                      ],
-                      "display-lg": [
-                              "48px",
-                              {
-                                      "lineHeight": "56px",
-                                      "letterSpacing": "-0.02em",
-                                      "fontWeight": "700"
-                              }
-                      ],
-                      "body-base": [
-                              "16px",
-                              {
-                                      "lineHeight": "24px",
-                                      "fontWeight": "400"
-                              }
-                      ]
-              }
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-bright": "#37393e",
+                        "surface-container-lowest": "#0c0e12",
+                        "surface-variant": "#333539",
+                        "surface-tint": "#4cd7f6",
+                        "on-tertiary-fixed": "#410004",
+                        "on-primary-container": "#00424f",
+                        "tertiary-fixed-dim": "#ffb3ad",
+                        "primary-fixed-dim": "#4cd7f6",
+                        "surface-container-low": "#1a1c20",
+                        "on-tertiary": "#68000a",
+                        "primary-container": "#06b6d4",
+                        "tertiary": "#ffb3ad",
+                        "on-secondary-fixed": "#2a1700",
+                        "inverse-on-surface": "#2f3035",
+                        "surface-container-highest": "#333539",
+                        "error": "#ffb4ab",
+                        "primary-fixed": "#acedff",
+                        "surface-dim": "#111318",
+                        "inverse-primary": "#00687a",
+                        "secondary-fixed-dim": "#ffb95f",
+                        "secondary": "#ffb95f",
+                        "on-secondary-fixed-variant": "#653e00",
+                        "background": "#111318",
+                        "surface": "#111318",
+                        "secondary-fixed": "#ffddb8",
+                        "on-primary-fixed-variant": "#004e5c",
+                        "inverse-surface": "#e2e2e8",
+                        "on-error-container": "#ffdad6",
+                        "on-secondary": "#472a00",
+                        "secondary-container": "#ee9800",
+                        "tertiary-fixed": "#ffdad7",
+                        "primary": "#4cd7f6",
+                        "outline-variant": "#3d494c",
+                        "on-tertiary-fixed-variant": "#930013",
+                        "on-surface": "#e2e2e8",
+                        "surface-container": "#1e2024",
+                        "on-error": "#690005",
+                        "on-secondary-container": "#5b3800",
+                        "tertiary-container": "#ff817a",
+                        "on-primary-fixed": "#001f26",
+                        "surface-container-high": "#282a2e",
+                        "on-tertiary-container": "#7e000f",
+                        "on-surface-variant": "#bcc9cd",
+                        "on-primary": "#003640",
+                        "error-container": "#93000a",
+                        "on-background": "#e2e2e8",
+                        "outline": "#869397"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "gutter": "16px",
+                        "margin": "32px",
+                        "unit": "4px",
+                        "panel-padding": "24px"
+                    },
+                    "fontFamily": {
+                        "headline-md": ["Geist"],
+                        "display-lg": ["Geist"],
+                        "data-tabular": ["JetBrains Mono"],
+                        "body-base": ["Inter"],
+                        "label-caps": ["JetBrains Mono"]
+                    },
+                    "fontSize": {
+                        "headline-md": ["24px", { "lineHeight": "32px", "letterSpacing": "0.01em", "fontWeight": "600" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
+                        "data-tabular": ["14px", { "lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "body-base": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "label-caps": ["11px", { "lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "700" }]
+                    }
+                }
             }
-          }
         }
     </script>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <style>
         body {
             background-color: #0A0C10;
-            color: #e2e2e8;
+            background-image: linear-gradient(0deg, transparent 24%, rgba(255, 255, 255, .03) 25%, rgba(255, 255, 255, .03) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, .03) 75%, rgba(255, 255, 255, .03) 76%, transparent 77%, transparent), linear-gradient(90deg, transparent 24%, rgba(255, 255, 255, .03) 25%, rgba(255, 255, 255, .03) 26%, transparent 27%, transparent 74%, rgba(255, 255, 255, .03) 75%, rgba(255, 255, 255, .03) 76%, transparent 77%, transparent);
+            background-size: 50px 50px;
             overflow: hidden;
-            background-image: 
-                linear-gradient(to right, rgba(76, 215, 246, 0.02) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(76, 215, 246, 0.02) 1px, transparent 1px);
-            background-size: 40px 40px;
         }
 
         .glass-panel {
-            background: rgba(26, 28, 32, 0.6);
+            background: rgba(12, 14, 18, 0.4);
             backdrop-filter: blur(30px);
-            border: 1px solid rgba(76, 215, 246, 0.1);
+            -webkit-backdrop-filter: blur(30px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .glass-card-active {
-            background: rgba(26, 28, 32, 0.8);
-            backdrop-filter: blur(40px);
-            border: 1px solid rgba(76, 215, 246, 0.3);
-            box-shadow: 0 0 20px rgba(76, 215, 246, 0.1);
+        .glass-panel-active {
+            border: 1px solid rgba(76, 215, 246, 0.2);
+            box-shadow: inset 0 0 20px rgba(76, 215, 246, 0.05);
         }
 
         .scanline {
-            position: absolute;
-            top: 0;
-            left: 0;
             width: 100%;
             height: 2px;
             background: rgba(76, 215, 246, 0.3);
-            box-shadow: 0 0 10px rgba(76, 215, 246, 0.5);
+            position: absolute;
+            top: 0;
+            left: 0;
             animation: scan 4s linear infinite;
             z-index: 50;
             pointer-events: none;
+            opacity: 0.5;
         }
 
         @keyframes scan {
-            0% { transform: translateY(-10px); opacity: 0; }
-            10% { opacity: 1; }
-            90% { opacity: 1; }
-            100% { transform: translateY(100vh); opacity: 0; }
+            0% { top: 0; }
+            100% { top: 100%; }
         }
 
-        .glow-line {
-            stroke-dasharray: 100;
-            animation: dash 2s linear infinite;
+        .glow-cyan { text-shadow: 0 0 10px rgba(76, 215, 246, 0.5); }
+        .glow-amber { text-shadow: 0 0 10px rgba(255, 185, 95, 0.5); }
+
+        .pulse-border {
+            animation: pulse-border 2s infinite;
         }
         
-        @keyframes dash {
-            to { stroke-dashoffset: -200; }
+        @keyframes pulse-border {
+            0% { border-color: rgba(76, 215, 246, 0.2); box-shadow: 0 0 0 0 rgba(76, 215, 246, 0.2); }
+            70% { border-color: rgba(76, 215, 246, 0.6); box-shadow: 0 0 0 10px rgba(76, 215, 246, 0); }
+            100% { border-color: rgba(76, 215, 246, 0.2); box-shadow: 0 0 0 0 rgba(76, 215, 246, 0); }
         }
 
-        .pulse-ring {
-            animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        ::-webkit-scrollbar {
+            width: 4px;
+            height: 4px;
         }
-
-        @keyframes pulse-ring {
-            0% { transform: scale(0.95); opacity: 0.5; }
-            50% { transform: scale(1.05); opacity: 0.2; }
-            100% { transform: scale(0.95); opacity: 0.5; }
+        ::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.02);
         }
-
-        /* Material Symbols Setup */
-        .material-symbols-outlined {
-            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        ::-webkit-scrollbar-thumb {
+            background: rgba(76, 215, 246, 0.2);
+            border-radius: 2px;
         }
-        
-        .material-symbols-outlined.fill {
-            font-variation-settings: 'FILL' 1;
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(76, 215, 246, 0.5);
         }
-        
-        /* Custom scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(76, 215, 246, 0.2); border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: rgba(76, 215, 246, 0.4); }
     </style>
 </head>
-<body class="h-screen flex flex-col font-body-base bg-background text-on-surface antialiased overflow-hidden selection:bg-primary-container selection:text-on-primary-container">
+<body class="text-on-surface h-screen flex flex-col font-body-base overflow-hidden selection:bg-primary/30">
 <div class="scanline"></div>
-<!-- TopAppBar from JSON -->
-<header class="fixed top-0 right-0 w-[calc(100%-320px)] h-16 flex items-center justify-between px-margin z-40 bg-surface/60 backdrop-blur-xl border-b border-outline-variant/30">
+<!-- TopNavBar -->
+<header class="bg-surface/30 backdrop-blur-3xl flex justify-between items-center w-full px-gutter h-16 z-50 docked full-width top-0 border-b border-outline-variant/20 shadow-lg shadow-primary/5 shrink-0">
 <div class="flex items-center gap-4">
-<span class="font-display-lg text-headline-md text-primary uppercase tracking-widest">VLA AI 模型中继实验室</span>
-<nav class="hidden md:flex items-center gap-6 ml-8">
-<!-- Navigation Structure -->
-<a class="text-on-surface-variant hover:text-on-surface transition-colors font-data-tabular text-data-tabular" href="#">核心面板</a>
-<!-- We map the active state to the routing logic intent -->
-<a class="text-primary border-b-2 border-primary pb-1 font-data-tabular text-data-tabular font-bold" href="#">语义模式调度台</a>
-<a class="text-on-surface-variant hover:text-on-surface transition-colors font-data-tabular text-data-tabular" href="#">模型部署</a>
-<a class="text-on-surface-variant hover:text-on-surface transition-colors font-data-tabular text-data-tabular" href="#">接入文档</a>
-</nav>
+<span class="material-symbols-outlined text-primary text-[28px]">hub</span>
+<h1 class="font-display-lg text-headline-md tracking-tighter text-primary">VLA-LITE 语义调度</h1>
+<span class="ml-4 font-label-caps text-label-caps text-on-surface-variant border border-outline-variant/30 px-2 py-1 rounded-sm bg-surface-container-lowest/50">VLA AI 模型中继实验室 / 语义模式调度台</span>
 </div>
-<div class="flex items-center gap-4">
-<!-- System Status -->
-<div class="flex items-center gap-2 bg-surface-container px-3 py-1.5 rounded-full border border-outline-variant/50">
-<div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
-<span class="font-data-tabular text-label-caps text-on-surface-variant">nanopi-m5 | V2.4.1</span>
-</div>
-<div class="flex items-center gap-3 ml-4">
-<button aria-label="notifications" class="text-on-surface-variant hover:text-primary-fixed-dim transition-colors">
-<span class="material-symbols-outlined">notifications</span>
+<div class="flex items-center gap-6">
+<div class="flex gap-4">
+<button class="text-on-surface-variant font-medium hover:bg-primary/10 transition-colors duration-200 cursor-pointer active:scale-95 transition-transform p-2 rounded-full" data-role="router-refresh">
+<span class="material-symbols-outlined">refresh</span>
 </button>
-<button aria-label="account_tree" class="text-on-surface-variant hover:text-primary-fixed-dim transition-colors">
-<span class="material-symbols-outlined">account_tree</span>
+<button class="text-on-surface-variant font-medium hover:bg-primary/10 transition-colors duration-200 cursor-pointer active:scale-95 transition-transform p-2 rounded-full">
+<span class="material-symbols-outlined" data-weight="fill" style="font-variation-settings: 'FILL' 1;">notifications</span>
 </button>
-<button aria-label="cloud_done" class="text-on-surface-variant hover:text-primary-fixed-dim transition-colors">
-<span class="material-symbols-outlined">cloud_done</span>
+<button class="text-on-surface-variant font-medium hover:bg-primary/10 transition-colors duration-200 cursor-pointer active:scale-95 transition-transform p-2 rounded-full">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<button class="text-on-surface-variant font-medium hover:bg-primary/10 transition-colors duration-200 cursor-pointer active:scale-95 transition-transform p-2 rounded-full text-error/80 hover:text-error hover:bg-error/10" data-role="router-gate-state">
+<span class="material-symbols-outlined">power_settings_new</span>
 </button>
 </div>
-<button class="ml-4 px-4 py-1.5 border border-primary text-primary rounded hover:bg-primary/10 transition-colors font-label-caps text-label-caps tracking-widest uppercase">
-                部署至边缘
-            </button>
+<div class="w-px h-6 bg-outline-variant/30"></div>
+<div class="w-8 h-8 rounded-full bg-surface-container-high border border-outline-variant/30 overflow-hidden flex items-center justify-center">
+<span class="material-symbols-outlined text-on-surface-variant text-sm">person</span>
+</div>
 </div>
 </header>
-<!-- SideNavBar from JSON -->
-<aside class="fixed left-0 top-0 h-full flex flex-col z-50 bg-surface-container-low/80 backdrop-blur-3xl docked left-0 h-full w-[320px] border-r border-outline-variant/20 shadow-[0_0_40px_rgba(0,0,0,0.5)]">
-<div class="p-margin border-b border-outline-variant/20">
-<h1 class="font-display-lg text-headline-md text-primary tracking-wider">Aetheris Console</h1>
-<p class="font-data-tabular text-label-caps text-on-surface-variant mt-1">VLA-Relay-Alpha</p>
-<p class="text-[10px] text-outline mt-2 uppercase tracking-widest">VLA Orchestrator Admin</p>
-</div>
-<nav class="flex-1 overflow-y-auto py-4">
-<!-- Tab: 模型实验室 -->
-<a class="flex items-center gap-3 text-on-surface-variant hover:text-primary transition-colors px-panel-padding py-4 hover:bg-surface-variant/30 duration-300" href="#">
-<span class="material-symbols-outlined">biotech</span>
-<span class="font-data-tabular text-data-tabular">模型实验室</span>
-</a>
-<!-- Tab: 安全契约 -->
-<a class="flex items-center gap-3 text-on-surface-variant hover:text-primary transition-colors px-panel-padding py-4 hover:bg-surface-variant/30 duration-300" href="#">
-<span class="material-symbols-outlined">security</span>
-<span class="font-data-tabular text-data-tabular">安全契约</span>
-</a>
-<!-- Tab: 边缘接入 (Active equivalent for Router intent) -->
-<a class="flex items-center gap-3 text-primary bg-primary-container/20 border-l-4 border-primary font-bold px-panel-padding py-4 transition-all duration-200" href="#">
-<span class="material-symbols-outlined fill">router</span>
-<span class="font-data-tabular text-data-tabular">语义路由调度</span>
-</a>
-<!-- Tab: 日志审计 -->
-<a class="flex items-center gap-3 text-on-surface-variant hover:text-primary transition-colors px-panel-padding py-4 hover:bg-surface-variant/30 duration-300" href="#">
-<span class="material-symbols-outlined">terminal</span>
-<span class="font-data-tabular text-data-tabular">日志审计</span>
-</a>
-<!-- Tab: 系统设置 -->
-<a class="flex items-center gap-3 text-on-surface-variant hover:text-primary transition-colors px-panel-padding py-4 hover:bg-surface-variant/30 duration-300" href="#">
-<span class="material-symbols-outlined">settings</span>
-<span class="font-data-tabular text-data-tabular">系统设置</span>
-</a>
-</nav>
-<!-- Safety Boundary Footer -->
-<div class="p-panel-padding border-t border-outline-variant/20 bg-error-container/10">
-<div class="flex items-start gap-2">
-<span class="material-symbols-outlined text-error text-[18px]">warning</span>
+<div class="flex flex-1 overflow-hidden">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-lowest/40 backdrop-blur-2xl docked left-0 h-full w-[320px] border-r border-outline-variant/10 shadow-2xl shadow-black/50 fixed left-0 top-0 h-full flex flex-col z-40 hidden md:flex pt-16 shrink-0">
+<div class="p-panel-padding border-b border-outline-variant/10">
+<div class="flex items-center gap-3 mb-2">
+<span class="material-symbols-outlined font-display-lg text-primary glow-sm">psychology</span>
 <div>
-<h4 class="font-label-caps text-label-caps text-error uppercase">安全边界</h4>
-<p class="text-[10px] text-on-surface-variant mt-1 leading-relaxed">
-                        L 只输出语义、模式、目标和证据；不输出 CAN、电机、力矩或 M33 override。
-                    </p>
+<div class="font-headline-md text-[16px] leading-tight text-on-surface">语义中转站</div>
+<div class="font-label-caps text-label-caps text-secondary">L/V/A V4.2</div>
 </div>
 </div>
 </div>
-</aside>
-<!-- Main Canvas -->
-<main class="ml-[320px] mt-16 p-margin h-[calc(100vh-64px)] relative flex">
-<!-- Background SVG Connections Layer -->
-<svg class="absolute inset-0 w-full h-full pointer-events-none" style="z-index: 0;">
-<!-- Connection from Input to Classifier -->
-<path d="M 250, 400 C 350, 400 400, 400 500, 400" fill="none" stroke="rgba(76, 215, 246, 0.2)" stroke-width="2"></path>
-<path class="glow-line" d="M 250, 400 C 350, 400 400, 400 500, 400" fill="none" stroke="rgba(76, 215, 246, 0.8)" stroke-width="2"></path>
-<!-- Connection from Classifier to Active Node (Object Fetch) -->
-<path d="M 650, 400 C 750, 400 800, 200 900, 200" fill="none" stroke="rgba(76, 215, 246, 0.2)" stroke-width="2"></path>
-<path class="glow-line" d="M 650, 400 C 750, 400 800, 200 900, 200" fill="none" stroke="rgba(76, 215, 246, 0.8)" stroke-width="2"></path>
-<!-- Inactive Connections -->
-<path d="M 650, 400 C 750, 400 800, 350 900, 350" fill="none" stroke="rgba(61, 73, 76, 0.5)" stroke-dasharray="4 4" stroke-width="1"></path>
-<path d="M 650, 400 C 750, 400 800, 500 900, 500" fill="none" stroke="rgba(61, 73, 76, 0.5)" stroke-dasharray="4 4" stroke-width="1"></path>
-<path d="M 650, 400 C 750, 400 800, 650 900, 650" fill="none" stroke="rgba(61, 73, 76, 0.5)" stroke-dasharray="4 4" stroke-width="1"></path>
-</svg>
-<!-- Mode Routing Spine Layout -->
-<div class="flex-1 w-full h-full flex items-center justify-between relative z-10">
-<!-- Left Side: L Input Source -->
-<div class="w-72 glass-panel p-panel-padding rounded-xl relative">
-<div class="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 bg-primary/20 rounded-full flex items-center justify-center">
-<div class="w-2 h-2 bg-primary rounded-full pulse-ring"></div>
+<div class="flex-1 overflow-y-auto py-4 flex flex-col gap-1">
+<a class="text-on-surface-variant/70 px-margin py-4 flex items-center gap-unit hover:bg-surface-bright/20 hover:text-primary transition-all group relative overflow-hidden transition-all duration-300" href="#">
+<span class="material-symbols-outlined">neurology</span>
+<span class="font-label-caps text-label-caps">语义视图</span>
+</a>
+<a class="bg-primary/10 text-primary border-l-4 border-primary px-margin py-4 flex items-center gap-unit group relative overflow-hidden transition-all duration-300" href="#">
+<span class="material-symbols-outlined">psychology</span>
+<span class="font-label-caps text-label-caps">VLA 核心</span>
+</a>
+<a class="text-on-surface-variant/70 px-margin py-4 flex items-center gap-unit hover:bg-surface-bright/20 hover:text-primary transition-all group relative overflow-hidden transition-all duration-300" href="#">
+<span class="material-symbols-outlined">precision_manufacturing</span>
+<span class="font-label-caps text-label-caps">诊断</span>
+</a>
+<a class="text-on-surface-variant/70 px-margin py-4 flex items-center gap-unit hover:bg-surface-bright/20 hover:text-primary transition-all group relative overflow-hidden transition-all duration-300" href="#">
+<span class="material-symbols-outlined">database</span>
+<span class="font-label-caps text-label-caps">Patient Logs</span>
+</a>
+<a class="text-on-surface-variant/70 px-margin py-4 flex items-center gap-unit hover:bg-surface-bright/20 hover:text-primary transition-all group relative overflow-hidden transition-all duration-300" href="#">
+<span class="material-symbols-outlined">terminal</span>
+<span class="font-label-caps text-label-caps">System Terminal</span>
+</a>
 </div>
-<h3 class="font-label-caps text-label-caps text-outline uppercase tracking-widest mb-4 border-b border-outline-variant/30 pb-2">L 输入源</h3>
-<div class="flex items-center gap-4 mb-6">
-<div class="w-12 h-12 rounded-full border border-primary/30 flex items-center justify-center bg-primary/10">
-<span class="material-symbols-outlined text-primary">mic</span>
+<div class="p-panel-padding border-t border-outline-variant/10 flex flex-col gap-2">
+<button class="w-full py-2 border border-error/50 text-error font-label-caps text-label-caps hover:bg-error/10 transition-colors flex items-center justify-center gap-2 rounded-sm bg-error/5">
+<span class="material-symbols-outlined text-[16px]">warning</span>
+                    EMERGENCY STOP
+                </button>
 </div>
-<div class="flex-1">
-<div class="bg-surface-container-highest px-4 py-2 rounded-lg border border-outline-variant/50 relative">
-<!-- Speech bubble tail -->
-<div class="absolute -left-2 top-4 w-0 h-0 border-t-4 border-t-transparent border-r-4 border-r-outline-variant/50 border-b-4 border-b-transparent"></div>
-<span class="font-headline-md text-[20px] text-primary-fixed-dim" data-role="router-transcript">"我渴了"</span>
+<div class="border-t border-outline-variant/10 py-2 flex justify-around">
+<a class="text-on-surface-variant/50 hover:text-primary transition-colors p-2 flex flex-col items-center gap-1" href="#">
+<span class="material-symbols-outlined text-[18px]">help_outline</span>
+<span class="font-label-caps text-[9px]">Support</span>
+</a>
+<a class="text-on-surface-variant/50 hover:text-primary transition-colors p-2 flex flex-col items-center gap-1" href="#">
+<span class="material-symbols-outlined text-[18px]">tune</span>
+<span class="font-label-caps text-[9px]">Calibration</span>
+</a>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col md:ml-[320px] p-gutter gap-gutter overflow-hidden relative z-0">
+<!-- Top Row: Panels -->
+<div class="flex-1 grid grid-cols-12 gap-gutter min-h-[400px]">
+<!-- Left: L INPUT SOURCE -->
+<div class="col-span-3 glass-panel rounded-lg flex flex-col relative overflow-hidden">
+<div class="p-4 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container-lowest/50">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+<h2 class="font-label-caps text-label-caps text-on-surface tracking-widest opacity-80">L INPUT SOURCE</h2>
+</div>
+<span class="material-symbols-outlined text-outline text-[16px]">mic</span>
+</div>
+<div class="p-panel-padding flex-1 flex flex-col gap-6">
+<div class="flex flex-col items-center justify-center gap-4 py-4">
+<div class="w-16 h-16 rounded-full border border-primary/30 flex items-center justify-center relative bg-primary/5 pulse-border">
+<span class="material-symbols-outlined text-primary text-[24px]">graphic_eq</span>
+<div class="absolute inset-0 rounded-full border border-primary/20 animate-[ping_3s_cubic-bezier(0,0,0.2,1)_infinite]"></div>
+</div>
+<div class="font-data-tabular text-data-tabular text-primary/70">LISTENING...</div>
+</div>
+<div class="flex-1 bg-surface-container-lowest/30 border border-outline-variant/10 rounded p-4 font-data-tabular text-data-tabular text-on-surface relative group">
+<div class="absolute -top-2 left-2 bg-surface px-1 text-[10px] text-secondary border border-outline-variant/20 rounded-sm">TRANSCRIPT</div>
+<div class="mt-2 text-[16px] leading-relaxed break-all" data-role="router-transcript">
+                                "我渴了"
+                            </div>
+</div>
+<div class="grid grid-cols-2 gap-2 mt-auto">
+<div class="bg-surface-container-lowest/50 border border-outline-variant/10 rounded p-2 flex flex-col gap-1">
+<span class="font-label-caps text-[9px] text-outline">SOURCE</span>
+<span class="font-data-tabular text-[12px] text-primary truncate" data-role="router-route-source">XiaoZhi-Mic-Array</span>
+</div>
+<div class="bg-surface-container-lowest/50 border border-outline-variant/10 rounded p-2 flex flex-col gap-1">
+<span class="font-label-caps text-[9px] text-outline">LATENCY</span>
+<span class="font-data-tabular text-[12px] text-secondary">42ms</span>
 </div>
 </div>
 </div>
-<div class="space-y-3">
-<div class="flex justify-between items-center border-b border-outline-variant/20 pb-1">
-<span class="font-data-tabular text-label-caps text-on-surface-variant">来源</span>
-<span class="font-data-tabular text-data-tabular text-on-surface" data-role="router-route-source">XiaoZhi-Mic-Array</span>
 </div>
-<div class="flex justify-between items-center border-b border-outline-variant/20 pb-1">
-<span class="font-data-tabular text-label-caps text-on-surface-variant">延迟</span>
-<span class="font-data-tabular text-data-tabular text-secondary">42ms</span>
-</div>
+<!-- Center: SEMANTIC ENGINE STAGE -->
+<div class="col-span-6 glass-panel rounded-lg flex flex-col relative overflow-hidden glass-panel-active">
+<div class="p-4 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container-lowest/50 absolute w-full z-10">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-[16px]">account_tree</span>
+<h2 class="font-label-caps text-label-caps text-on-surface tracking-widest opacity-80">SEMANTIC ENGINE STAGE</h2>
 </div>
 </div>
-<!-- Center: Mode Classifier Engine -->
-<div class="w-80 relative flex flex-col items-center">
-<!-- Rotating Hexagon/Diamond effect via CSS shapes -->
-<div class="relative w-40 h-40 flex items-center justify-center">
-<!-- Outer Ring -->
-<div class="absolute inset-0 border border-primary/20 rounded-full animate-[spin_10s_linear_infinite]"></div>
-<!-- Inner Dashed Ring -->
-<div class="absolute inset-2 border-2 border-dashed border-primary/40 rounded-full animate-[spin_15s_linear_infinite_reverse]"></div>
-<!-- Core Diamond -->
-<div class="w-24 h-24 bg-surface-container-high border border-primary rotate-45 flex items-center justify-center shadow-[0_0_30px_rgba(76,215,246,0.3)]">
+<div class="flex-1 relative flex items-center justify-center p-8 mt-12">
+<!-- Abstract Visualizer (CSS only, no 3D placeholder per rules to avoid heavy tags unless requested) -->
+<div class="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none">
+<div class="w-64 h-64 border border-primary/20 rounded-full animate-[spin_20s_linear_infinite] border-dashed"></div>
+<div class="w-48 h-48 border border-secondary/20 rounded-full animate-[spin_15s_linear_infinite_reverse] absolute"></div>
+<div class="w-96 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent absolute transform rotate-45"></div>
+<div class="w-96 h-px bg-gradient-to-r from-transparent via-primary/30 to-transparent absolute transform -rotate-45"></div>
+</div>
+<!-- Core -->
+<div class="relative z-10 flex flex-col items-center">
+<div class="w-24 h-24 rotate-45 border-2 border-primary bg-surface-container-lowest/80 backdrop-blur-md flex items-center justify-center shadow-[0_0_30px_rgba(76,215,246,0.3)] pulse-border mb-8 group cursor-pointer transition-transform hover:scale-105">
 <div class="-rotate-45 flex flex-col items-center">
-<span class="material-symbols-outlined text-primary text-[32px] mb-1">psychology</span>
-<span class="font-label-caps text-[9px] text-primary tracking-widest uppercase">Engine</span>
+<span class="font-label-caps text-label-caps text-primary glow-cyan">ENGINE</span>
+<span class="font-data-tabular text-[10px] text-on-surface-variant" data-role="router-current-mode">ROUTING</span>
+<span class="font-data-tabular text-[9px] text-secondary" data-role="router-mode-label">取物 VLA-lite</span>
+</div>
+</div>
+<!-- Tokens -->
+<div class="absolute w-full h-full pointer-events-none flex items-center justify-center">
+<div class="absolute -top-20 -left-32 bg-surface-container-high/80 border border-secondary/30 px-3 py-1 rounded-full font-data-tabular text-[11px] text-secondary backdrop-blur-sm animate-[bounce_3s_ease-in-out_infinite]">
+<span class="opacity-50 mr-1">intent:</span>hydration_request
+                                </div>
+<div class="absolute -bottom-16 right-[-8rem] bg-surface-container-high/80 border border-primary/30 px-3 py-1 rounded-full font-data-tabular text-[11px] text-primary backdrop-blur-sm animate-[bounce_4s_ease-in-out_infinite_reverse]">
+<span class="opacity-50 mr-1">entity:</span>water_bottle
+                                </div>
+</div>
+<!-- Confidence Ring -->
+<div class="mt-8 flex flex-col items-center gap-2">
+<svg class="w-16 h-16 transform -rotate-90" viewbox="0 0 36 36">
+<path class="text-outline-variant/30" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="100, 100" stroke-width="2"></path>
+<path class="text-primary" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" stroke-dasharray="94, 100" stroke-linecap="round" stroke-width="2"></path>
+</svg>
+<div class="font-data-tabular text-[14px] text-primary" data-role="router-confidence">94% CONF</div>
 </div>
 </div>
 </div>
-<div class="mt-8 glass-card-active p-4 rounded-lg text-center w-full">
-<h3 class="font-label-caps text-label-caps text-outline uppercase tracking-widest mb-2">模式分类引擎</h3>
-<div class="text-3xl font-display-lg text-primary mb-1" data-role="router-confidence">94%</div>
-<div class="font-data-tabular text-data-tabular text-on-surface" data-role="router-current-mode">Target Fetch (VLA)</div>
-<div class="mt-1 font-label-caps text-[10px] text-secondary-fixed-dim" data-role="router-mode-label">取物 VLA-lite</div>
-<div class="mt-1 font-label-caps text-[10px] text-on-surface-variant" data-role="router-gate-state">进入 VLA-L</div>
 </div>
-</div>
-<!-- Right Side: Shared Resource Nodes -->
-<div class="w-80 space-y-4">
-<!-- Node 1: Object Fetch (Active) -->
-<div class="glass-card-active p-panel-padding rounded-xl relative border-l-4 border-l-primary overflow-hidden">
-<!-- Subtle background glow for active node -->
-<div class="absolute right-0 top-0 w-32 h-32 bg-primary/10 blur-2xl rounded-full -mr-16 -mt-16 pointer-events-none"></div>
-<div class="flex items-center justify-between mb-3">
+<!-- Right: MODE DISPATCH RAIL -->
+<div class="col-span-3 glass-panel rounded-lg flex flex-col relative overflow-hidden">
+<div class="p-4 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container-lowest/50">
 <div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-primary text-[20px]">precision_manufacturing</span>
-<h4 class="font-data-tabular text-data-tabular font-bold text-primary">取物模式</h4>
-</div>
-<span class="px-2 py-0.5 bg-primary/20 text-primary font-label-caps text-[10px] rounded border border-primary/30 uppercase" data-role="router-fetch-state">已触发</span>
-</div>
-<div class="bg-surface-container-lowest/50 p-3 rounded border border-outline-variant/30 mb-3">
-<div class="flex justify-between items-center">
-<span class="font-label-caps text-label-caps text-on-surface-variant">目标</span>
-<span class="font-data-tabular text-data-tabular text-inverse-primary bg-primary/10 px-2 rounded" data-role="router-target">水杯</span>
+<span class="material-symbols-outlined text-outline text-[16px]">route</span>
+<h2 class="font-label-caps text-label-caps text-on-surface tracking-widest opacity-80">模式分流轨道</h2>
 </div>
 </div>
-<button class="w-full py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/50 rounded font-label-caps text-label-caps transition-colors flex items-center justify-center gap-2 uppercase tracking-wide" data-role="router-open-vision">
-<span class="material-symbols-outlined text-[16px]">visibility</span> 打开视觉页
-                    </button>
-<button class="mt-2 w-full py-2 bg-secondary/10 hover:bg-secondary/20 text-secondary border border-secondary/40 rounded font-label-caps text-label-caps transition-colors flex items-center justify-center gap-2 uppercase tracking-wide" data-role="router-open-planner">
-<span class="material-symbols-outlined text-[16px]">route</span> 打开 A 规划
-                    </button>
+<div class="flex-1 overflow-y-auto p-4 flex flex-col gap-2">
+<!-- Active Mode: Object Fetch -->
+<div class="border border-primary bg-primary/5 rounded p-3 relative overflow-hidden" data-role="router-fetch-state">
+<div class="absolute left-0 top-0 bottom-0 w-1 bg-primary"></div>
+<div class="flex justify-between items-start mb-3 pl-2">
+<div class="font-label-caps text-[12px] text-primary">取物模式 (VLA)</div>
+<div class="font-data-tabular text-[10px] text-primary bg-primary/20 px-1 rounded-sm animate-pulse">ACTIVE</div>
 </div>
-<!-- Node 2: Daily Chat (Inactive) -->
-<div class="glass-panel p-panel-padding rounded-xl opacity-60 hover:opacity-100 transition-opacity">
-<div class="flex items-center justify-between mb-2">
+<div class="pl-2 flex flex-col gap-2">
+<div class="flex items-center gap-2 text-on-surface-variant font-data-tabular text-[11px]">
+<span class="material-symbols-outlined text-[14px]">target</span> Target:
+                                    <span class="text-secondary bg-secondary/10 px-1 rounded-sm" data-role="router-target">水杯</span>
+</div>
+<div class="flex gap-2 mt-2">
+<button class="flex-1 border border-primary/50 bg-primary/10 hover:bg-primary/20 text-primary font-label-caps text-[9px] py-1.5 rounded-sm transition-colors text-center" data-role="router-open-planner">打开 A 规划</button>
+<button class="flex-1 border border-outline-variant/50 hover:bg-surface-bright/30 text-on-surface-variant font-label-caps text-[9px] py-1.5 rounded-sm transition-colors text-center" data-role="router-open-vision">打开视觉</button>
+</div>
+</div>
+</div>
+<!-- Standby Mode: Daily Chat -->
+<div class="border border-outline-variant/30 bg-surface-container-lowest/30 rounded p-3 opacity-70 hover:opacity-100 transition-opacity" data-role="router-chat-state">
+<div class="flex justify-between items-center pl-1">
+<div class="font-label-caps text-[12px] text-on-surface-variant flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> 日常聊天
+                                </div>
+<div class="font-data-tabular text-[10px] text-secondary">STANDBY</div>
+</div>
+</div>
+<!-- Idle Modes -->
+<div class="border border-outline-variant/10 bg-transparent rounded p-3 opacity-40 hover:opacity-80 transition-opacity" data-role="router-training-state">
+<div class="flex justify-between items-center pl-1">
+<div class="font-label-caps text-[12px] text-outline flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> 训练模式
+                                </div>
+<div class="font-data-tabular text-[10px] text-outline">IDLE</div>
+</div>
+<button class="mt-2 ml-1 text-[9px] font-label-caps text-outline hover:text-primary transition-colors" data-role="router-open-training">打开训练页</button>
+</div>
+<div class="border border-outline-variant/10 bg-transparent rounded p-3 opacity-40 hover:opacity-80 transition-opacity" data-role="router-assist-state">
+<div class="flex justify-between items-center pl-1">
+<div class="font-label-caps text-[12px] text-outline flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> 助力模式
+                                </div>
+<div class="font-data-tabular text-[10px] text-outline">IDLE</div>
+</div>
+<button class="mt-2 ml-1 text-[9px] font-label-caps text-outline hover:text-primary transition-colors" data-role="router-open-muscle">打开肌电页</button>
+</div>
+<div class="border border-outline-variant/10 bg-transparent rounded p-3 opacity-40 hover:opacity-80 transition-opacity" data-role="router-diagnostics-state">
+<div class="flex justify-between items-center pl-1">
+<div class="font-label-caps text-[12px] text-outline flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> 系统诊断
+                                </div>
+</div>
+</div>
+<div class="border border-outline-variant/10 bg-transparent rounded p-3 opacity-40 hover:opacity-80 transition-opacity" data-role="router-data-state">
+<div class="flex justify-between items-center pl-1">
+<div class="font-label-caps text-[12px] text-outline flex items-center gap-2">
+<span class="w-1.5 h-1.5 rounded-full bg-outline"></span> 数据采集
+                                </div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom: AUDIT EVIDENCE -->
+<div class="h-48 glass-panel rounded-lg flex flex-col shrink-0 border-t-2 border-t-outline-variant/30">
+<div class="p-3 border-b border-outline-variant/10 flex items-center justify-between bg-surface-container-lowest/80">
 <div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-on-surface-variant text-[20px]">forum</span>
-<h4 class="font-data-tabular text-data-tabular text-on-surface">日常聊天</h4>
+<span class="material-symbols-outlined text-outline text-[14px]">policy</span>
+<h2 class="font-label-caps text-[11px] text-on-surface tracking-widest opacity-80">审计证据</h2>
 </div>
-<span class="px-2 py-0.5 bg-surface-variant text-on-surface-variant font-label-caps text-[10px] rounded uppercase" data-role="router-chat-state">待机</span>
-</div>
-<p class="font-data-tabular text-label-caps text-outline">聊天隔离，不进 VLA</p>
-</div>
-<!-- Node 3: Training Mode (Inactive) -->
-<div class="glass-panel p-panel-padding rounded-xl opacity-60 hover:opacity-100 transition-opacity">
-<div class="flex items-center justify-between mb-2">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-on-surface-variant text-[20px]">model_training</span>
-<h4 class="font-data-tabular text-data-tabular text-on-surface">训练模式</h4>
-</div>
-<span class="px-2 py-0.5 bg-surface-variant text-on-surface-variant font-label-caps text-[10px] rounded uppercase" data-role="router-training-state">待机</span>
-</div>
-<button class="mt-2 text-[10px] font-label-caps text-outline hover:text-primary" data-role="router-open-training">打开训练页</button>
-</div>
-<!-- Node 4: Assist Mode (Inactive) -->
-<div class="glass-panel p-panel-padding rounded-xl opacity-60 hover:opacity-100 transition-opacity">
-<div class="flex items-center justify-between mb-2">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-on-surface-variant text-[20px]">monitor_heart</span>
-<h4 class="font-data-tabular text-data-tabular text-on-surface">助力模式</h4>
-</div>
-<span class="px-2 py-0.5 bg-surface-variant text-on-surface-variant font-label-caps text-[10px] rounded uppercase" data-role="router-assist-state">待机</span>
-</div>
-<p class="font-data-tabular text-label-caps text-outline">M55 / EMG 证据</p>
-<button class="mt-2 text-[10px] font-label-caps text-outline hover:text-primary" data-role="router-open-muscle">打开肌电页</button>
-</div>
-<!-- Node 5: Diagnostics (Inactive) -->
-<div class="glass-panel p-panel-padding rounded-xl opacity-60 hover:opacity-100 transition-opacity border border-outline-variant/20 hover:border-secondary/50">
-<div class="flex items-center justify-between">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-on-surface-variant text-[20px]">admin_panel_settings</span>
-<h4 class="font-data-tabular text-data-tabular text-on-surface">诊断 / 数据</h4>
-</div>
-<div class="flex gap-2 items-center">
-<span class="px-2 py-0.5 bg-surface-variant text-on-surface-variant font-label-caps text-[10px] rounded uppercase" data-role="router-diagnostics-state">待机</span>
-<span class="px-2 py-0.5 bg-surface-variant text-on-surface-variant font-label-caps text-[10px] rounded uppercase" data-role="router-data-state">待机</span>
+<div class="flex gap-2">
+<button class="border border-outline-variant/50 hover:bg-surface-bright/30 text-on-surface-variant font-label-caps text-[9px] px-2 py-1 rounded-sm transition-colors flex items-center gap-1" data-role="router-export">
+<span class="material-symbols-outlined text-[12px]">content_copy</span> 复制 JSON
+                        </button>
+<button class="border border-outline-variant/50 hover:bg-surface-bright/30 text-on-surface-variant font-label-caps text-[9px] px-2 py-1 rounded-sm transition-colors flex items-center gap-1" data-role="router-open-logs">
+<span class="material-symbols-outlined text-[12px]">history</span> 查看日志
+                        </button>
+<button class="text-outline hover:text-on-surface p-1">
+<span class="material-symbols-outlined text-[16px]">expand_less</span>
+</button>
 </div>
 </div>
-<button class="mt-2 text-[10px] font-label-caps text-outline hover:text-primary" data-role="router-open-logs">打开日志</button>
+<div class="flex-1 p-0 overflow-hidden relative bg-[#0d1117]">
+<div class="absolute left-0 top-0 bottom-0 w-8 bg-surface-container-lowest/50 border-r border-outline-variant/10 flex flex-col items-center py-2 text-[10px] text-outline/50 font-data-tabular select-none">
+<span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span>
 </div>
+<pre class="pl-10 p-2 m-0 h-full overflow-y-auto font-data-tabular text-[12px] text-on-surface-variant/80 whitespace-pre" data-role="router-evidence-json">{
+  "timestamp": "2023-10-27T14:32:01.423Z",
+  "source_input": "我渴了",
+  "semantic_parse": {
+    "intent": "hydration_request",
+    "entities": ["water_bottle"],
+    "confidence": 0.941
+  },
+  "routing_decision": "OBJECT_FETCH_VLA",
+  "isolation_check": "PASSED"
+}</pre>
 </div>
-</div>
-<!-- Evidence Layer (Bottom Drawer/Sidebar) -->
-<div class="absolute bottom-margin left-margin right-margin h-48 glass-panel rounded-xl flex overflow-hidden z-20 border border-outline-variant/30">
-<!-- Header Tab -->
-<div class="w-12 bg-surface-container-high flex flex-col items-center py-4 border-r border-outline-variant/30">
-<span class="material-symbols-outlined text-primary mb-2">code</span>
-<span class="font-label-caps text-label-caps text-primary [writing-mode:vertical-rl] uppercase tracking-widest">调度证据</span>
-</div>
-<!-- JSON Content -->
-<div class="flex-1 p-4 bg-[#0c0e12]/80 overflow-y-auto font-data-tabular text-data-tabular">
-<pre class="text-outline" data-role="router-evidence-json"><span class="text-primary-fixed">{</span>
-  <span class="text-secondary">"timestamp"</span>: <span class="text-tertiary">"2023-10-27T09:42:11.000Z"</span>,
-  <span class="text-secondary">"input"</span>: <span class="text-primary-fixed">{</span>
-    <span class="text-secondary">"raw"</span>: <span class="text-tertiary">"我渴了"</span>,
-    <span class="text-secondary">"intent_extracted"</span>: <span class="text-tertiary">"hydration_request"</span>
-  <span class="text-primary-fixed">}</span>,
-  <span class="text-secondary">"classifier_output"</span>: <span class="text-primary-fixed">{</span>
-    <span class="text-secondary">"selected_mode"</span>: <span class="text-tertiary">"VLA_FETCH"</span>,
-    <span class="text-secondary">"confidence"</span>: <span class="text-tertiary">0.942</span>,
-    <span class="text-secondary">"extracted_entities"</span>: <span class="text-primary-fixed">[</span>
-      <span class="text-primary-fixed">{</span> <span class="text-secondary">"type"</span>: <span class="text-tertiary">"target_object"</span>, <span class="text-secondary">"value"</span>: <span class="text-tertiary">"水杯"</span> <span class="text-primary-fixed">}</span>
-    <span class="text-primary-fixed">]</span>
-  <span class="text-primary-fixed">}</span>,
-  <span class="text-secondary">"safety_check"</span>: <span class="text-primary-fixed">{</span>
-    <span class="text-secondary">"motor_cmd_detected"</span>: <span class="text-tertiary">false</span>,
-    <span class="text-secondary">"vla_gate"</span>: <span class="text-tertiary">"AUTHORIZE_SEMANTIC_ONLY"</span>
-  <span class="text-primary-fixed">}</span>
-<span class="text-primary-fixed">}</span>
-</pre>
-</div>
-<!-- Context Actions -->
-<div class="w-48 p-4 bg-surface-container-low/50 border-l border-outline-variant/30 flex flex-col justify-center gap-3">
-<button class="w-full py-1.5 border border-outline hover:border-primary text-outline hover:text-primary rounded font-label-caps text-[10px] transition-colors uppercase">
-                    复制 JSON
-                </button>
-<button class="w-full py-1.5 border border-outline hover:border-primary text-outline hover:text-primary rounded font-label-caps text-[10px] transition-colors uppercase" data-role="router-export">
-                    导出路由证据
-                </button>
-<button class="w-full py-1.5 border border-outline hover:border-primary text-outline hover:text-primary rounded font-label-caps text-[10px] transition-colors uppercase" data-role="router-refresh">
-                    刷新状态
-                </button>
+<div class="bg-surface-container-low border-t border-outline-variant/20 p-2 flex items-center gap-2">
+<span class="material-symbols-outlined text-secondary text-[14px]">shield</span>
+<span class="font-data-tabular text-[10px] text-secondary">安全边界：L 只输出语义意图，原始电机指令严格隔离。</span>
 </div>
 </div>
 </main>
+</div>
 </body></html>
