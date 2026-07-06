@@ -7,7 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define M55_EMG_CHANNELS 3U
+#define M55_EMG_PHYSICAL_CHANNELS 4U
+#define M55_EMG_MODEL_CHANNELS 3U
 #define M55_EMG_WINDOW_SAMPLES 15U
 #define M55_EMG_DEFAULT_PERIOD_MS 20U
 #define M55_EMG_DEFAULT_STEP_MS 100U
@@ -18,7 +19,7 @@
 
 typedef struct
 {
-    rt_uint16_t ch[M55_EMG_CHANNELS];
+    rt_uint16_t ch[M55_EMG_PHYSICAL_CHANNELS];
     rt_uint8_t stale;
 } m55_emg_sample_t;
 
@@ -68,9 +69,11 @@ static void m55_emg_append_sample(const control_sensor_node_sample_t *node, rt_b
     m55_emg_sample_t *sample;
 
     sample = &g_m55_emg_stream.window[g_m55_emg_stream.write_index];
-    sample->ch[0] = node->emg3_raw[0];
-    sample->ch[1] = node->emg3_raw[1];
-    sample->ch[2] = node->emg3_raw[2];
+    sample->ch[0] = node->adc_raw[0];
+    sample->ch[1] = node->adc_raw[1];
+    sample->ch[2] = node->adc_raw[2];
+    sample->ch[3] = node->adc_raw[3];
+    /* sensor.c keeps node->emg3_raw[0], node->emg3_raw[1], and node->emg3_raw[2] as legacy aliases. */
     sample->stale = stale ? 1U : 0U;
 
     g_m55_emg_stream.write_index =
@@ -108,7 +111,7 @@ rt_err_t m55_emg_stream_bridge_publish_once(void)
         return -RT_EEMPTY;
     }
 
-    len = g_m55_emg_stream.sample_count * M55_EMG_CHANNELS * sizeof(rt_uint16_t);
+    len = g_m55_emg_stream.sample_count * M55_EMG_PHYSICAL_CHANNELS * sizeof(rt_uint16_t);
     if (len > M33_M55_PCM_SHARED_CAPACITY)
     {
         return -RT_EINVAL;
@@ -124,9 +127,9 @@ rt_err_t m55_emg_stream_bridge_publish_once(void)
         {
             stale_count++;
         }
-        for (rt_uint32_t ch = 0U; ch < M55_EMG_CHANNELS; ch++)
+        for (rt_uint32_t ch = 0U; ch < M55_EMG_PHYSICAL_CHANNELS; ch++)
         {
-            rt_uint32_t offset = (i * M55_EMG_CHANNELS + ch) * sizeof(rt_uint16_t);
+            rt_uint32_t offset = (i * M55_EMG_PHYSICAL_CHANNELS + ch) * sizeof(rt_uint16_t);
             m55_emg_u16_to_le(sample->ch[ch], &dst[offset]);
         }
     }
@@ -135,7 +138,7 @@ rt_err_t m55_emg_stream_bridge_publish_once(void)
     g_m33_m55_pcm_shared.seq = seq;
     g_m33_m55_pcm_shared.total_len = len;
     g_m33_m55_pcm_shared.sample_rate = M55_EMG_SAMPLE_RATE_HZ;
-    g_m33_m55_pcm_shared.channels = M55_EMG_CHANNELS;
+    g_m33_m55_pcm_shared.channels = M55_EMG_PHYSICAL_CHANNELS;
     g_m33_m55_pcm_shared.bits_per_sample = 16U;
     g_m33_m55_pcm_shared.timestamp = rt_tick_get_millisecond();
     g_m33_m55_pcm_shared.reserved = stale_count;
@@ -146,7 +149,8 @@ rt_err_t m55_emg_stream_bridge_publish_once(void)
     msg.type = MSG_TYPE_SENSOR_STREAM;
     msg.payload.sensor_stream.source = MODEL_INPUT_SRC_EMG;
     msg.payload.sensor_stream.format = MODEL_INPUT_FMT_UINT16;
-    msg.payload.sensor_stream.channels = M55_EMG_CHANNELS;
+    msg.payload.sensor_stream.channels = M55_EMG_PHYSICAL_CHANNELS;
+    msg.payload.sensor_stream.reserved0 = M55_EMG_MODEL_CHANNELS;
     msg.payload.sensor_stream.sample_rate = M55_EMG_SAMPLE_RATE_HZ;
     msg.payload.sensor_stream.frame_samples = g_m55_emg_stream.sample_count;
     msg.payload.sensor_stream.total_len = len;

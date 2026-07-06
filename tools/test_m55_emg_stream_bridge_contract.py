@@ -14,6 +14,10 @@ class M55EmgStreamBridgeContractTest(unittest.TestCase):
 
         required = [
             "control_get_sensor_node_sample",
+            "node->adc_raw[0]",
+            "node->adc_raw[1]",
+            "node->adc_raw[2]",
+            "node->adc_raw[3]",
             "node->emg3_raw[0]",
             "node->emg3_raw[1]",
             "node->emg3_raw[2]",
@@ -36,10 +40,13 @@ class M55EmgStreamBridgeContractTest(unittest.TestCase):
     def test_m33_bridge_uses_expected_emg_window_shape(self):
         text = (APP_M33 / "m55_emg_stream_bridge.c").read_text(encoding="utf-8")
 
-        self.assertIn("#define M55_EMG_CHANNELS 3U", text)
+        self.assertIn("#define M55_EMG_PHYSICAL_CHANNELS 4U", text)
+        self.assertIn("#define M55_EMG_MODEL_CHANNELS 3U", text)
         self.assertIn("#define M55_EMG_WINDOW_SAMPLES 15U", text)
         self.assertIn("#define M55_EMG_DEFAULT_PERIOD_MS 20U", text)
         self.assertIn("#define M55_EMG_SAMPLE_RATE_HZ 50U", text)
+        self.assertIn("msg.payload.sensor_stream.channels = M55_EMG_PHYSICAL_CHANNELS", text)
+        self.assertIn("msg.payload.sensor_stream.reserved0 = M55_EMG_MODEL_CHANNELS", text)
         self.assertIn("msg.payload.sensor_stream.reserved1 = stale_count", text)
 
     def test_m33_bridge_exposes_shell_controls(self):
