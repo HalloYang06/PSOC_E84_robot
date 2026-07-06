@@ -56,6 +56,17 @@ class M55EmgStreamBridgeContractTest(unittest.TestCase):
         self.assertIn("MSH_CMD_EXPORT(cmd_m55_emg_once", text)
         self.assertIn("MSH_CMD_EXPORT(cmd_m55_emg_status", text)
 
+    def test_m33_boot_autostarts_emg_inference_stream_after_ipc_ready(self):
+        main_text = (M33_ROOT / "applications" / "main.c").read_text(encoding="utf-8")
+
+        self.assertIn("#include \"m33/m55_emg_stream_bridge.h\"", main_text)
+        self.assertIn("#define M33_AUTO_START_EMG_M55_INFERENCE 1", main_text)
+        self.assertIn("#define M33_AUTO_EMG_SAMPLE_PERIOD_MS 20U", main_text)
+        self.assertIn("#define M33_AUTO_EMG_MANAGE_F103 1", main_text)
+        self.assertIn("m33_start_ipc_pump();", main_text)
+        self.assertIn("m55_emg_stream_bridge_start((rt_uint16_t)M33_AUTO_EMG_SAMPLE_PERIOD_MS", main_text)
+        self.assertIn("[m33] auto EMG->M55 stream ret=", main_text)
+
 
 if __name__ == "__main__":
     unittest.main()

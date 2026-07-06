@@ -17,6 +17,7 @@
 #include "m33/input_buffer.h"
 #include "m33/m55_qa_bridge.h"
 #include "m33/m55_model_bridge.h"
+#include "m33/m55_emg_stream_bridge.h"
 #include "m33/m55_model_input_bridge.h"
 #include "m33/openclaw_integration.h"
 #include "m33/safety_system.h"
@@ -40,6 +41,9 @@ __attribute__((weak)) struct _reent _impure_data;
 #define M33_IPC_INIT_RETRY_MS 2000U
 #define M33_ENABLE_LED_HEARTBEAT 1
 #define M33_XIAOZHI_MINIMAL_FRAMEWORK 1
+#define M33_AUTO_START_EMG_M55_INFERENCE 1
+#define M33_AUTO_EMG_SAMPLE_PERIOD_MS 20U
+#define M33_AUTO_EMG_MANAGE_F103 1
 
 #ifndef M33_ENABLE_BT_HCI
 #define M33_ENABLE_BT_HCI 0
@@ -822,6 +826,10 @@ static void m33_start_ipc_pump(void)
 
 static void m33_start_m55_bridges_once(void)
 {
+#if M33_AUTO_START_EMG_M55_INFERENCE
+    rt_err_t emg_ret;
+#endif
+
     if (g_m55_bridge_started)
     {
         return;
@@ -830,6 +838,14 @@ static void m33_start_m55_bridges_once(void)
     m55_model_bridge_init();
     m55_qa_bridge_init();
     m33_start_ipc_pump();
+#if M33_AUTO_START_EMG_M55_INFERENCE
+    emg_ret = m55_emg_stream_bridge_start((rt_uint16_t)M33_AUTO_EMG_SAMPLE_PERIOD_MS,
+                                          M33_AUTO_EMG_MANAGE_F103 ? RT_TRUE : RT_FALSE);
+    rt_kprintf("[m33] auto EMG->M55 stream ret=%d period=%u manage_f103=%u\n",
+               emg_ret,
+               (unsigned)M33_AUTO_EMG_SAMPLE_PERIOD_MS,
+               (unsigned)M33_AUTO_EMG_MANAGE_F103);
+#endif
     g_m55_bridge_started = RT_TRUE;
 }
 
