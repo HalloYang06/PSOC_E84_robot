@@ -96,6 +96,61 @@ def test_nanopi_readonly_agent_dry_run_maps_scan_and_joint_state(tmp_path: Path)
     assert payloads["manifest"]["manifest"]["sessions"][0]["quality_report"]["ok"] is True
 
 
+def test_nanopi_readonly_agent_maps_can_emg_and_m55_intent_to_sensor_state(tmp_path: Path) -> None:
+    sensor_path = tmp_path / "sensor.json"
+    sensor_path.write_text(
+        json.dumps(
+            {
+                "sample_rate_hz": 50,
+                "can_frames": [
+                    {"id": "0x7C2", "data": [0x34, 0x02, 0x78, 0x05, 0x00, 0x00, 0xFF, 0x0F]},
+                    {"id": "0x323", "data": [0xB5, 0x09, 0x02, 0x01, 0x64, 0x83, 0x1E, 0x00]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    output = run_agent(
+        "--project-id",
+        "project-a",
+        "--device-id",
+        "nanopi-a",
+        "--robot-id",
+        "arm-a",
+        "--sensor-state-json",
+        str(sensor_path),
+        "--dry-run",
+    )
+
+    sensor = output["payloads"]["sensor"]
+    emg = sensor["emg"]
+    intent = sensor["intent_prediction"]
+    hardware_manifest = output["payloads"]["board_manifest"]["manifest"]["hardware_manifest"]
+
+    assert emg["schema_version"] == "rehab_arm_emg4_adc_v1"
+    assert emg["source"] == "m33_can_0x7c2_via_nanopi"
+    assert emg["channel_count"] == 4
+    assert [channel["raw_adc"] for channel in emg["channels"]] == [0x0234, 0x0578, 0, 0x0FFF]
+    assert emg["channels"][0]["voltage_v"] == 0.455
+    assert emg["channels"][3]["muscle"] == "reserved"
+    assert emg["quality"]["status"] == "no_electrode_or_unverified"
+    assert intent["source"] == "m55_inference_can_0x323"
+    assert intent["model_code"] == 2
+    assert intent["result_code"] == 1
+    assert intent["label"] == "elbow_flex"
+    assert intent["confidence_permille"] == 1000
+    assert intent["detected"] is True
+    assert intent["fresh"] is True
+    assert intent["suggestion_only"] is True
+    assert intent["window_ms"] == 300
+    assert sensor["model_outputs"]["latest"]["label"] == "elbow_flex"
+    assert hardware_manifest["schema_version"] == "rehab_arm_hardware_manifest_v1"
+    assert hardware_manifest["emg"]["channel_count_reserved"] == 4
+    assert hardware_manifest["emg"]["model_input_channels"] == ["ch1", "ch2", "ch3"]
+    assert hardware_manifest["inference"]["m55_model_status_can_id"] == "0x323"
+
+
 def test_nanopi_readonly_agent_marks_motion_allowed_snapshot_not_annotation_ready(tmp_path: Path) -> None:
     joint_path = tmp_path / "joint.json"
     safety_path = tmp_path / "safety.json"

@@ -22,6 +22,27 @@ PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
 )
 
+CAN_ID_F103_EMG_ADC = 0x7C2
+CAN_ID_M33_M55_MODEL_STATUS = 0x323
+M55_MODEL_STATUS_MARKER = 0xB5
+M55_MODEL_FLAG_FRESH = 0x01
+M55_MODEL_FLAG_DETECTED = 0x02
+M55_MODEL_FLAG_SUGGESTION_ONLY = 0x80
+ADC_REFERENCE_V = 3.3
+ADC_MAX_COUNT = 4095.0
+EMG_CHANNELS = [
+    {"channel": "ch1", "muscle": "biceps", "role": "model_input"},
+    {"channel": "ch2", "muscle": "triceps", "role": "model_input"},
+    {"channel": "ch3", "muscle": "forearm_flexors", "role": "model_input"},
+    {"channel": "ch4", "muscle": "reserved", "role": "reserved_physical_input"},
+]
+M55_EMG_INTENT_LABELS = {
+    0: "elbow_extend",
+    1: "elbow_flex",
+    2: "rest",
+    3: "shoulder_flex",
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -219,6 +240,240 @@ def optional_float(value: Any) -> float | None:
         return None
 
 
+def parse_can_id(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        if isinstance(value, str):
+            raw = value.strip().lower()
+            if raw.startswith("0x"):
+                return int(raw, 16)
+            return int(raw, 10)
+        return int(value)
+    except Exception:
+        return None
+
+
+def parse_can_data(value: Any) -> list[int]:
+    if isinstance(value, list):
+        result: list[int] = []
+        for item in value:
+            try:
+                result.append(int(item) & 0xFF)
+            except Exception:
+                return []
+        return result
+    if isinstance(value, str):
+        raw = value.strip().replace(",", " ").replace("-", " ").replace(":", " ")
+        parts = [part for part in raw.split() if part]
+        if len(parts) == 1 and len(parts[0]) % 2 == 0:
+            parts = [parts[0][index:index + 2] for index in range(0, len(parts[0]), 2)]
+        result = []
+        for part in parts:
+            try:
+                result.append(int(part, 16) & 0xFF)
+            except Exception:
+                return []
+        return result
+    return []
+
+
+def can_frame_id(frame: dict[str, Any]) -> int | None:
+    return parse_can_id(frame.get("id") or frame.get("can_id") or frame.get("arbitration_id"))
+
+
+def latest_can_frame(frames: list[Any], can_id: int) -> dict[str, Any] | None:
+    matched = [
+        frame
+        for frame in frames
+        if isinstance(frame, dict) and can_frame_id(frame) == can_id
+    ]
+    return matched[-1] if matched else None
+
+
+def u16_le(data: list[int], offset: int) -> int:
+    return int(data[offset]) | (int(data[offset + 1]) << 8)
+
+
+def adc_to_voltage(raw_adc: int) -> float:
+    return round(max(0.0, min(ADC_MAX_COUNT, float(raw_adc))) * ADC_REFERENCE_V / ADC_MAX_COUNT, 3)
+
+
+def decode_emg_adc_frame(frame: dict[str, Any] | None, sample_rate_hz: Any, now: float) -> dict[str, Any] | None:
+    if not frame:
+        return None
+    data = parse_can_data(frame.get("data") or frame.get("payload") or frame.get("bytes"))
+    if len(data) < 8:
+        return None
+    raw_values = [u16_le(data, offset) for offset in range(0, 8, 2)]
+    channels = []
+    for index, spec in enumerate(EMG_CHANNELS):
+        raw_adc = raw_values[index]
+        channels.append(
+            {
+                **spec,
+                "index": index,
+                "raw_adc": raw_adc,
+                "adc_count": raw_adc,
+                "unit": "adc_count",
+                "voltage_v": adc_to_voltage(raw_adc),
+                "normalized": round(raw_adc / ADC_MAX_COUNT, 4) if raw_adc else 0.0,
+                "adc_reference_v": ADC_REFERENCE_V,
+                "adc_resolution_bits": 12,
+                "connected": raw_adc > 0,
+                "quality": {"status": "no_electrode_or_unverified"},
+            }
+        )
+    return {
+        "schema_version": "rehab_arm_emg4_adc_v1",
+        "source": "m33_can_0x7c2_via_nanopi",
+        "can_id": "0x7C2",
+        "channel_count": 4,
+        "model_input_channel_count": 3,
+        "sample_rate_hz": optional_float(sample_rate_hz) or 50.0,
+        "unit": "adc_count",
+        "voltage_reference_v": ADC_REFERENCE_V,
+        "adc_resolution_bits": 12,
+        "channels": channels,
+        "quality": {
+            "status": "no_electrode_or_unverified",
+            "reason": "electrodes_not_attached_or_contact_not_calibrated",
+            "motion_permission": False,
+        },
+        "timestamp_source": "nanopi_receive_time",
+        "ts_unix": optional_float(frame.get("ts_unix") or frame.get("timestamp")) or now,
+        "control_boundary": "readonly_emg_sensor_evidence_only_not_motion_permission",
+    }
+
+
+def m55_intent_label(model_code: int, result_code: int) -> str:
+    if model_code == 2:
+        return M55_EMG_INTENT_LABELS.get(result_code, f"unknown_{result_code}")
+    return f"model_{model_code}_result_{result_code}"
+
+
+def decode_m55_model_status_frame(frame: dict[str, Any] | None, now: float) -> dict[str, Any] | None:
+    if not frame:
+        return None
+    data = parse_can_data(frame.get("data") or frame.get("payload") or frame.get("bytes"))
+    if len(data) < 8 or data[0] != M55_MODEL_STATUS_MARKER:
+        return None
+    model_code = int(data[2])
+    result_code = int(data[3])
+    confidence_permille = int(data[4]) * 10
+    flags = int(data[5])
+    window_ms = int(data[6]) * 10
+    label = m55_intent_label(model_code, result_code)
+    return {
+        "schema_version": "rehab_arm_m55_intent_prediction_v1",
+        "source": "m55_inference_can_0x323",
+        "can_id": "0x323",
+        "marker": "0xB5",
+        "seq": int(data[1]),
+        "model_code": model_code,
+        "model": "emg_intent" if model_code == 2 else f"model_{model_code}",
+        "result_code": result_code,
+        "label": label,
+        "value": label,
+        "confidence_permille": min(1000, max(0, confidence_permille)),
+        "confidence": round(min(1000, max(0, confidence_permille)) / 1000.0, 3),
+        "fresh": bool(flags & M55_MODEL_FLAG_FRESH),
+        "detected": bool(flags & M55_MODEL_FLAG_DETECTED),
+        "suggestion_only": bool(flags & M55_MODEL_FLAG_SUGGESTION_ONLY),
+        "window_ms": window_ms,
+        "timestamp_source": "nanopi_receive_time",
+        "ts_unix": optional_float(frame.get("ts_unix") or frame.get("timestamp")) or now,
+        "control_boundary": "m55_inference_suggestion_only_not_motion_permission",
+    }
+
+
+def model_outputs_from_intent(intent: dict[str, Any]) -> dict[str, Any]:
+    candidate = {
+        "label": intent.get("label"),
+        "value": intent.get("value") or intent.get("label"),
+        "confidence": intent.get("confidence"),
+        "confidence_permille": intent.get("confidence_permille"),
+        "detected": intent.get("detected"),
+        "fresh": intent.get("fresh"),
+        "source": intent.get("source"),
+        "detail": f"model_code={intent.get('model_code')} result_code={intent.get('result_code')} window_ms={intent.get('window_ms')}",
+        "control_boundary": intent.get("control_boundary"),
+    }
+    return {
+        "schema_version": "rehab_arm_m55_model_outputs_v1",
+        "source": "m55_inference_can_0x323",
+        "latest": intent,
+        "candidates": [candidate],
+        "results": [intent],
+        "control_boundary": "model_outputs_display_only_not_motion_permission",
+    }
+
+
+def normalize_sensor_state(sensor_raw: dict[str, Any], now: float) -> dict[str, Any]:
+    if not sensor_raw:
+        return {}
+    normalized = dict(sensor_raw)
+    frames = as_list(sensor_raw.get("can_frames") or sensor_raw.get("frames") or sensor_raw.get("can"))
+    emg = decode_emg_adc_frame(
+        latest_can_frame(frames, CAN_ID_F103_EMG_ADC),
+        sensor_raw.get("sample_rate_hz") or sensor_raw.get("sample_rate"),
+        now,
+    )
+    intent = decode_m55_model_status_frame(latest_can_frame(frames, CAN_ID_M33_M55_MODEL_STATUS), now)
+    if emg:
+        normalized["emg"] = emg
+        normalized.setdefault("emg_channels", emg["channels"])
+    if intent:
+        model_outputs = model_outputs_from_intent(intent)
+        normalized["intent_prediction"] = intent
+        normalized["model_outputs"] = model_outputs
+        if isinstance(normalized.get("emg"), dict):
+            normalized["emg"]["intent_prediction"] = intent
+            normalized["emg"]["model_outputs"] = model_outputs
+    return normalized
+
+
+def build_rehab_arm_hardware_manifest(args: argparse.Namespace, can_interfaces: list[dict[str, Any]]) -> dict[str, Any]:
+    can_name = text((can_interfaces[0] if can_interfaces else {}).get("name"), "can0")
+    return {
+        "schema_version": "rehab_arm_hardware_manifest_v1",
+        "device_id": device_id_from_args(args),
+        "robot_id": args.robot_id,
+        "timebase": {
+            "nanopi_upload": "unix_seconds",
+            "m33_m55_ipc": "rt_tick_ms",
+            "sensor_node": "f103_local_sequence",
+        },
+        "can": {
+            "interface": can_name,
+            "mode": "listen-only",
+            "emg_adc_can_id": "0x7C2",
+            "m55_model_status_can_id": "0x323",
+        },
+        "emg": {
+            "schema_version": "rehab_arm_emg4_adc_v1",
+            "sensor_node": "stm32_sensor_node_on_can",
+            "channel_count_reserved": 4,
+            "model_input_channels": ["ch1", "ch2", "ch3"],
+            "reserved_channels": ["ch4"],
+            "adc_reference_v": ADC_REFERENCE_V,
+            "adc_resolution_bits": 12,
+            "unit": "adc_count",
+            "voltage_unit": "V",
+            "sample_rate_hz_nominal": 50,
+            "quality_default": "no_electrode_or_unverified",
+            "channels": EMG_CHANNELS,
+        },
+        "inference": {
+            "m55_model_status_can_id": "0x323",
+            "model_code_emg_intent": 2,
+            "labels": M55_EMG_INTENT_LABELS,
+            "authority": "suggestion_only_m33_keeps_motion_authority",
+        },
+        "control_boundary": "readonly_hardware_manifest_not_motion_permission",
+    }
+
+
 def build_board_manifest(args: argparse.Namespace, scan: dict[str, Any]) -> dict[str, Any]:
     interfaces = [item for item in as_list(scan.get("interfaces")) if isinstance(item, dict)]
     can_interfaces = [item for item in interfaces if item.get("kind") == "can"]
@@ -273,6 +528,7 @@ def build_board_manifest(args: argparse.Namespace, scan: dict[str, Any]) -> dict
             "usb_devices": usb_devices,
             "ros2": {"available": bool(ros_items), "topics": topics[:80]},
         },
+        "hardware_manifest": build_rehab_arm_hardware_manifest(args, can_interfaces),
         "control_boundary": "readonly_discovery_only_not_motion_permission",
     }
 
@@ -289,7 +545,7 @@ def build_payloads(args: argparse.Namespace) -> dict[str, Any]:
     joint_state = normalize_joint_state(read_json_file(args.joint_state_json, {}))
     motors = normalize_motors(read_json_file(args.motor_state_json, {}), joint_state)
     safety_raw = as_record(read_json_file(args.safety_state_json, {}))
-    sensor_raw = as_record(read_json_file(args.sensor_state_json, {}))
+    sensor_raw = normalize_sensor_state(as_record(read_json_file(args.sensor_state_json, {})), now)
     session_id = f"{device_id}-{int(now)}"
     motion_allowed = bool(safety_raw.get("motion_allowed", False))
     return {
@@ -298,7 +554,7 @@ def build_payloads(args: argparse.Namespace) -> dict[str, Any]:
             **binding,
             "device_type": "nanopi",
             "software_version": "nanopi-readonly-agent-v1",
-            "capabilities": ["linux_board_status", "can_readonly", "serial_readonly", "ros2_readonly", "camera_keyframe"],
+            "capabilities": ["linux_board_status", "can_readonly", "can_frame_decode_readonly", "emg4_adc_readonly", "m55_intent_status_readonly", "serial_readonly", "ros2_readonly", "camera_keyframe"],
         },
         "board_manifest": {**common, **binding, "manifest": build_board_manifest(args, scan)},
         "safety": {
