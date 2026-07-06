@@ -16,7 +16,8 @@ class EmgIntentBridgeContractTest(unittest.TestCase):
         required = [
             "MODEL_INPUT_SRC_EMG",
             "MODEL_INPUT_FMT_UINT16",
-            "#define EMG_INTENT_CHANNELS 3U",
+            "#define EMG_INTENT_PHYSICAL_CHANNELS 4U",
+            "#define EMG_INTENT_MODEL_CHANNELS 3U",
             "g_m33_m55_pcm_shared",
             "RT_HW_CACHE_INVALIDATE",
             "intent_tflm_runtime_infer_int8",
@@ -41,6 +42,8 @@ class EmgIntentBridgeContractTest(unittest.TestCase):
         self.assertRegex(text, r"kFeatureStds\[INTENT_TFLM_FEATURE_COUNT\]")
         self.assertIn("features[cursor++] = (float)frame_samples", text)
         self.assertIn("features[cursor++] = (float)stale_count", text)
+        self.assertIn("stream->reserved0", text)
+        self.assertIn("stride_channels", text)
         self.assertRegex(text, r"input\[i\]\s*=\s*emg_quantize_feature")
 
     def test_tflm_runtime_wraps_int8_model_for_reuse(self):
@@ -65,6 +68,14 @@ class EmgIntentBridgeContractTest(unittest.TestCase):
         audio_pos = text.index("MODEL_INPUT_SRC_AUDIO_PCM", emg_pos)
         self.assertLess(emg_pos, audio_pos)
         self.assertIn("emg_intent_bridge_handle_stream", text)
+
+    def test_main_primes_emg_intent_and_starts_ipc_bridge_without_cloud_voice_success(self):
+        main = (APP_DIR / "main.c").read_text(encoding="utf-8")
+
+        self.assertIn('#include "emg_intent_bridge.h"', main)
+        self.assertIn("emg_intent_bridge_init()", main)
+        self.assertIn("xiaozhi_bridge_thread_start()", main)
+        self.assertLess(main.index("emg_intent_bridge_init()"), main.index("xiaozhi_bridge_thread_start()"))
 
     def test_legacy_imu_bridge_is_not_built_by_default(self):
         sconscript_path = APP_DIR / "edge_ai_bridge" / "SConscript"

@@ -7,7 +7,8 @@
 #include <rthw.h>
 #include <string.h>
 
-#define EMG_INTENT_CHANNELS 3U
+#define EMG_INTENT_PHYSICAL_CHANNELS 4U
+#define EMG_INTENT_MODEL_CHANNELS 3U
 #define EMG_INTENT_BYTES_PER_SAMPLE 2U
 #define EMG_INTENT_REST_INDEX 2
 #define EMG_INTENT_DETECTED_CONFIDENCE 400U
@@ -73,6 +74,7 @@ static const float kFeatureStds[INTENT_TFLM_FEATURE_COUNT] = {
 static rt_uint32_t g_emg_intent_window_count;
 static rt_uint32_t g_emg_intent_last_seq;
 static rt_uint32_t g_emg_intent_error_count;
+static rt_err_t g_emg_intent_init_ret = -1;
 
 static rt_uint16_t emg_u16_le(const rt_uint8_t *data)
 {
@@ -108,8 +110,19 @@ static int8_t emg_quantize_feature(float value, int feature_index)
     return (int8_t)quantized;
 }
 
+extern "C" rt_err_t emg_intent_bridge_init(void)
+{
+    g_emg_intent_init_ret = (rt_err_t)intent_tflm_runtime_init();
+    rt_kprintf("[emg_intent] runtime init ret=%d physical_ch=%u model_ch=%u\n",
+               g_emg_intent_init_ret,
+               (unsigned)EMG_INTENT_PHYSICAL_CHANNELS,
+               (unsigned)EMG_INTENT_MODEL_CHANNELS);
+    return g_emg_intent_init_ret;
+}
+
 static void emg_compute_channel_features(const rt_uint8_t *raw,
                                          rt_uint32_t frame_samples,
+                                         rt_uint32_t stride_channels,
                                          rt_uint32_t channel,
                                          emg_channel_features_t *features)
 {
@@ -121,7 +134,7 @@ static void emg_compute_channel_features(const rt_uint8_t *raw,
 
     for (rt_uint32_t i = 0U; i < frame_samples; i++)
     {
-        rt_uint32_t sample_offset = (i * EMG_INTENT_CHANNELS + channel) *
+        rt_uint32_t sample_offset = (i * stride_channels + channel) *
                                     EMG_INTENT_BYTES_PER_SAMPLE;
         float value = (float)emg_u16_le(&raw[sample_offset]);
 
@@ -152,21 +165,22 @@ static void emg_compute_channel_features(const rt_uint8_t *raw,
 
 static void emg_build_quantized_input(const rt_uint8_t *raw,
                                       rt_uint32_t frame_samples,
+                                      rt_uint32_t stride_channels,
                                       rt_uint32_t stale_count,
                                       int8_t *input)
 {
-    emg_channel_features_t channels[EMG_INTENT_CHANNELS];
+    emg_channel_features_t channels[EMG_INTENT_MODEL_CHANNELS];
     float features[INTENT_TFLM_FEATURE_COUNT];
     int cursor = 0;
 
     memset(channels, 0, sizeof(channels));
-    for (rt_uint32_t channel = 0U; channel < EMG_INTENT_CHANNELS; channel++)
+    for (rt_uint32_t channel = 0U; channel < EMG_INTENT_MODEL_CHANNELS; channel++)
     {
-        emg_compute_channel_features(raw, frame_samples, channel, &channels[channel]);
+        emg_compute_channel_features(raw, frame_samples, stride_channels, channel, &channels[channel]);
     }
 
     features[cursor++] = (float)frame_samples;
-    for (rt_uint32_t channel = 0U; channel < EMG_INTENT_CHANNELS; channel++)
+    for (rt_uint32_t channel = 0U; channel < EMG_INTENT_MODEL_CHANNELS; channel++)
     {
         features[cursor++] = channels[channel].mean;
         features[cursor++] = channels[channel].std;
@@ -183,9 +197,19 @@ static void emg_build_quantized_input(const rt_uint8_t *raw,
     }
 }
 
+static rt_uint32_t emg_stream_model_channels(const sensor_stream_msg_t *stream)
+{
+    if ((stream != RT_NULL) && (stream->reserved0 != 0U))
+    {
+        return stream->reserved0;
+    }
+    return EMG_INTENT_MODEL_CHANNELS;
+}
+
 static rt_bool_t emg_stream_is_valid(const sensor_stream_msg_t *stream)
 {
     rt_uint32_t expected_len;
+    rt_uint32_t model_channels;
 
     if (stream == RT_NULL)
     {
@@ -193,14 +217,20 @@ static rt_bool_t emg_stream_is_valid(const sensor_stream_msg_t *stream)
     }
     if ((stream->source != MODEL_INPUT_SRC_EMG) ||
         (stream->format != MODEL_INPUT_FMT_UINT16) ||
-        (stream->channels != EMG_INTENT_CHANNELS) ||
+        (stream->channels < EMG_INTENT_MODEL_CHANNELS) ||
+        (stream->channels > EMG_INTENT_PHYSICAL_CHANNELS) ||
         (stream->frame_samples == 0U))
+    {
+        return RT_FALSE;
+    }
+    model_channels = emg_stream_model_channels(stream);
+    if (model_channels != EMG_INTENT_MODEL_CHANNELS)
     {
         return RT_FALSE;
     }
 
     expected_len = stream->frame_samples *
-                   EMG_INTENT_CHANNELS *
+                   stream->channels *
                    EMG_INTENT_BYTES_PER_SAMPLE;
     if ((stream->total_len < expected_len) ||
         (stream->chunk_len < expected_len) ||
@@ -245,7 +275,7 @@ extern "C" rt_err_t emg_intent_bridge_handle_stream(const sensor_stream_msg_t *s
     }
 
     expected_len = stream->frame_samples *
-                   EMG_INTENT_CHANNELS *
+                   stream->channels *
                    EMG_INTENT_BYTES_PER_SAMPLE;
     if (expected_len == 0U)
     {
@@ -259,7 +289,7 @@ extern "C" rt_err_t emg_intent_bridge_handle_stream(const sensor_stream_msg_t *s
 
     raw = (const rt_uint8_t *)(const void *)g_m33_m55_pcm_shared.data;
     rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, (void *)raw, (int)expected_len);
-    emg_build_quantized_input(raw, stream->frame_samples, stale_count, input);
+    emg_build_quantized_input(raw, stream->frame_samples, stream->channels, stale_count, input);
 
     ret = (rt_err_t)intent_tflm_runtime_infer_int8(input, sizeof(input), &result);
     if (ret != RT_EOK)
@@ -306,7 +336,8 @@ static void emg_intent_status_cmd(int argc, char **argv)
     RT_UNUSED(argc);
     RT_UNUSED(argv);
 
-    rt_kprintf("[emg_intent] windows=%lu last_seq=%lu errors=%lu\n",
+    rt_kprintf("[emg_intent] init_ret=%d windows=%lu last_seq=%lu errors=%lu\n",
+               g_emg_intent_init_ret,
                (unsigned long)g_emg_intent_window_count,
                (unsigned long)g_emg_intent_last_seq,
                (unsigned long)g_emg_intent_error_count);

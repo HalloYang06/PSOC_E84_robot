@@ -7,6 +7,7 @@
 extern "C" {
 #endif
 
+rt_err_t emg_intent_bridge_init(void);
 rt_err_t emg_intent_bridge_handle_stream(const sensor_stream_msg_t *stream);
 
 #ifdef __cplusplus

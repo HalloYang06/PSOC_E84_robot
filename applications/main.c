@@ -15,6 +15,7 @@
 #include "whd.h"
 #include "whd_resource_api.h"
 #include "http_server.h"
+#include "emg_intent_bridge.h"
 #include "m33_m55_comm.h"
 #include "model_result_publisher.h"
 #include "openclaw_integration.h"
@@ -2085,7 +2086,6 @@ static void voice_boot_thread_entry(void *parameter)
 
     m55_dump_thread_stacks("voice_boot_after_init");
     rt_kprintf("[m55] voice service initialized\n");
-    xiaozhi_bridge_thread_start();
     ret = voice_service_start();
     if (ret != RT_EOK)
     {
@@ -2159,6 +2159,9 @@ int main(void)
     }
 #else
     (void)wifi_config_service_init();
+    ret = emg_intent_bridge_init();
+    rt_kprintf("[m55] EMG intent bridge init ret=%d\n", ret);
+    xiaozhi_bridge_thread_start();
 
 #ifdef BSP_USING_LVGL
     rt_kprintf("[m55] starting LVGL thread\n");
