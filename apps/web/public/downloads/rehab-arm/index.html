@@ -186,7 +186,7 @@
           <dt>大小</dt>
           <dd>3,814,651 bytes</dd>
           <dt>SHA256</dt>
-          <dd>A3B05F63086566EE5FDCB2A58E6756DBF3A1668F8BFEC7946E1BDE0F7A73FDAA</dd>
+          <dd>E301CDA5E988FFC98CE8664F98B6C0E2BF92D09BFC2A8542BF4018AE1BC09AA0</dd>
         </dl>
       </section>
 
@@ -195,6 +195,7 @@
         <ol>
           <li>我的页修正手机号绑定流程：未登录时手机号绑定区默认锁定，先登录云端账号后才可获取验证码和绑定。</li>
           <li>云端 API 请求统一落到 8011 服务，避免登录和手机号绑定误打静态站。</li>
+          <li>设备绑定增加资源隔离：未登录时不会触发蓝牙权限、扫描或绑定接口，避免占用设备和账号资源。</li>
           <li>内置云端 API：<code>http://106.55.62.122:8011</code>。</li>
           <li>启动后读取 <code>public-config</code> 和 <code>catalog</code>，不再静默只显示本地预览数据。</li>
           <li>未登录时显示登录面板；登录后用 Bearer token 读取 <code>/api/rehab-arm/app/v1/me</code>。</li>

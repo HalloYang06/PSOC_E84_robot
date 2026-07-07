@@ -627,6 +627,24 @@
     if (unavailable) unavailable.classList.remove("hidden");
   }
 
+  function setDeviceStatus(message) {
+    const status = qs("#device-status-message");
+    if (status) status.textContent = message;
+  }
+
+  function requireDeviceBindingLogin() {
+    if (getToken()) return true;
+    showDeviceStep(2);
+    setDeviceStatus("请先登录云端账号，再绑定设备。");
+    const unavailable = qs("#bluetoothUnavailable");
+    const results = qs("#device-results");
+    unavailable && unavailable.classList.add("hidden");
+    if (results) {
+      results.innerHTML = '<div class="w-full bg-surface-container rounded-lg p-md text-body-md text-on-surface-variant">登录后再搜索设备，避免蓝牙权限和设备绑定被错误占用。<a class="text-primary font-label-md" href="profile.html">去我的页面登录</a></div>';
+    }
+    return false;
+  }
+
   function normalizeDiscoveredDevice(raw, index) {
     const deviceId = raw.m33_device_id || raw.deviceId || raw.id || raw.address || raw.name || `rehab-device-${index + 1}`;
     return {
@@ -674,6 +692,7 @@
 
   async function scanRehabDevices() {
     showDeviceStep(2);
+    if (!requireDeviceBindingLogin()) return;
     const bridge = getBluetoothBridge();
     const status = qs("#device-status-message");
     const scanButton = qs('[data-action="scan-rehab-device"]');
@@ -704,6 +723,7 @@
   }
 
   async function bindSelectedDevice(event) {
+    if (!requireDeviceBindingLogin()) return;
     const button = event.currentTarget || event.target.closest('[data-action="bind-rehab-device"]');
     const deviceId = button && button.dataset.deviceId;
     selectedDevice = discoveredDevices.get(deviceId);
