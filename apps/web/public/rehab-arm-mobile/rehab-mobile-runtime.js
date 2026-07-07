@@ -1,4 +1,5 @@
 (function () {
+  const apiBase = "http://106.55.62.122:8011";
   const sessionEndpoint = "/api/auth/session";
   const bootstrapEndpoint = "/api/rehab-arm/app/v1/me";
   const phoneVerificationEndpoint = "/api/rehab-arm/app/v1/account/phone-verifications";
@@ -9,6 +10,7 @@
   let resendCooldown = 0;
   let resendTimer = null;
   let selectedDevice = null;
+  let isAuthenticated = false;
   const discoveredDevices = new Map();
 
   function qs(selector, root) {
@@ -21,6 +23,11 @@
 
   function getToken() {
     return localStorage.getItem("access_token") || "";
+  }
+
+  function apiUrl(path) {
+    if (/^https?:\/\//i.test(path)) return path;
+    return `${apiBase}${path.startsWith("/") ? path : `/${path}`}`;
   }
 
   function authHeaders(extra) {
@@ -43,7 +50,7 @@
   }
 
   async function apiRequest(path, options) {
-    const response = await fetch(path, {
+    const response = await fetch(apiUrl(path), {
       ...options,
       headers: authHeaders(options && options.headers),
     });
@@ -52,6 +59,7 @@
       const detail = payload.error || payload.detail || payload;
       const error = new Error(detail.message || "请求暂时失败");
       Object.assign(error, detail);
+      error.status = response.status;
       throw error;
     }
     return payload.data || payload;
@@ -65,6 +73,11 @@
   function setInputValue(selector, value) {
     const node = qs(selector);
     if (node && value) node.value = value;
+  }
+
+  function setDisabled(selector, disabled) {
+    const node = qs(selector);
+    if (node) node.disabled = !!disabled;
   }
 
   function escapeHtml(value) {
@@ -84,15 +97,79 @@
     if (tone) status.classList.add(tone);
   }
 
+  function setLoginStatus(message, tone) {
+    const status = qs("#login-status");
+    if (!status) return;
+    status.textContent = message || "";
+    status.classList.remove("success", "error");
+    if (tone) status.classList.add(tone);
+  }
+
+  function setLoginLoading(loading) {
+    const button = qs('[data-action="login-cloud-account"]');
+    if (!button) return;
+    button.disabled = !!loading;
+    button.textContent = loading ? "登录中" : button.dataset.defaultLabel || "登录云端账号";
+  }
+
+  function setPhoneBindingLocked(locked, message) {
+    const shouldLock = !!locked;
+    setDisabled("#phone-input", shouldLock);
+    setDisabled("#phone-code-input", shouldLock);
+    setDisabled('[data-action="confirm-phone-binding"]', shouldLock);
+
+    const sendButton = qs('[data-action="send-phone-code"]');
+    if (sendButton) {
+      sendButton.disabled = shouldLock || resendCooldown > 0;
+      if (shouldLock) {
+        sendButton.textContent = sendButton.dataset.defaultLabel || "获取验证码";
+      }
+    }
+
+    const badge = qs("#phone-verified-badge");
+    if (badge) {
+      if (shouldLock) {
+        badge.textContent = "需登录";
+      } else if (badge.textContent.trim() === "需登录") {
+        badge.textContent = "未绑定";
+      }
+    }
+
+    if (shouldLock) {
+      verificationId = "";
+      clearInterval(resendTimer);
+      resendTimer = null;
+      resendCooldown = 0;
+      setPhoneStatus(message || "请先登录云端账号，再绑定手机号。", "error");
+    }
+  }
+
+  function setAuthState(authenticated, options) {
+    isAuthenticated = !!authenticated;
+    const panel = qs("#cloud-login-panel");
+    if (panel) panel.classList.toggle("is-hidden", isAuthenticated);
+    setText("#cloud-account-status", isAuthenticated ? "已登录" : "未登录");
+
+    if (isAuthenticated) {
+      setPhoneBindingLocked(false);
+      if (!options || options.showReadyMessage !== false) {
+        setPhoneStatus("登录成功，可以绑定手机号。", "success");
+      }
+      return;
+    }
+
+    setPhoneBindingLocked(true, "请先登录云端账号，再绑定手机号。");
+  }
+
   function setPhoneLoading(kind, loading) {
     const sendButton = qs('[data-action="send-phone-code"]');
     const confirmButton = qs('[data-action="confirm-phone-binding"]');
     if (sendButton && kind === "send") {
-      sendButton.disabled = loading || resendCooldown > 0;
+      sendButton.disabled = loading || resendCooldown > 0 || !isAuthenticated;
       sendButton.textContent = loading ? "发送中" : sendButton.dataset.defaultLabel || "获取验证码";
     }
     if (confirmButton && kind === "confirm") {
-      confirmButton.disabled = loading;
+      confirmButton.disabled = loading || !isAuthenticated;
       confirmButton.textContent = loading ? "绑定中" : confirmButton.dataset.defaultLabel || "绑定手机号";
     }
   }
@@ -109,7 +186,7 @@
       if (resendCooldown <= 0) {
         clearInterval(resendTimer);
         resendTimer = null;
-        sendButton.disabled = false;
+        sendButton.disabled = !isAuthenticated;
         sendButton.textContent = sendButton.dataset.defaultLabel || "获取验证码";
         return;
       }
@@ -140,7 +217,17 @@
     return error.message || "手机号绑定暂时失败，请稍后再试。";
   }
 
+  function requireCloudLogin() {
+    if (getToken()) return true;
+    setAuthState(false);
+    setLoginStatus("请先登录云端账号。", "error");
+    const emailInput = qs("#login-email");
+    if (emailInput) emailInput.focus();
+    return false;
+  }
+
   async function sendPhoneVerification() {
+    if (!requireCloudLogin()) return;
     const phoneInput = qs("#phone-input");
     const phone = phoneInput ? phoneInput.value.trim() : "";
     if (!phone) {
@@ -166,6 +253,7 @@
   }
 
   async function confirmPhoneVerification() {
+    if (!requireCloudLogin()) return;
     const codeInput = qs("#phone-code-input");
     const code = codeInput ? codeInput.value.trim() : "";
     if (!verificationId) {
@@ -395,10 +483,59 @@
     }
   }
 
+  async function loginCloudAccount() {
+    const emailInput = qs("#login-email");
+    const passwordInput = qs("#login-password");
+    const email = emailInput ? emailInput.value.trim() : "";
+    const password = passwordInput ? passwordInput.value : "";
+
+    if (!email) {
+      setLoginStatus("请输入云端账号邮箱。", "error");
+      if (emailInput) emailInput.focus();
+      return;
+    }
+    if (!password) {
+      setLoginStatus("请输入密码。", "error");
+      if (passwordInput) passwordInput.focus();
+      return;
+    }
+
+    setLoginLoading(true);
+    setLoginStatus("正在登录云端账号...", "");
+    try {
+      const data = await apiRequest(sessionEndpoint, {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      const token = data.access_token || data.accessToken || "";
+      if (!token) {
+        throw new Error("登录成功但没有返回访问凭证。");
+      }
+      localStorage.setItem("access_token", token);
+      setLoginStatus("登录成功，正在同步康复资料...", "success");
+      setAuthState(true);
+      await loadBootstrap();
+    } catch (error) {
+      localStorage.removeItem("access_token");
+      setAuthState(false);
+      const message = error.code === "AUTH_INVALID"
+        ? "账号或密码不正确，请重新输入。"
+        : (error.message || "登录暂时失败，请稍后再试。");
+      setLoginStatus(message, "error");
+      if (passwordInput) passwordInput.focus();
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
   async function loadBootstrap() {
-    if (!getToken()) return;
+    if (!getToken()) {
+      setAuthState(false);
+      return;
+    }
     try {
       const data = await apiRequest(bootstrapEndpoint, { method: "GET" });
+      setAuthState(true, { showReadyMessage: false });
       const home = data.patient_view && data.patient_view.home;
       const profile = data.patient_view && data.patient_view.profile;
       const device = data.patient_view && data.patient_view.device;
@@ -412,11 +549,23 @@
         if (phone.verified || profile.phone_verified || profile.phoneVerified) {
           setText("#phone-verified-badge", "已绑定");
           setPhoneStatus("手机号已验证，账号已绑定当前手机号。", "success");
+          const confirmButton = qs('[data-action="confirm-phone-binding"]');
+          if (confirmButton) {
+            confirmButton.disabled = true;
+            confirmButton.textContent = "已绑定";
+          }
         }
       }
       setText("#cloud-account-status", "已同步");
-    } catch {
-      setText("#cloud-account-status", "待同步");
+    } catch (error) {
+      if (error.status === 401 || error.status === 403 || error.code === "AUTH_REQUIRED") {
+        localStorage.removeItem("access_token");
+        setAuthState(false);
+        setLoginStatus("登录已过期，请重新登录。", "error");
+        return;
+      }
+      setAuthState(true, { showReadyMessage: false });
+      setText("#cloud-account-status", "同步失败");
     }
   }
 
@@ -431,6 +580,22 @@
       confirmButton.dataset.defaultLabel = confirmButton.textContent.trim() || "绑定手机号";
       confirmButton.addEventListener("click", confirmPhoneVerification);
     }
+  }
+
+  function wireLogin() {
+    const button = qs('[data-action="login-cloud-account"]');
+    const emailInput = qs("#login-email");
+    const passwordInput = qs("#login-password");
+    if (button) {
+      button.dataset.defaultLabel = button.textContent.trim() || "登录云端账号";
+      button.addEventListener("click", loginCloudAccount);
+    }
+    [emailInput, passwordInput].forEach((input) => {
+      if (!input) return;
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") loginCloudAccount();
+      });
+    });
   }
 
   function wireDeviceBinding() {
@@ -457,13 +622,14 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    void sessionEndpoint;
-    loadBootstrap();
     wirePhoneBinding();
+    wireLogin();
+    loadBootstrap();
     wireDeviceBinding();
     wireAgent();
   });
 
+  window.loginCloudAccount = loginCloudAccount;
   window.sendPhoneVerification = sendPhoneVerification;
   window.confirmPhoneVerification = confirmPhoneVerification;
   window.scanRehabDevices = scanRehabDevices;
