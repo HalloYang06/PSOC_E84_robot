@@ -3636,3 +3636,12 @@
 - Screenshot QA: desktop `D:\ai合作产品\docs\screenshots\rehab-arm-stereo-pair-evidence-qa\desktop-1600.png`; mobile `D:\ai合作产品\docs\screenshots\rehab-arm-stereo-pair-evidence-qa\mobile-390.png`. Both show real left/right camera frames with bbox overlays and no obvious card overlap.
 - Boundary: V/perception evidence only. No XiaoZhi/L transport, CAN, M33/M55 firmware, ROS motion topic, trajectory, motor command, kernel, driver, or real motion path change was made.
 - Next step: include the uploaded side-specific keyframe URLs directly in future stereo payloads or add frame-id pairing metadata, so the page can prove image/bbox temporal pairing even more explicitly.
+
+### 2026-07-07 - Visual-zero desktop viewer connected to hardware trajectory topic
+
+- Reason: user completed on-site alignment of the Linux desktop MuJoCo viewer so the displayed visual zero matches the real arm's natural hanging state, and asked to record the protocol before adding server target-XYZ IK.
+- Completed: added `tools/open_visual_zero_viewer.py` as the repo copy of the desktop viewer/control entry and documented the protocol in `docs/VISUAL_ZERO_HARDWARE_CONTROL_PROTOCOL.md`.
+- Protocol: the desktop viewer remains the operator-facing control thread. With `--enable-hardware-tx --confirm-onsite`, changed MuJoCo sliders publish `trajectory_msgs/msg/JointTrajectory` to `/arm_controller/joint_trajectory`; no initial real command is sent unless `--publish-initial` is explicitly requested.
+- Mapping: current hardware TX covers only motors 4/5/6. Published joint order is `elbow_lift_joint`, `shoulder_abduction_joint`, `upper_arm_rotation_joint`, with positions `[ctrl[1], ctrl[3], ctrl[2]]`. The visual shoulder-longitudinal direction reversal is recorded as `jian_zongxiang_joint = VISUAL_ZERO[1] - ctrl[1]`.
+- Server/IK follow-up: server target coordinates should become IK goals in the same visual-zero MuJoCo frame, then convert solved qpos back to the hardware command frame before publishing the same `/arm_controller/joint_trajectory` message. Server/VLA still must not send raw CAN, current, torque, or private motor protocol frames.
+- Safety: this is bench-debug real-motion operation through the formal ROS entry point and PSoC/M33 path. M33 remains the final safety authority for limits, current/torque, heartbeat, timeout, temperature, and emergency-stop decisions.
