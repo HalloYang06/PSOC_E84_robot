@@ -14,6 +14,11 @@ const nextConfig = {
         destination: "/rehab-arm-mobile/home.html",
         permanent: false,
       },
+      {
+        source: "/downloads/rehab-arm",
+        destination: "/downloads/rehab-arm/index.html",
+        permanent: false,
+      },
     ];
   },
   ...(distDir ? { distDir } : {}),
