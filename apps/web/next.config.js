@@ -7,6 +7,15 @@ const nextConfig = {
   experimental: {
     webpackBuildWorker: false,
   },
+  async redirects() {
+    return [
+      {
+        source: "/rehab-arm-mobile",
+        destination: "/rehab-arm-mobile/home.html",
+        permanent: false,
+      },
+    ];
+  },
   ...(distDir ? { distDir } : {}),
 };
 

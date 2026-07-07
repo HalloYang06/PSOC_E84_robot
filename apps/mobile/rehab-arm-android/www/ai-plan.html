@@ -1,266 +1,265 @@
 <!DOCTYPE html>
 
-<html class="light" lang="zh-CN"><head>
+<html lang="zh-CN"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
-<title>康复智能体 - 灵动康复 ArmControl</title>
+<title>AI康复助手</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&amp;family=Atkinson+Hyperlegible+Next:wght@400;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
         tailwind.config = {
             darkMode: "class",
             theme: {
                 extend: {
                     "colors": {
-                        "outline-variant": "#c1c6d7",
-                        "on-tertiary": "#ffffff",
-                        "tertiary-fixed": "#ffdbcc",
-                        "tertiary": "#9e3d00",
-                        "secondary-fixed": "#e2dfff",
-                        "secondary-fixed-dim": "#c2c1ff",
-                        "outline": "#717786",
-                        "inverse-surface": "#2f3034",
-                        "surface-dim": "#dad9df",
-                        "surface-container-high": "#e9e7ed",
-                        "on-tertiary-fixed": "#351000",
-                        "on-secondary-container": "#fffbff",
-                        "surface-bright": "#faf9fe",
-                        "error": "#ba1a1a",
-                        "surface-container-highest": "#e3e2e7",
-                        "on-tertiary-fixed-variant": "#7c2e00",
-                        "inverse-primary": "#adc6ff",
-                        "tertiary-fixed-dim": "#ffb595",
-                        "primary-container": "#0070eb",
-                        "on-secondary-fixed": "#0c006a",
-                        "secondary": "#4c4aca",
-                        "surface-variant": "#e3e2e7",
-                        "inverse-on-surface": "#f1f0f5",
-                        "secondary-container": "#6664e4",
-                        "primary": "#0058bc",
-                        "on-primary-fixed": "#001a41",
-                        "surface-tint": "#005bc1",
-                        "surface-container-lowest": "#ffffff",
-                        "surface-container": "#eeedf3",
-                        "on-primary-container": "#fefcff",
-                        "on-error-container": "#93000a",
-                        "on-primary-fixed-variant": "#004493",
-                        "on-secondary": "#ffffff",
-                        "tertiary-container": "#c64f00",
-                        "on-error": "#ffffff",
-                        "on-tertiary-container": "#fffbff",
+                        "on-secondary-fixed-variant": "#005236",
                         "error-container": "#ffdad6",
-                        "on-secondary-fixed-variant": "#3631b4",
-                        "on-background": "#1a1b1f",
-                        "surface": "#faf9fe",
-                        "background": "#faf9fe",
-                        "on-surface": "#1a1b1f",
-                        "primary-fixed": "#d8e2ff",
                         "on-primary": "#ffffff",
-                        "primary-fixed-dim": "#adc6ff",
-                        "on-surface-variant": "#414755",
-                        "surface-container-low": "#f4f3f8"
+                        "tertiary-fixed-dim": "#ffb95f",
+                        "outline-variant": "#bcc9c6",
+                        "primary-fixed": "#89f5e7",
+                        "tertiary-container": "#a36700",
+                        "surface-variant": "#d3e4fe",
+                        "on-secondary": "#ffffff",
+                        "on-primary-container": "#f4fffc",
+                        "on-error-container": "#93000a",
+                        "background": "#f8f9ff",
+                        "on-tertiary-container": "#fffbff",
+                        "secondary-container": "#6cf8bb",
+                        "primary": "#00685f",
+                        "on-tertiary-fixed-variant": "#653e00",
+                        "on-secondary-fixed": "#002113",
+                        "inverse-on-surface": "#eaf1ff",
+                        "primary-container": "#008378",
+                        "tertiary-fixed": "#ffddb8",
+                        "on-secondary-container": "#00714d",
+                        "outline": "#6d7a77",
+                        "surface-container-highest": "#d3e4fe",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed-variant": "#005049",
+                        "surface": "#f8f9ff",
+                        "surface-tint": "#006a61",
+                        "surface-container-low": "#eff4ff",
+                        "inverse-surface": "#213145",
+                        "primary-fixed-dim": "#6bd8cb",
+                        "surface-dim": "#cbdbf5",
+                        "on-primary-fixed": "#00201d",
+                        "tertiary": "#825100",
+                        "surface-container-high": "#dce9ff",
+                        "on-tertiary-fixed": "#2a1700",
+                        "on-tertiary": "#ffffff",
+                        "surface-bright": "#f8f9ff",
+                        "on-surface": "#0b1c30",
+                        "secondary": "#006c49",
+                        "secondary-fixed-dim": "#4edea3",
+                        "error": "#ba1a1a",
+                        "surface-container": "#e5eeff",
+                        "on-background": "#0b1c30",
+                        "secondary-fixed": "#6ffbbe",
+                        "inverse-primary": "#6bd8cb",
+                        "on-error": "#ffffff",
+                        "on-surface-variant": "#3d4947"
                     },
                     "borderRadius": {
-                        "DEFAULT": "0.125rem",
-                        "lg": "0.25rem",
-                        "xl": "0.5rem",
-                        "full": "0.75rem"
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
                     },
                     "spacing": {
-                        "unit": "8px",
-                        "container-max": "390px",
-                        "gutter": "16px",
-                        "margin-mobile": "16px",
-                        "margin-desktop": "16px"
+                        "lg": "24px",
+                        "xl": "32px",
+                        "md": "16px",
+                        "gutter-mobile": "12px",
+                        "sm": "12px",
+                        "base": "4px",
+                        "xs": "8px",
+                        "margin-mobile": "20px"
                     },
                     "fontFamily": {
-                        "display-lg": ["Inter"],
-                        "label-md": ["JetBrains Mono"],
-                        "headline-md": ["Inter"],
-                        "headline-lg": ["Inter"],
-                        "body-md": ["Inter"],
-                        "headline-lg-mobile": ["Inter"],
-                        "data-viz": ["JetBrains Mono"],
-                        "body-lg": ["Inter"]
+                        "headline-md": ["Plus Jakarta Sans"],
+                        "body-lg": ["Atkinson Hyperlegible Next"],
+                        "label-md": ["Atkinson Hyperlegible Next"],
+                        "headline-lg": ["Plus Jakarta Sans"],
+                        "body-md": ["Atkinson Hyperlegible Next"],
+                        "headline-lg-mobile": ["Plus Jakarta Sans"]
                     },
                     "fontSize": {
-                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700" }],
-                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "500" }],
-                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
-                        "headline-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600" }],
+                        "headline-md": ["22px", { "lineHeight": "28px", "fontWeight": "600" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "label-md": ["14px", { "lineHeight": "20px", "fontWeight": "600" }],
+                        "headline-lg": ["28px", { "lineHeight": "36px", "fontWeight": "700" }],
                         "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
-                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "600" }],
-                        "data-viz": ["12px", { "lineHeight": "16px", "fontWeight": "600" }],
-                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }]
+                        "headline-lg-mobile": ["24px", { "lineHeight": "32px", "fontWeight": "700" }]
                     }
                 }
             }
         }
     </script>
 <style>
-        body { -webkit-tap-highlight-color: transparent; }
-        ::-webkit-scrollbar { display: none; }
-        body { min-height: max(884px, 100dvh); max-width: 390px; margin: 0 auto; overflow-x: hidden; }
-        .clinical-shadow { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04); }
+        body { letter-spacing: 0; background-color: #f8f9ff; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .material-symbols-outlined.filled { font-variation-settings: 'FILL' 1; }
+        
+        /* Mobile Viewport Constraints */
+        .mobile-viewport {
+            max-width: 390px;
+            margin: 0 auto;
+            min-height: 100vh;
+            position: relative;
+            background-color: #f8f9ff;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Ambient Shadows for Depth */
+        .shadow-ambient-sm { box-shadow: 0 4px 12px rgba(0, 104, 95, 0.04); }
+        .shadow-ambient-md { box-shadow: 0 8px 24px rgba(0, 104, 95, 0.08); }
+        .shadow-ambient-lg { box-shadow: 0 16px 48px rgba(0, 104, 95, 0.12); }
     </style>
-</head>
-<body class="bg-background text-on-background antialiased flex flex-col pb-24 relative mx-auto w-full">
-<!-- Header -->
-<header class="sticky top-0 z-50 bg-surface/95 backdrop-blur-md border-b border-outline-variant px-margin-mobile py-3 flex flex-col gap-2 w-full">
-<div class="flex items-center justify-between">
-<div class="flex items-center gap-3">
-<button aria-label="返回" class="min-h-12 min-w-12 p-1 -ml-1 text-on-surface hover:bg-surface-container-high rounded-full transition-colors" type="button">
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="text-on-background bg-surface min-h-screen antialiased">
+<div class="mobile-viewport">
+<!-- TopAppBar -->
+<header class="bg-surface shadow-sm docked full-width top-0 z-50 flex items-center justify-between px-margin-mobile h-12 w-full sticky top-0 bg-opacity-95 backdrop-blur-md border-b border-surface-variant">
+<button aria-label="Back" class="text-primary hover:bg-primary-container/20 active:scale-95 transition-transform flex items-center justify-center rounded-full p-2" type="button">
 <span class="material-symbols-outlined">arrow_back</span>
 </button>
-<h1 class="text-body-lg font-bold text-on-surface tracking-tight">康复智能体</h1>
-</div>
-<div class="flex items-center gap-2 text-data-viz text-primary bg-primary-fixed/30 px-2 py-1 rounded-sm border border-primary/20">
-<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
-                云端同步
-            </div>
-</div>
-<div class="bg-error-container text-on-error-container text-[11px] font-data-viz px-2 py-1 rounded-sm flex items-start gap-1 border border-error/20">
-<span class="material-symbols-outlined text-[14px] mt-0.5">warning</span>
-<span>AI 只生成训练草稿；接受后还需要设备审核和训练前检查，不能直接启动机械臂。</span>
-</div>
-</header>
-<main class="flex-1 px-margin-mobile py-4 flex flex-col gap-6 w-full">
-<!-- Input Section -->
-<section class="bg-surface-container-lowest rounded-lg p-4 border border-outline-variant clinical-shadow">
-<h2 class="text-body-md font-semibold text-on-surface mb-3 flex items-center gap-2">
-<span class="material-symbols-outlined text-outline text-[18px]">terminal</span>
-                智能体规划输入
-            </h2>
-<div class="mb-4">
-<textarea class="w-full bg-surface-container-low border border-outline-variant rounded p-3 text-body-md text-on-surface focus:ring-1 focus:ring-primary focus:border-primary transition-all resize-none h-24 font-body-md" data-arm-ai-input="" placeholder="输入康复需求，例如：今天有点酸，下一次练轻一点"></textarea>
-</div>
-<div class="flex flex-wrap gap-2 mb-4">
-<span class="text-[11px] font-data-viz bg-surface-container-high text-on-surface-variant px-2 py-1 rounded-sm border border-outline-variant/50">肌电：等待读取</span>
-<span class="text-[11px] font-data-viz bg-surface-container-high text-on-surface-variant px-2 py-1 rounded-sm border border-outline-variant/50">意图：等待读取</span>
-<span class="text-[11px] font-data-viz bg-surface-container-high text-on-surface-variant px-2 py-1 rounded-sm border border-outline-variant/50">草稿：等待生成</span>
-</div>
-<div class="space-y-4 pt-4 border-t border-outline-variant/30">
-<!-- Pain Input -->
-<div>
-<div class="flex justify-between items-center mb-1">
-<label class="text-[12px] font-label-md text-on-surface-variant uppercase tracking-wider">疼痛自评</label>
-<span class="text-data-viz text-primary font-bold" id="pain-display">2/10</span>
-</div>
-<input class="w-full h-1 bg-outline-variant rounded-full appearance-none accent-primary" data-arm-ai-pain="" max="10" min="1" oninput="document.getElementById('pain-display').innerText = this.value + '/10'" type="range" value="2"/>
-</div>
-<!-- Fatigue Input -->
-<div>
-<label class="text-[12px] font-label-md text-on-surface-variant uppercase tracking-wider block mb-1">疲劳状态</label>
-<select class="w-full bg-surface-container border border-outline-variant rounded p-2 text-body-md text-on-surface font-body-md h-[44px]" data-arm-ai-fatigue="">
-<option value="low">轻微</option>
-<option selected="" value="moderate">中等</option>
-<option value="high">明显疲劳</option>
-</select>
-</div>
-</div>
-<button class="w-full mt-5 bg-primary text-on-primary font-label-md h-12 rounded flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-sm" data-arm-ai-generate="" type="button">
-<span class="material-symbols-outlined text-[18px]">memory</span>
-                生成 AI 草稿
-            </button>
-</section>
-<!-- Draft Card (Prescription Style) -->
-<section class="bg-surface-container-lowest rounded-lg border border-outline-variant clinical-shadow overflow-hidden">
-<div class="bg-surface-container-low px-4 py-3 border-b border-outline-variant flex justify-between items-center">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-primary text-[18px]">receipt_long</span>
-<span class="text-label-md font-bold text-on-surface uppercase tracking-wider">训练草稿处方</span>
-</div>
-<span class="text-[10px] font-data-viz text-on-surface-variant bg-surface-variant px-1.5 py-0.5 rounded-sm">草稿</span>
-</div>
-<div class="p-4 space-y-4">
-<h3 class="text-body-lg font-bold text-on-surface border-l-4 border-primary pl-2" data-role="ai-draft-title">等待生成训练草稿</h3>
-<div class="grid grid-cols-2 gap-4">
-<div class="bg-surface-container rounded p-3 border border-outline-variant/30">
-<p class="text-[10px] font-label-md text-on-surface-variant uppercase mb-1">训练量</p>
-<p class="text-body-md font-semibold text-on-surface" data-role="ai-draft-sets-reps">登录后生成</p>
-</div>
-<div class="bg-surface-container rounded p-3 border border-outline-variant/30">
-<p class="text-[10px] font-label-md text-on-surface-variant uppercase mb-1">助力 / 速度</p>
-<p class="text-body-md font-semibold text-on-surface" data-role="ai-draft-assist">-</p>
-</div>
-</div>
-<div class="bg-tertiary-fixed/30 border border-tertiary/20 rounded p-3 flex gap-2">
-<span class="material-symbols-outlined text-tertiary text-[16px] mt-0.5">report</span>
-<p class="text-data-viz text-on-surface-variant leading-relaxed">
-<span class="font-bold text-tertiary">安全提示：</span>草稿接受后仍需同步到设备、等待设备审核，并通过训练前检查后才能开始记录。
-                    </p>
-</div>
-<div class="text-[12px] font-data-viz text-outline border-t border-outline-variant/30 pt-3" data-role="ai-draft-explain">
-<span class="text-primary font-bold">智能体状态：</span>AI 规划会调用后端 /ai-training-drafts/generate。模型未配置时会明确显示规则回退，不伪装真实 AI 调用。
-                </div>
-</div>
-<div class="p-4 bg-surface-container-low border-t border-outline-variant flex gap-3">
-<button class="flex-1 bg-secondary text-on-secondary font-label-md h-12 rounded flex items-center justify-center gap-2 hover:bg-secondary/90 transition-colors shadow-sm disabled:opacity-50" data-arm-ai-accept="" disabled="" type="button">
-<span class="material-symbols-outlined text-[18px]">check_circle</span>
-                    接受为训练计划
+<h1 class="font-headline-md text-headline-md font-bold text-primary truncate flex-1 text-center">AI康复助手</h1>
+<div class="ml-2" id="l1-required-agent-copy">
+<button aria-label="问康复师" class="ask-therapist-header font-label-md text-label-md bg-secondary text-on-secondary rounded-full shadow-ambient-sm hover:bg-secondary/90 active:scale-95 transition-all" style="min-height:48px;height:48px;min-width:112px;display:flex;align-items:center;justify-content:center;" type="button">
+<span class="material-symbols-outlined mr-1" style="font-size: 18px;">medical_services</span>问康复师
                 </button>
 </div>
-</section>
-<!-- Workflow Stepper -->
-<section class="bg-surface-container-lowest rounded-lg p-4 border border-outline-variant clinical-shadow mb-4">
-<h3 class="text-[12px] font-label-md text-on-surface-variant uppercase tracking-wider mb-4">闭环执行状态</h3>
-<div class="relative pl-4 space-y-4 before:absolute before:inset-y-0 before:left-[9px] before:w-px before:bg-outline-variant/50">
-<div class="relative flex items-start gap-3">
-<div class="absolute -left-[18px] mt-0.5 w-4 h-4 rounded-full bg-primary flex items-center justify-center ring-4 ring-surface-container-lowest">
-<span class="material-symbols-outlined text-[10px] text-on-primary">check</span>
+</header>
+<!-- Main Chat Area -->
+<main class="flex-1 overflow-y-auto px-margin-mobile pt-lg pb-[176px] flex flex-col gap-lg bg-surface">
+<!-- Welcome Message -->
+<div class="text-center text-on-surface-variant font-label-md text-label-md mb-md">
+                今天 09:41
+            </div>
+<!-- Patient Message 1 -->
+<div class="flex justify-end mb-sm">
+<div class="flex flex-col items-end max-w-[85%]">
+<div class="bg-primary text-on-primary rounded-2xl rounded-tr-none px-md py-sm shadow-ambient-sm font-body-md text-body-md">
+                        训练后感觉手臂有点酸痛，这正常吗？
+                    </div>
 </div>
-<div>
-<p class="text-data-viz font-bold text-on-surface">生成 AI 草稿</p>
-<p class="text-[10px] text-outline font-data-viz mt-0.5">等待后端草稿</p>
-</div>
-</div>
-<div class="relative flex items-start gap-3">
-<div class="absolute -left-[18px] mt-0.5 w-4 h-4 rounded-full border-2 border-primary bg-surface-container-lowest flex items-center justify-center ring-4 ring-surface-container-lowest">
-<div class="w-1.5 h-1.5 bg-primary rounded-full"></div>
-</div>
-<div>
-<p class="text-data-viz font-bold text-primary">人工确认草稿</p>
-<p class="text-[10px] text-outline font-data-viz mt-0.5">接受后仅生成普通训练计划</p>
-</div>
-</div>
-<div class="relative flex items-start gap-3 opacity-50">
-<div class="absolute -left-[18px] mt-0.5 w-4 h-4 rounded-full border-2 border-outline-variant bg-surface-container-lowest ring-4 ring-surface-container-lowest"></div>
-<div>
-<p class="text-data-viz font-bold text-on-surface">生成训练计划</p>
-</div>
-</div>
-<div class="relative flex items-start gap-3 opacity-50">
-<div class="absolute -left-[18px] mt-0.5 w-4 h-4 rounded-full border-2 border-outline-variant bg-surface-container-lowest ring-4 ring-surface-container-lowest"></div>
-<div>
-<p class="text-data-viz font-bold text-on-surface">同步到设备</p>
-<p class="text-[10px] text-tertiary font-bold font-data-viz mt-0.5">等待设备审核</p>
-</div>
-</div>
-<div class="relative flex items-start gap-3 opacity-50">
-<div class="absolute -left-[18px] mt-0.5 w-4 h-4 rounded-full border-2 border-outline-variant bg-surface-container-lowest ring-4 ring-surface-container-lowest"></div>
-<div>
-<p class="text-data-viz font-bold text-on-surface">Preflight 后开始记录</p>
-<p class="text-[10px] text-tertiary font-bold font-data-viz mt-0.5">等待训练前检查</p>
+<div class="ml-xs mt-1 shrink-0">
+<div class="w-8 h-8 bg-surface-variant rounded-full flex items-center justify-center shadow-ambient-sm border border-outline-variant/30 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A minimal, flat vector illustration of a generic user avatar in soft pastel colors, suitable for a healthcare app profile picture. The style is modern, friendly, and clean." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCGHhxwNqv9jD1ceQDU_KUXyhXsEwDCf3C7ReMxihj6P_KCkpQcyu4x54tXTxsFPtNNj8rlZvHvtdY3j7NDQEBZZGfhUYfGZUJeR5uxTjw1HeY-UTGA2dMbnIijO6AOhu95W5JJCFoH25QChIXaFdsh64xkWb0Bp58JU4pmK6FY4ODWogRhspSBTG1qUNiZzs0f_W-coJmi_5HS963oiZBh5Lw-dAc8z7K5kYu8v6CAAaWoH1ZlvR4ErPXL_a0PvnWf3P-Mu7BYMc4"/>
 </div>
 </div>
 </div>
-</section>
+<!-- Assistant Message 1 (Safe Answer) -->
+<div class="flex justify-start mb-sm">
+<div class="mr-xs mt-1 shrink-0">
+<div class="w-8 h-8 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center shadow-ambient-sm border border-primary/20">
+<span class="material-symbols-outlined filled" style="font-size: 18px;">smart_toy</span>
+</div>
+</div>
+<div class="flex flex-col items-start max-w-[85%]">
+<div class="flex items-center gap-1 mb-1 text-secondary font-label-md text-xs">
+<span class="material-symbols-outlined" style="font-size: 14px;">check_circle</span>
+                        康复建议
+                    </div>
+<div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl rounded-tl-none px-md py-sm shadow-ambient-md font-body-md text-body-md text-on-surface">
+<p class="mb-2">您好，训练后出现轻微的肌肉酸痛是正常的生理反应，这说明您的肌肉正在适应新的负荷并进行重建。</p>
+<p class="mb-2">建议您：</p>
+<ul class="list-disc pl-4 space-y-1 mb-2 text-on-surface-variant">
+<li>适当休息，避免连续进行高强度训练。</li>
+<li>可以进行轻柔的拉伸动作缓解紧张。</li>
+<li>如果酸痛持续超过48小时或伴有刺痛感，请及时咨询康复师。</li>
+</ul>
+<p>请继续保持平稳的心态，您的康复进展很好。</p>
+</div>
+</div>
+</div>
+<!-- Patient Message 2 (Unsafe Request) -->
+<div class="flex justify-end mb-sm">
+<div class="flex flex-col items-end max-w-[85%]">
+<div class="bg-primary text-on-primary rounded-2xl rounded-tr-none px-md py-sm shadow-ambient-sm font-body-md text-body-md">
+                        我可以尝试快速加大力度吗？
+                    </div>
+</div>
+<div class="ml-xs mt-1 shrink-0">
+<div class="w-8 h-8 bg-surface-variant rounded-full flex items-center justify-center shadow-ambient-sm border border-outline-variant/30 overflow-hidden">
+<img class="w-full h-full object-cover" data-alt="A minimal, flat vector illustration of a generic user avatar in soft pastel colors, suitable for a healthcare app profile picture. The style is modern, friendly, and clean." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtF--HbWsOxkoYs9gJYyLDh9Qlfzwja0ZIUyN1QXyMgrALaVIAfIgO2dP37fLbUqc1SNo2TRV-32X78eWT3Vgxp9LODFpxeOuuB8OD_tmFApM1lKK7dvKrOpZ-sfcDYAmaOpecmAX27jXssBuaUpifGs9F5VzO9lEZGg8FAKbKOjalWBX_z1qM0xidkN9N5lry0PqDdpB6wC5niOEHIdsEhBzV-iTjQ3tbi99wIn3eKDViPi_usGrH6mFEblUTfsHuL0rvDKfDiNE"/>
+</div>
+</div>
+</div>
+<!-- Assistant Message 2 (Unsafe Refusal) -->
+<div class="flex justify-start mb-sm">
+<div class="mr-xs mt-1 shrink-0">
+<div class="w-8 h-8 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center shadow-ambient-sm border border-primary/20">
+<span class="material-symbols-outlined filled" style="font-size: 18px;">smart_toy</span>
+</div>
+</div>
+<div class="flex flex-col items-start max-w-[85%]">
+<div class="flex items-center gap-1 mb-1 text-error font-label-md text-xs">
+<span class="material-symbols-outlined" style="font-size: 14px;">warning</span>
+                        安全回复
+                    </div>
+<div class="bg-error-container/20 border border-error/30 rounded-2xl rounded-tl-none px-md py-sm shadow-ambient-md font-body-md text-body-md text-on-surface">
+<p class="mb-2">抱歉，为了您的安全，我无法执行直接调整设备参数或提供可能导致过度训练的建议。</p>
+<p>康复训练需要循序渐进。过快增加力度可能会导致肌肉拉伤或关节受损。强烈建议您在增加训练强度前，咨询专业的康复师以获取个性化的安全评估。</p>
+</div>
+</div>
+</div>
+<!-- Typing Indicator (Simulated) -->
+<div class="flex justify-start">
+<div class="mr-xs mt-1 shrink-0 opacity-50">
+<div class="w-8 h-8 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center shadow-ambient-sm border border-primary/20">
+<span class="material-symbols-outlined filled" style="font-size: 18px;">smart_toy</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl rounded-tl-none px-md py-3 shadow-ambient-md flex items-center gap-1">
+<div class="w-2 h-2 bg-primary/40 rounded-full animate-bounce"></div>
+<div class="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
+<div class="w-2 h-2 bg-primary/80 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+</div>
+</div>
 </main>
-<!-- BottomNavBar (Hidden, assumed part of shell but kept for structure) -->
-<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe h-16 bg-surface border-t border-outline-variant max-w-[390px] mx-auto right-0">
-<button class="min-h-12 flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary" type="button">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">home_health</span>
-<span class="text-[10px] font-label-md mt-1">首页</span>
+<!-- Composer -->
+<div class="bg-surface-container-lowest/80 backdrop-blur-md border-t border-outline-variant/20 shadow-[0_-4px_16px_rgba(0,104,95,0.05)] px-margin-mobile py-sm" id="l1-chat-composer" style="position:fixed;left:20px;right:20px;bottom:104px;height:56px;display:flex;gap:8px;align-items:center;z-index:60; max-width: 350px; margin: 0 auto; left: 0; right: 0;">
+<input aria-label="输入您的问题" class="font-body-md text-body-md text-on-surface bg-surface border border-outline-variant/50 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all shadow-inner" placeholder="输入您的问题..." style="height:48px;min-height:48px;flex:1;border-radius:24px;padding:0 16px;"/>
+<button aria-label="发送" class="bg-primary text-on-primary shadow-ambient-md hover:bg-primary/90 active:scale-95 transition-all flex items-center justify-center" style="width:48px;height:48px;min-width:48px;min-height:48px;border-radius:24px;" type="button">
+<span class="material-symbols-outlined">send</span>
 </button>
-<button class="min-h-12 flex flex-col items-center justify-center text-primary px-4 py-1" type="button">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">terminal</span>
-<span class="text-[10px] font-label-md mt-1">AI</span>
-</button>
-<button class="min-h-12 flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary" type="button">
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0;">precision_manufacturing</span>
-<span class="text-[10px] font-label-md mt-1">设备</span>
-</button>
+</div>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-xs py-sm bg-surface-container-lowest shadow-[0_-8px_24px_rgba(0,104,95,0.08)] rounded-t-xl" style="max-width: 390px; margin: 0 auto; right: 0;">
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1">home</span>
+<span class="font-label-md text-label-md text-[10px]">首页</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1">fitness_center</span>
+<span class="font-label-md text-label-md text-[10px]">训练</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1">group</span>
+<span class="font-label-md text-label-md text-[10px]">社区</span>
+</a>
+<!-- Active Tab -->
+<a class="flex flex-col items-center justify-center text-primary bg-secondary-container/30 rounded-full px-4 py-1 active:scale-90 transition-transform duration-200" href="#">
+<span class="material-symbols-outlined mb-1 filled">mail</span>
+<span class="font-label-md text-label-md text-[10px]">消息</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-200" href="#">
+<span class="material-symbols-outlined mb-1">person</span>
+<span class="font-label-md text-label-md text-[10px]">我的</span>
+</a>
 </nav>
-<script src="./mobile-bridge.js"></script>
+</div>
+<!-- API Contract Script -->
+<script id="l1-api-contract"></script>
 </body></html>

@@ -1,386 +1,318 @@
 <!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>个人中心 - 领动康复手臂</title>
+  <style>
+    * { 
+      box-sizing: border-box; 
+      writing-mode: horizontal-tb !important; 
+      text-orientation: mixed !important; 
+      word-break: keep-all; 
+      overflow-wrap: normal; 
+      letter-spacing: 0; 
+      margin: 0;
+      padding: 0;
+    }
 
-<html lang="en"><head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>RoboRehab Controller - My Profile</title>
-<!-- Google Fonts -->
-<link href="https://fonts.googleapis.com" rel="preconnect"/>
-<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
-<!-- Material Symbols -->
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<!-- Tailwind CSS -->
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<!-- Tailwind Configuration -->
-<script id="tailwind-config">
-      tailwind.config = {
-        darkMode: "class",
-        theme: {
-          extend: {
-            "colors": {
-                    "surface-dim": "#dad9df",
-                    "secondary-fixed": "#e2dfff",
-                    "primary-container": "#0070eb",
-                    "error-container": "#ffdad6",
-                    "surface-container-highest": "#e3e2e7",
-                    "on-primary": "#ffffff",
-                    "secondary-container": "#6664e4",
-                    "primary-fixed-dim": "#adc6ff",
-                    "surface-container-lowest": "#ffffff",
-                    "surface-container-low": "#f4f3f8",
-                    "error": "#ba1a1a",
-                    "on-tertiary-fixed": "#351000",
-                    "on-secondary-fixed": "#0c006a",
-                    "on-surface-variant": "#414755",
-                    "outline": "#717786",
-                    "surface-variant": "#e3e2e7",
-                    "on-error-container": "#93000a",
-                    "secondary": "#4c4aca",
-                    "on-primary-container": "#fefcff",
-                    "surface-container": "#eeedf3",
-                    "secondary-fixed-dim": "#c2c1ff",
-                    "surface-container-high": "#e9e7ed",
-                    "inverse-surface": "#2f3034",
-                    "tertiary-fixed-dim": "#ffb595",
-                    "background": "#faf9fe",
-                    "on-primary-fixed": "#001a41",
-                    "on-secondary-fixed-variant": "#3631b4",
-                    "on-secondary": "#ffffff",
-                    "on-secondary-container": "#fffbff",
-                    "inverse-primary": "#adc6ff",
-                    "on-primary-fixed-variant": "#004493",
-                    "on-tertiary": "#ffffff",
-                    "tertiary-fixed": "#ffdbcc",
-                    "on-background": "#1a1b1f",
-                    "primary": "#0058bc",
-                    "outline-variant": "#c1c6d7",
-                    "tertiary-container": "#c64f00",
-                    "surface-bright": "#faf9fe",
-                    "on-surface": "#1a1b1f",
-                    "tertiary": "#9e3d00",
-                    "on-error": "#ffffff",
-                    "inverse-on-surface": "#f1f0f5",
-                    "on-tertiary-container": "#fffbff",
-                    "surface-tint": "#005bc1",
-                    "on-tertiary-fixed-variant": "#7c2e00",
-                    "primary-fixed": "#d8e2ff",
-                    "surface": "#faf9fe"
-            },
-            "borderRadius": {
-                    "DEFAULT": "0.125rem",
-                    "lg": "0.25rem",
-                    "xl": "0.5rem",
-                    "full": "0.75rem"
-            },
-            "spacing": {
-                    "container-max": "1280px",
-                    "unit": "8px",
-                    "gutter": "24px",
-                    "margin-desktop": "48px",
-                    "margin-mobile": "16px"
-            },
-            "fontFamily": {
-                    "headline-lg-mobile": [
-                            "Inter"
-                    ],
-                    "label-md": [
-                            "JetBrains Mono"
-                    ],
-                    "headline-md": [
-                            "Inter"
-                    ],
-                    "display-lg": [
-                            "Inter"
-                    ],
-                    "body-lg": [
-                            "Inter"
-                    ],
-                    "body-md": [
-                            "Inter"
-                    ],
-                    "data-viz": [
-                            "JetBrains Mono"
-                    ],
-                    "headline-lg": [
-                            "Inter"
-                    ]
-            },
-            "fontSize": {
-                    "headline-lg-mobile": [
-                            "24px",
-                            {
-                                    "lineHeight": "32px",
-                                    "fontWeight": "600"
-                            }
-                    ],
-                    "label-md": [
-                            "14px",
-                            {
-                                    "lineHeight": "20px",
-                                    "letterSpacing": "0.05em",
-                                    "fontWeight": "500"
-                            }
-                    ],
-                    "headline-md": [
-                            "24px",
-                            {
-                                    "lineHeight": "32px",
-                                    "fontWeight": "600"
-                            }
-                    ],
-                    "display-lg": [
-                            "48px",
-                            {
-                                    "lineHeight": "56px",
-                                    "letterSpacing": "-0.02em",
-                                    "fontWeight": "700"
-                            }
-                    ],
-                    "body-lg": [
-                            "18px",
-                            {
-                                    "lineHeight": "28px",
-                                    "fontWeight": "400"
-                            }
-                    ],
-                    "body-md": [
-                            "16px",
-                            {
-                                    "lineHeight": "24px",
-                                    "fontWeight": "400"
-                            }
-                    ],
-                    "data-viz": [
-                            "12px",
-                            {
-                                    "lineHeight": "16px",
-                                    "fontWeight": "600"
-                            }
-                    ],
-                    "headline-lg": [
-                            "32px",
-                            {
-                                    "lineHeight": "40px",
-                                    "letterSpacing": "-0.01em",
-                                    "fontWeight": "600"
-                            }
-                    ]
-            }
-          }
-        }
-      }
-    </script>
-<style>
-        .material-symbols-outlined {
-            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-        }
-        .icon-fill {
-            font-variation-settings: 'FILL' 1;
-        }
-        
-        /* Subtle pulse for active connection */
-        @keyframes subtle-pulse {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(1.05); }
-            100% { opacity: 1; transform: scale(1); }
-        }
-        .animate-subtle-pulse {
-            animation: subtle-pulse 3s infinite ease-in-out;
-        }
-    </style>
-<style>
     body {
-      min-height: max(884px, 100dvh);
+      max-width: 390px;
+      min-height: 844px;
+      margin: 0 auto;
+      background: #f7faf9;
+      padding-bottom: 84px;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", Arial, sans-serif;
+      color: #1a1c1b;
+      line-height: 1.5;
+    }
+
+    .main-content {
+      width: 350px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      background: #ffffff;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .header-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #006a60;
+    }
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      color: #006a60;
+      cursor: pointer;
+    }
+
+    /* Cards */
+    .card {
+      width: 100%;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 20px;
+      margin-top: 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+
+    /* Profile Summary */
+    .profile-summary {
+      display: flex;
+      align-items: center;
+    }
+    .avatar {
+      width: 64px;
+      height: 64px;
+      background: #e0f2f1;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      margin-right: 16px;
+    }
+    .profile-info h2 {
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+    .profile-info p {
+      font-size: 14px;
+      color: #6f7977;
+    }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      background: #f0fdfa;
+      color: #006a60;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 16px;
+    }
+    .form-label {
+      display: block;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 8px;
+      color: #3f4947;
+    }
+    .form-input {
+      width: 100%;
+      height: 48px;
+      border: 1px solid #bec9c6;
+      border-radius: 8px;
+      padding: 0 12px;
+      font-size: 16px;
+      background: #fbfdfc;
+    }
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .btn {
+      height: 48px;
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.2s;
+    }
+    .btn:active {
+      opacity: 0.8;
+    }
+    .btn-primary {
+      background: #006a60;
+      color: #ffffff;
+      flex: 1;
+    }
+    .btn-secondary {
+      background: #ffffff;
+      color: #006a60;
+      border: 1px solid #006a60;
+      width: 120px;
+    }
+
+    /* Rehab Profile */
+    .section-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    .status-badge {
+      float: right;
+      font-size: 14px;
+      color: #6f7977;
+      font-weight: normal;
+    }
+    .empty-state {
+      padding: 32px 0;
+      text-align: center;
+      color: #6f7977;
+    }
+    .empty-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    /* Bottom Nav */
+    .bottom-nav {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 100%;
+      max-width: 390px;
+      height: 84px;
+      background: #ffffff;
+      border-top: 1px solid #e1e3e1;
+      display: flex;
+      justify-content: space-around;
+      padding-top: 8px;
+      z-index: 100;
+    }
+    .nav-item {
+      flex: 1;
+      display: flex;
+      flex-col;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 48px;
+      color: #3f4947;
+      text-decoration: none;
+      font-size: 12px;
+    }
+    .nav-item.active {
+      color: #006a60;
+    }
+    .nav-icon {
+      font-size: 24px;
+      margin-bottom: 2px;
     }
   </style>
 </head>
-<body class="bg-surface text-on-surface font-body-md min-h-screen antialiased selection:bg-primary-container selection:text-on-primary-container">
-<!-- TopAppBar -->
-<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile h-16 bg-surface/80 backdrop-blur-xl border-b border-outline-variant shadow-sm transition-all hover:bg-surface-container-high">
-<div class="flex items-center gap-3">
-<button aria-label="Menu" class="flex items-center justify-center p-2 rounded-full text-primary hover:bg-surface-container transition-colors">
-<span class="material-symbols-outlined text-2xl icon-fill" data-icon="clinical_notes">clinical_notes</span>
-</button>
-<h1 class="text-headline-md font-headline-md font-bold text-primary">RoboRehab Controller</h1>
-</div>
-<div class="flex items-center gap-3">
-<div class="flex items-center gap-1.5 px-3 py-1 bg-surface-container-low rounded-full border border-outline-variant/30">
-<div class="w-2 h-2 rounded-full bg-primary animate-subtle-pulse"></div>
-<span class="text-data-viz font-data-viz text-on-surface-variant">System OK</span>
-</div>
-<button aria-label="Settings" class="flex items-center justify-center p-2 rounded-full text-on-surface-variant hover:bg-surface-container transition-colors">
-<span class="material-symbols-outlined text-2xl" data-icon="smart_toy">smart_toy</span>
-</button>
-</div>
-</header>
-<!-- Main Content Canvas -->
-<main class="pt-24 pb-28 px-margin-mobile md:px-margin-desktop max-w-container-max mx-auto w-full">
-<div class="grid grid-cols-1 md:grid-cols-12 gap-unit sm:gap-4 md:gap-gutter auto-rows-min">
-<!-- Bento Item: Profile Identity (Spans full on mobile, 8 cols on desktop) -->
-<section class="col-span-1 md:col-span-8 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-6 relative overflow-hidden flex flex-col sm:flex-row items-center sm:items-start gap-6 group hover:shadow-md transition-shadow">
-<!-- Decorative background accent -->
-<div class="absolute -right-16 -top-16 w-64 h-64 bg-primary-fixed/30 rounded-full blur-3xl group-hover:bg-primary-fixed/40 transition-colors pointer-events-none"></div>
-<div class="w-24 h-24 sm:w-32 sm:h-32 shrink-0 rounded-full border-4 border-surface overflow-hidden shadow-sm relative z-10">
-<img alt="Patient Avatar" class="w-full h-full object-cover" data-alt="A highly detailed, professional headshot of a patient wearing a futuristic medical tracking headset in a bright, sterile robotic rehabilitation center. Soft, high-key lighting creates a modern light-mode aesthetic, with pristine white and subtle robotic blue accents in the background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDmQ3Qnx1yUXodLzbtL6DAlwrI7LUX5Z0XcH4G4Oe5OApWXp3otwdUByLSgNWV6vJ3Rmjw73JiK_mdIeTCPW4h2_9LJYW0A5ft09nPVrBlKqKA_ixRkzxwE37bz97BgTiz8LPYLCKNBs3bD5msomXF1uQxtQmm3cip8DPl7h5zxW9pQA1JqytBiQBG9sRnMesyE64LOyti6sSUwoblmCZzjLpKn_I3rsc2ffmSxxn0oJuGsU20NtVjLsvLY7dgXD4_NH7nu_scpxE0"/>
-</div>
-<div class="flex flex-col items-center sm:items-start text-center sm:text-left w-full z-10 space-y-2 mt-2 sm:mt-0">
-<div class="flex flex-wrap items-center justify-center sm:justify-start gap-3 w-full">
-<h2 class="text-headline-lg-mobile font-headline-lg-mobile md:text-headline-lg md:font-headline-lg text-on-surface">患者 A</h2>
-<span class="px-3 py-1 bg-secondary-container/10 text-secondary border border-secondary-container/20 rounded-full text-label-md font-label-md tracking-wider">
-                            ID: 8829
-                        </span>
-</div>
-<div class="flex items-center gap-2 mt-1">
-<span class="material-symbols-outlined text-primary text-xl" data-icon="rehab">relax</span>
-<p class="text-body-lg font-body-lg text-on-surface-variant font-medium">第二阶段康复中</p>
-</div>
-<div class="w-full h-px bg-outline-variant/30 my-3"></div>
-<!-- Clinical Constraint Highlight -->
-<div class="w-full bg-error-container/40 border border-error-container p-3 rounded-lg flex items-start gap-3 backdrop-blur-sm">
-<span class="material-symbols-outlined text-error mt-0.5 icon-fill" data-icon="warning">warning</span>
-<div>
-<p class="text-label-md font-label-md text-on-error-container font-bold mb-0.5">医疗约束</p>
-<p class="text-body-md font-body-md text-on-error-container">避免过度伸展 &gt; 120°</p>
-</div>
-</div>
-</div>
-</section>
-<!-- Bento Item: Hardware Bindings (Spans full on mobile, 4 cols on desktop) -->
-<section class="col-span-1 md:col-span-4 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-6 flex flex-col gap-4">
-<div class="flex items-center justify-between mb-2">
-<h3 class="text-headline-md font-headline-md text-on-surface text-lg">已连接设备</h3>
-<span class="material-symbols-outlined text-outline" data-icon="settings_input_component">settings_input_component</span>
-</div>
-<!-- Device 1 -->
-<div class="flex items-center justify-between p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 hover:border-primary/30 transition-colors cursor-default group">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
-<span class="material-symbols-outlined icon-fill" data-icon="precision_manufacturing">precision_manufacturing</span>
-</div>
-<div>
-<p class="text-body-md font-body-md font-medium text-on-surface">M33 康复机械臂</p>
-<p class="text-data-viz font-data-viz text-on-surface-variant uppercase tracking-widest mt-0.5">EXO-L-01</p>
-</div>
-</div>
-<div class="flex items-center gap-1.5 px-2.5 py-1 bg-[#10b981]/10 rounded text-[#10b981]">
-<div class="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-subtle-pulse"></div>
-<span class="text-data-viz font-data-viz font-bold">激活</span>
-</div>
-</div>
-<!-- Device 2 -->
-<div class="flex items-center justify-between p-3 bg-surface-container-low rounded-lg border border-outline-variant/20 hover:border-primary/30 transition-colors cursor-default group">
-<div class="flex items-center gap-3">
-<div class="w-10 h-10 rounded-full bg-secondary-fixed flex items-center justify-center text-secondary group-hover:scale-105 transition-transform">
-<span class="material-symbols-outlined icon-fill" data-icon="sensors">sensors</span>
-</div>
-<div>
-<p class="text-body-md font-body-md font-medium text-on-surface">M55 肌电传感器</p>
-<p class="text-data-viz font-data-viz text-on-surface-variant uppercase tracking-widest mt-0.5">EMG-PATCH</p>
-</div>
-</div>
-<div class="flex items-center gap-1.5 px-2.5 py-1 bg-[#10b981]/10 rounded text-[#10b981]">
-<div class="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-subtle-pulse"></div>
-<span class="text-data-viz font-data-viz font-bold">激活</span>
-</div>
-</div>
-<button class="mt-auto w-full py-2.5 border border-dashed border-outline-variant text-on-surface-variant rounded-lg text-label-md font-label-md hover:bg-surface-container hover:text-primary transition-colors flex items-center justify-center gap-2">
-<span class="material-symbols-outlined text-sm" data-icon="add">add</span> 配对新设备
-                </button>
-</section>
-<!-- Bento Item: Training History Calendar (Spans 6 cols on desktop) -->
-<section class="col-span-1 md:col-span-6 bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-6" data-role="profile-training-activity">
-<div class="flex items-center justify-between mb-6">
-<div class="flex items-center gap-2">
-<span class="material-symbols-outlined text-primary" data-icon="calendar_month">calendar_month</span>
-<h3 class="text-headline-md font-headline-md text-on-surface text-lg">训练活动</h3>
-</div>
-<div class="text-label-md font-label-md text-on-surface-variant" data-role="profile-calendar-month">同步后显示</div>
-</div>
-<!-- Abstract Calendar Heatmap -->
-<div class="grid grid-cols-7 gap-1 sm:gap-2 w-full" data-role="profile-calendar-grid">
-<div class="col-span-7 rounded-lg bg-surface-container-low border border-outline-variant/30 p-4 text-body-md font-body-md text-on-surface-variant">
-登录后同步真实训练记录。
-</div>
-</div>
-<div class="mt-4 pt-4 border-t border-outline-variant/20 flex justify-between items-center">
-<p class="text-body-md font-body-md text-on-surface-variant" data-role="profile-weekly-count">暂无本周训练记录</p>
-<button class="text-label-md font-label-md text-primary hover:underline" data-role="profile-view-log" type="button">查看日志</button>
-</div>
-<div class="mt-3 space-y-2" data-role="profile-log-list"></div>
-</section>
-<!-- Bento Item: Settings & Preferences Grid (Spans 6 cols on desktop) -->
-<section class="col-span-1 md:col-span-6 grid grid-cols-2 gap-unit sm:gap-4">
-<!-- Cloud Account -->
-<button class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-4 sm:p-5 flex flex-col items-start gap-4 hover:border-primary/50 hover:bg-surface-container-lowest transition-all group text-left">
-<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-fixed transition-colors">
-<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="cloud_sync">cloud_sync</span>
-</div>
-<div>
-<h4 class="text-body-md font-body-md font-medium text-on-surface">云端平台</h4>
-<p class="text-label-md font-label-md text-on-surface-variant mt-1">同步中</p>
-</div>
-</button>
-<!-- Voice Control -->
-<button class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-4 sm:p-5 flex flex-col items-start gap-4 hover:border-primary/50 hover:bg-surface-container-lowest transition-all group text-left">
-<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-fixed transition-colors relative">
-<div class="absolute inset-0 rounded-full bg-primary/20 scale-150 opacity-0 group-hover:opacity-100 transition-opacity blur-md"></div>
-<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors z-10" data-icon="record_voice_over">record_voice_over</span>
-</div>
-<div>
-<h4 class="text-body-md font-body-md font-medium text-on-surface">小智语音</h4>
-<p class="text-label-md font-label-md text-on-surface-variant mt-1">已开启</p>
-</div>
-</button>
-<!-- Role Management -->
-<button class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-4 sm:p-5 flex flex-col items-start gap-4 hover:border-primary/50 hover:bg-surface-container-lowest transition-all group text-left">
-<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-fixed transition-colors">
-<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="supervisor_account">supervisor_account</span>
-</div>
-<div>
-<h4 class="text-body-md font-body-md font-medium text-on-surface">权限管理</h4>
-<p class="text-label-md font-label-md text-on-surface-variant mt-1">康复师/家属</p>
-</div>
-</button>
-<!-- Privacy & Notifications -->
-<button class="bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 p-4 sm:p-5 flex flex-col items-start gap-4 hover:border-primary/50 hover:bg-surface-container-lowest transition-all group text-left">
-<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center group-hover:bg-primary-fixed transition-colors">
-<span class="material-symbols-outlined text-on-surface-variant group-hover:text-primary transition-colors" data-icon="shield_lock">shield_lock</span>
-</div>
-<div>
-<h4 class="text-body-md font-body-md font-medium text-on-surface">数据隐私与通知</h4>
-</div>
-</button>
-</section>
-</div>
-</main>
-<!-- BottomNavBar -->
-<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe h-20 bg-surface/90 backdrop-blur-2xl border-t border-outline-variant shadow-[0_-4px_12px_rgba(0,88,188,0.05)] rounded-t-xl md:hidden">
-<!-- 首页 -->
-<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors group" href="#">
-<span class="material-symbols-outlined text-2xl mb-1 group-hover:scale-110 transition-transform" data-icon="home_health">home_health</span>
-<span class="text-label-md font-label-md text-[10px]">首页</span>
-</a>
-<!-- 训练 -->
-<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors group" href="#">
-<span class="material-symbols-outlined text-2xl mb-1 group-hover:scale-110 transition-transform" data-icon="exercise">exercise</span>
-<span class="text-label-md font-label-md text-[10px]">训练</span>
-</a>
-<!-- 肌电 -->
-<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors group" href="#">
-<span class="material-symbols-outlined text-2xl mb-1 group-hover:scale-110 transition-transform" data-icon="monitoring">monitoring</span>
-<span class="text-label-md font-label-md text-[10px]">肌电</span>
-</a>
-<!-- 设备 -->
-<a class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors group" href="#">
-<span class="material-symbols-outlined text-2xl mb-1 group-hover:scale-110 transition-transform" data-icon="precision_manufacturing">precision_manufacturing</span>
-<span class="text-label-md font-label-md text-[10px]">设备</span>
-</a>
-<!-- 我的 (Active) -->
-<a class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-4 py-1 scale-90 transition-transform duration-150" href="#">
-<span class="material-symbols-outlined text-2xl mb-0.5 icon-fill" data-icon="person">person</span>
-<span class="text-label-md font-label-md text-[10px] font-bold">我的</span>
-</a>
-</nav>
-<script src="./mobile-bridge.js"></script>
-</body></html>
+<body>
+
+  <header class="header">
+    <div class="icon-btn">‹</div>
+    <h1 class="header-title">领动康复手臂</h1>
+    <div class="icon-btn">⚙</div>
+  </header>
+
+  <main class="main-content">
+    <!-- Profile Summary -->
+    <section class="card">
+      <div class="profile-summary">
+        <div class="avatar">👤</div>
+        <div class="profile-info">
+          <h2>您好</h2>
+          <p>请完善资料</p>
+          <div class="tag">隐私合规保护中</div>
+        </div>
+      </div>
+      <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid #eff1f0; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 14px; color: #3f4947;">云端账户</span>
+        <span style="font-size: 14px; color: #006a60;">已同步</span>
+      </div>
+    </section>
+
+    <!-- Phone Binding -->
+    <section class="card">
+      <div class="form-group">
+        <label class="form-label">手机号</label>
+        <input type="tel" class="form-input" placeholder="请输入手机号">
+      </div>
+      <div class="form-group">
+        <label class="form-label">验证码</label>
+        <div style="display: flex; gap: 8px;">
+          <input type="text" class="form-input" placeholder="验证码">
+          <button class="btn btn-secondary">获取验证码</button>
+        </div>
+      </div>
+      <button class="btn btn-primary" style="width: 100%;">绑定手机号</button>
+    </section>
+
+    <!-- Rehab Profile -->
+    <section class="card">
+      <h3 class="section-title">
+        我的康复档案
+        <span class="status-badge">暂无数据</span>
+      </h3>
+      <div class="empty-state">
+        <span class="empty-icon">📁</span>
+        <p>暂无数据</p>
+        <p style="font-size: 12px; margin-top: 4px;">完成首次评测即可生成档案</p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <a href="#" class="nav-item">
+      <span class="nav-icon">🏠</span>
+      首页
+    </a>
+    <a href="#" class="nav-item">
+      <span class="nav-icon">🏋️</span>
+      训练
+    </a>
+    <a href="#" class="nav-item">
+      <span class="nav-icon">👥</span>
+      社区
+    </a>
+    <a href="#" class="nav-item">
+      <span class="nav-icon">💬</span>
+      消息
+    </a>
+    <a href="#" class="nav-item active">
+      <span class="nav-icon">👤</span>
+      我的
+    </a>
+  </nav>
+
+  <script id="l1-api-contract">
+  const token = localStorage.getItem('access_token');
+  fetch('/api/auth/session');
+  fetch('/api/rehab-arm/app/v1/me', { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json()).then(response => {
+    const home = response.data.patient_view.home;
+    const profile = response.data.patient_view.profile;
+    const device = response.data.patient_view.device;
+    const agent = response.data.patient_view.agent;
+    renderModelStatus(response.data.model_status);
+  });
+  fetch('/api/rehab-arm/app/v1/account/phone-verifications', { method: 'POST' });
+  fetch(`/api/rehab-arm/app/v1/account/phone-verifications/${verificationId}/confirm`, { method: 'POST' });
+  if (error.code === 'PHONE_CODE_RESEND_TOO_SOON') showRetry(error.retry_after);
+  if (error.code === 'PHONE_SMS_NOT_CONFIGURED') showSmsUnavailable();
+  if (error.code === 'PHONE_SMS_DELIVERY_FAILED') showSmsFailed();
+  fetch('/api/rehab-arm/app/v1/devices/bind', { method: 'POST' });
+  if (error.code === 'DEVICE_ALREADY_BOUND') showAlreadyBound();
+  fetch('/api/rehab-arm/app/v1/agent/messages', { method: 'POST' });
+  if (error.code === 'UNSAFE_MOTION_REQUEST') showSafeRefusal();
+  </script>
+</body>
+</html>

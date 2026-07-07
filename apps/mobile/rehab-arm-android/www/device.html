@@ -2,345 +2,320 @@
 
 <html lang="zh-CN"><head>
 <meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>设备连接 - RoboRehab 控制器</title>
+<meta content="width=390, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>绑定设备 - 领动康复手臂</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    "colors": {
-                        "surface-dim": "#dad9df",
-                        "secondary-fixed": "#e2dfff",
-                        "primary-container": "#0070eb",
-                        "error-container": "#ffdad6",
-                        "surface-container-highest": "#e3e2e7",
-                        "on-primary": "#ffffff",
-                        "secondary-container": "#6664e4",
-                        "primary-fixed-dim": "#adc6ff",
-                        "surface-container-lowest": "#ffffff",
-                        "surface-container-low": "#f4f3f8",
-                        "error": "#ba1a1a",
-                        "on-tertiary-fixed": "#351000",
-                        "on-secondary-fixed": "#0c006a",
-                        "on-surface-variant": "#414755",
-                        "outline": "#717786",
-                        "surface-variant": "#e3e2e7",
-                        "on-error-container": "#93000a",
-                        "secondary": "#4c4aca",
-                        "on-primary-container": "#fefcff",
-                        "surface-container": "#eeedf3",
-                        "secondary-fixed-dim": "#c2c1ff",
-                        "surface-container-high": "#e9e7ed",
-                        "inverse-surface": "#2f3034",
-                        "tertiary-fixed-dim": "#ffb595",
-                        "background": "#faf9fe",
-                        "on-primary-fixed": "#001a41",
-                        "on-secondary-fixed-variant": "#3631b4",
-                        "on-secondary": "#ffffff",
-                        "on-secondary-container": "#fffbff",
-                        "inverse-primary": "#adc6ff",
-                        "on-primary-fixed-variant": "#004493",
-                        "on-tertiary": "#ffffff",
-                        "tertiary-fixed": "#ffdbcc",
-                        "on-background": "#1a1b1f",
-                        "primary": "#0058bc",
-                        "outline-variant": "#c1c6d7",
-                        "tertiary-container": "#c64f00",
-                        "surface-bright": "#faf9fe",
-                        "on-surface": "#1a1b1f",
-                        "tertiary": "#9e3d00",
-                        "on-error": "#ffffff",
-                        "inverse-on-surface": "#f1f0f5",
-                        "on-tertiary-container": "#fffbff",
-                        "surface-tint": "#005bc1",
-                        "on-tertiary-fixed-variant": "#7c2e00",
-                        "primary-fixed": "#d8e2ff",
-                        "surface": "#faf9fe"
-                    },
-                    "borderRadius": {
-                        "DEFAULT": "0.125rem",
-                        "lg": "0.25rem",
-                        "xl": "0.5rem",
-                        "full": "0.75rem"
-                    },
-                    "spacing": {
-                        "container-max": "1280px",
-                        "unit": "8px",
-                        "gutter": "24px",
-                        "margin-desktop": "48px",
-                        "margin-mobile": "16px"
-                    },
-                    "fontFamily": {
-                        "headline-lg-mobile": ["Inter"],
-                        "label-md": ["JetBrains Mono"],
-                        "headline-md": ["Inter"],
-                        "display-lg": ["Inter"],
-                        "body-lg": ["Inter"],
-                        "body-md": ["Inter"],
-                        "data-viz": ["JetBrains Mono"],
-                        "headline-lg": ["Inter"]
-                    },
-                    "fontSize": {
-                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
-                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.05em", "fontWeight": "500"}],
-                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
-                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
-                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
-                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
-                        "data-viz": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
-                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}]
-                    }
-                }
-            }
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "error-container": "#ffdad6",
+                "surface-container-lowest": "#ffffff",
+                "tertiary-fixed": "#ffddb8",
+                "surface-variant": "#d3e4fe",
+                "inverse-primary": "#6bd8cb",
+                "on-secondary-container": "#00714d",
+                "on-secondary": "#ffffff",
+                "outline": "#6d7a77",
+                "inverse-surface": "#213145",
+                "primary-container": "#008378",
+                "on-primary": "#ffffff",
+                "surface-container-low": "#eff4ff",
+                "on-tertiary-fixed": "#2a1700",
+                "surface-bright": "#f8f9ff",
+                "secondary-fixed-dim": "#4edea3",
+                "error": "#ba1a1a",
+                "on-background": "#0b1c30",
+                "tertiary-container": "#a36700",
+                "on-error-container": "#93000a",
+                "surface": "#f8f9ff",
+                "on-surface": "#0b1c30",
+                "secondary-fixed": "#6ffbbe",
+                "on-primary-container": "#f4fffc",
+                "primary-fixed-dim": "#6bd8cb",
+                "on-tertiary-container": "#fffbff",
+                "surface-dim": "#cbdbf5",
+                "tertiary-fixed-dim": "#ffb95f",
+                "tertiary": "#825100",
+                "primary": "#00685f",
+                "on-surface-variant": "#3d4947",
+                "on-secondary-fixed-variant": "#005236",
+                "on-error": "#ffffff",
+                "inverse-on-surface": "#eaf1ff",
+                "outline-variant": "#bcc9c6",
+                "on-tertiary": "#ffffff",
+                "primary-fixed": "#89f5e7",
+                "background": "#f8f9ff",
+                "surface-container-highest": "#d3e4fe",
+                "secondary": "#006c49",
+                "secondary-container": "#6cf8bb",
+                "surface-container": "#e5eeff",
+                "on-primary-fixed": "#00201d",
+                "on-tertiary-fixed-variant": "#653e00",
+                "on-primary-fixed-variant": "#005049",
+                "surface-tint": "#006a61",
+                "surface-container-high": "#dce9ff",
+                "on-secondary-fixed": "#002113"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+        },
+        "spacing": {
+                "md": "16px",
+                "lg": "24px",
+                "xl": "32px",
+                "xs": "8px",
+                "margin-mobile": "20px",
+                "gutter-mobile": "12px",
+                "sm": "12px",
+                "base": "4px"
+        },
+        "fontFamily": {
+                "body-md": [
+                        "Atkinson Hyperlegible Next", "sans-serif"
+                ],
+                "headline-lg-mobile": [
+                        "Plus Jakarta Sans", "sans-serif"
+                ],
+                "headline-lg": [
+                        "Plus Jakarta Sans", "sans-serif"
+                ],
+                "body-lg": [
+                        "Atkinson Hyperlegible Next", "sans-serif"
+                ],
+                "label-md": [
+                        "Atkinson Hyperlegible Next", "sans-serif"
+                ],
+                "headline-md": [
+                        "Plus Jakarta Sans", "sans-serif"
+                ]
+        },
+        "fontSize": {
+                "body-md": [
+                        "16px",
+                        {
+                                "lineHeight": "24px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "headline-lg-mobile": [
+                        "24px",
+                        {
+                                "lineHeight": "32px",
+                                "fontWeight": "700"
+                        }
+                ],
+                "headline-lg": [
+                        "28px",
+                        {
+                                "lineHeight": "36px",
+                                "fontWeight": "700"
+                        }
+                ],
+                "body-lg": [
+                        "18px",
+                        {
+                                "lineHeight": "28px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "label-md": [
+                        "14px",
+                        {
+                                "lineHeight": "20px",
+                                "fontWeight": "600"
+                        }
+                ],
+                "headline-md": [
+                        "22px",
+                        {
+                                "lineHeight": "28px",
+                                "fontWeight": "600"
+                        }
+                ]
         }
-    </script>
+},
+    },
+  }
+</script>
 <style>
-        /* Minimal custom CSS for things tailwind config alone can't cleanly do inline */
-        .glass-hud {
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(193, 198, 215, 0.4); /* outline-variant */
-        }
-        .pulse-ring {
-            animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-        }
-        @keyframes pulse-ring {
-            0% { transform: scale(0.8); opacity: 0.5; }
-            100% { transform: scale(2.4); opacity: 0; }
-        }
-        
-        /* Hierarchy map connective lines */
-        .hierarchy-line-v {
-            width: 2px;
-            height: 24px;
-            background-color: theme('colors.outline-variant');
-            margin: 0 auto;
-        }
-        .hierarchy-line-h {
-            border-top: 2px solid theme('colors.outline-variant');
-            width: 80%;
+        body {
+            width: 390px;
+            height: 844px;
             margin: 0 auto;
             position: relative;
+            background-color: theme('colors.background');
+            color: theme('colors.on-background');
+            font-family: theme('fontFamily.body-md');
+            overflow-x: hidden;
         }
-        .hierarchy-line-h::before, .hierarchy-line-h::after, .hierarchy-line-mid {
-            content: '';
-            position: absolute;
-            width: 2px;
-            height: 16px;
-            background-color: theme('colors.outline-variant');
-            top: 0;
+        * {
+            letter-spacing: 0 !important;
         }
-        .hierarchy-line-h::before { left: 0; }
-        .hierarchy-line-h::after { right: 0; }
-        .hierarchy-line-mid { left: 50%; transform: translateX(-50%); }
+        /* Custom Stepper Styles */
+        .step-line {
+            transition: background-color 0.3s ease;
+        }
+        .step-icon {
+            transition: all 0.3s ease;
+        }
     </style>
 <style>
     body {
       min-height: max(884px, 100dvh);
     }
   </style>
-</head>
-<body class="bg-background text-on-background font-body-md antialiased min-h-screen selection:bg-primary-container selection:text-on-primary-container">
+  </head>
+<body class="bg-background flex flex-col items-center overflow-y-auto pb-24 relative shadow-2xl">
 <!-- TopAppBar -->
-<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile h-16 bg-surface/80 backdrop-blur-xl border-b border-outline-variant shadow-sm transition-all duration-300">
-<div class="flex items-center gap-3">
-<span class="material-symbols-outlined text-primary" style="font-variation-settings: 'FILL' 1;">clinical_notes</span>
-<h1 class="text-headline-md font-headline-md font-bold text-primary tracking-tight">RoboRehab 控制器</h1>
-</div>
-<button class="text-primary hover:bg-surface-container-high transition-colors p-2 rounded-full flex items-center justify-center opacity-80 hover:opacity-100 hover:scale-95 duration-200">
-<span class="material-symbols-outlined text-[28px]">smart_toy</span>
+<header class="flex items-center justify-between px-margin-mobile h-12 w-full bg-surface shadow-sm docked full-width top-0 sticky z-40">
+<button class="flex items-center justify-center w-12 h-12 text-primary hover:bg-primary-container/20 active:scale-95 transition-transform rounded-full">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">arrow_back</span>
 </button>
+<div class="font-headline-md text-headline-md-mobile font-bold text-primary truncate flex-1 text-center pr-12">
+            领动康复手臂
+        </div>
 </header>
-<!-- Main Canvas -->
-<main class="pt-[88px] pb-[120px] px-margin-mobile max-w-container-max mx-auto flex flex-col gap-gutter">
-<!-- Status Indicator (Safety First) -->
-<section class="bg-primary-fixed border border-primary-fixed-dim rounded-xl p-4 flex items-center gap-4 shadow-sm relative overflow-hidden">
-<div class="absolute inset-0 bg-gradient-to-r from-transparent to-surface-container-lowest/20 pointer-events-none"></div>
-<div class="relative w-10 h-10 flex items-center justify-center rounded-full bg-primary-container text-on-primary-container shrink-0 z-10">
-<span class="absolute inset-0 rounded-full border-2 border-primary-container pulse-ring"></span>
-<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<!-- Main Content Canvas -->
+<main class="w-full px-margin-mobile pt-lg flex flex-col gap-lg flex-1 relative z-10 pb-xl">
+<!-- Header Section -->
+<section class="text-center">
+<div class="text-label-md font-label-md text-on-surface-variant mb-xs">您好，准备开始康复训练之旅</div>
+<h1 class="text-headline-lg-mobile font-headline-lg-mobile text-on-background">绑定设备</h1>
+</section>
+<!-- Stepper Wizard -->
+<section class="w-full flex items-center justify-between px-xs py-sm bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 relative z-20">
+<!-- Step 1 -->
+<div class="flex flex-col items-center gap-xs relative z-10 w-1/3">
+<div class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center text-label-md font-label-md shadow-md step-icon">1</div>
+<span class="text-label-md font-label-md text-primary text-center">准备</span>
 </div>
-<div class="z-10">
-<h2 class="text-label-md font-label-md text-on-primary-fixed-variant mb-1 uppercase tracking-wider">系统状态</h2>
-<p class="text-body-lg font-headline-md font-bold text-on-primary-fixed">M33 状态：准备就绪，允许安全训练</p>
+<!-- Step 2 -->
+<div class="flex flex-col items-center gap-xs relative z-10 w-1/3">
+<div class="w-8 h-8 rounded-full bg-surface-variant text-on-surface-variant flex items-center justify-center text-label-md font-label-md step-icon">2</div>
+<span class="text-label-md font-label-md text-on-surface-variant text-center opacity-70">搜索并连接</span>
+</div>
+<!-- Step 3 -->
+<div class="flex flex-col items-center gap-xs relative z-10 w-1/3">
+<div class="w-8 h-8 rounded-full bg-surface-variant text-on-surface-variant flex items-center justify-center text-label-md font-label-md step-icon">3</div>
+<span class="text-label-md font-label-md text-on-surface-variant text-center opacity-70">绑定完成</span>
+</div>
+<!-- Connecting Lines (Background) -->
+<div class="absolute top-1/2 left-0 w-full h-[2px] bg-surface-variant -translate-y-1/2 -z-0 px-8">
+<!-- Active Line Progress -->
+<div class="h-full bg-primary w-[33%] rounded-full step-line"></div>
 </div>
 </section>
-<!-- System Hierarchy Map -->
-<section class="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline-variant/30 flex flex-col items-center justify-center">
-<h3 class="text-label-md font-label-md text-on-surface-variant w-full text-left mb-6 uppercase tracking-widest border-b border-outline-variant/20 pb-2">系统架构图</h3>
-<div class="w-full max-w-sm flex flex-col items-center mt-2">
-<!-- APP Node -->
-<div class="bg-surface-container py-2 px-6 rounded-full border border-outline-variant flex items-center gap-2">
-<span class="material-symbols-outlined text-[18px] text-on-surface-variant">smartphone</span>
-<span class="text-label-md font-label-md text-on-surface">手机 APP</span>
-</div>
-<div class="hierarchy-line-v"></div>
-<!-- M33 Node (Gatekeeper) -->
-<div class="bg-secondary-container py-3 px-8 rounded-lg border-2 border-primary shadow-sm flex flex-col items-center relative">
-<div class="absolute -top-1 -right-1 w-3 h-3 bg-tertiary-container rounded-full border-2 border-surface-container-lowest animate-pulse"></div>
-<span class="material-symbols-outlined text-on-secondary-container mb-1">hub</span>
-<span class="text-label-md font-label-md text-on-secondary-container font-bold">安全门控 (Gatekeeper)</span>
-</div>
-<div class="hierarchy-line-v"></div>
-<div class="hierarchy-line-h">
-<div class="hierarchy-line-mid"></div>
-</div>
-<div class="h-4"></div> <!-- spacer for lines -->
-<!-- Leaf Nodes -->
-<div class="w-[85%] flex justify-between items-start mt-2">
-<div class="flex flex-col items-center gap-1 w-1/3">
-<div class="bg-surface-container-high p-2 rounded-lg border border-outline-variant/50">
-<span class="material-symbols-outlined text-[20px] text-on-surface-variant">memory</span>
-</div>
-<span class="text-data-viz font-data-viz text-on-surface-variant">M55</span>
-</div>
-<div class="flex flex-col items-center gap-1 w-1/3">
-<div class="bg-surface-container-high p-2 rounded-lg border border-outline-variant/50">
-<span class="material-symbols-outlined text-[20px] text-on-surface-variant">dns</span>
-</div>
-<span class="text-data-viz font-data-viz text-on-surface-variant">NanoPi</span>
-</div>
-<div class="flex flex-col items-center gap-1 w-1/3">
-<div class="bg-surface-container-high p-2 rounded-lg border border-outline-variant/50">
-<span class="material-symbols-outlined text-[20px] text-primary">precision_manufacturing</span>
-</div>
-<span class="text-data-viz font-data-viz text-primary font-bold">机械臂</span>
+<!-- Current Step Content: Step 1 Prep -->
+<section class="flex flex-col items-center bg-surface-container-lowest rounded-xl p-lg shadow-sm border border-outline-variant/20 flex-1 justify-center gap-lg">
+<!-- Contextual Illustration/Animation Space -->
+<div class="w-full h-48 bg-surface-container rounded-lg flex items-center justify-center overflow-hidden relative" data-alt="A soft, minimal 3D illustration of a medical rehabilitation robotic arm in a serene, light-filled environment. The style is soft-clinical, modern corporate, with light teal and sage green accents. Generous whitespace, highly diffused ambient shadows. The mood is calm, safe, and optimistic. The lighting is natural and bright." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDjwfm9eiRq5e8fP0pX8FDSX3nGxf-F_KpXCctcf53HNsB1paKneaP-qy3VK8NbW6ROy7RX9GPpXFv9LsvWw37dU1lbxfqUI4c564KbmAYAd6rjpxV88q0sGsFhvL0_PUgq82We3vdZsFLMHM_0Vb7MZg_bmNAYvGnIJipGUK8pF8W2-b-5upG0L7DYeX6M9mVtwHGIuzxxtW0KaI-RmQI7fZKGksKZPV3in-ojDwXwKr2TqeXNp2wbJE2XdNU9R6WbsXT3uSguV1g')">
+<!-- Simulated pulsing ring for 'power on' indication -->
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-16 h-16 bg-primary/20 rounded-full animate-ping"></div>
+<div class="w-12 h-12 bg-primary rounded-full absolute flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined">power_settings_new</span>
 </div>
 </div>
+</div>
+<div class="text-center flex flex-col gap-xs">
+<p class="text-body-lg font-body-lg text-on-surface">打开康复设备电源</p>
+<p class="text-body-md font-body-md text-on-surface-variant">请确保设备已接通电源，且指示灯呈蓝色闪烁状态，准备就绪。</p>
+</div>
+<!-- Primary Action -->
+<button class="w-full h-12 min-h-[48px] bg-primary text-on-primary rounded-full font-label-md text-label-md shadow-md hover:bg-primary-container hover:text-on-primary-container active:scale-95 transition-all flex items-center justify-center gap-sm mt-auto" onclick="transitionToStep2()" type="button">
+<span>开始搜索设备</span>
+<span class="material-symbols-outlined">bluetooth_searching</span>
+</button>
+</section>
+<!-- HIDDEN: Step 2 Searching Content (For simulation via JS) -->
+<section class="hidden flex flex-col items-center bg-surface-container-lowest rounded-xl p-lg shadow-sm border border-outline-variant/20 flex-1 justify-start gap-lg" id="step2-content">
+<div class="text-center w-full">
+<p class="text-body-lg font-body-lg text-on-surface mb-xs">正在搜索附近的设备...</p>
+<div class="w-full h-2 bg-surface-variant rounded-full overflow-hidden mb-lg">
+<div class="h-full bg-primary w-1/2 rounded-full animate-pulse"></div>
+</div>
+</div>
+<!-- Found Device Card -->
+<div class="w-full bg-surface-bright rounded-lg p-md flex items-center gap-md border border-primary-container/30 shadow-sm cursor-pointer hover:bg-surface-container-low transition-colors" onclick="showBoundError()">
+<div class="w-12 h-12 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined">precision_manufacturing</span>
+</div>
+<div class="flex-1 min-w-0">
+<div class="text-label-md font-label-md text-on-surface truncate">领动康复手臂 v2</div>
+<div class="text-body-md font-body-md text-on-surface-variant truncate">信号强 · 距离近</div>
+</div>
+<button class="h-10 min-h-[44px] px-md bg-surface text-primary border border-primary rounded-full font-label-md text-label-md active:scale-95 transition-transform flex items-center justify-center shrink-0" type="button">
+                    连接
+                </button>
+</div>
+<!-- Error State Handling (Hidden by default) -->
+<div class="hidden w-full bg-error-container rounded-lg p-md flex flex-col gap-sm border border-error/20 mt-auto" id="error-state">
+<div class="flex items-center gap-sm text-on-error-container">
+<span class="material-symbols-outlined">error</span>
+<span class="font-label-md text-label-md">连接失败</span>
+</div>
+<p class="text-body-md font-body-md text-on-error-container">此设备已被他人占用，请联系客服或重置设备后再试。</p>
+<button class="h-10 min-h-[44px] mt-xs w-full bg-surface-container-lowest text-error rounded-full font-label-md text-label-md shadow-sm border border-error/20 active:scale-95 transition-transform flex items-center justify-center" type="button">
+                    联系客服协助
+                </button>
 </div>
 </section>
-<!-- BLE & Telemetry Card -->
-<section class="bg-surface-container-lowest rounded-xl p-6 shadow-sm border border-outline-variant/30 flex flex-col gap-6">
-<div class="flex justify-between items-center">
-<h3 class="text-label-md font-label-md text-on-surface-variant uppercase tracking-widest">当前连接</h3>
-<span class="px-3 py-1 bg-primary-fixed text-on-primary-fixed-variant text-data-viz font-data-viz rounded-full flex items-center gap-1">
-<span class="w-2 h-2 rounded-full bg-primary"></span>
-                    已扫描蓝牙
-                </span>
-</div>
-<!-- Device Identity -->
-<div class="flex items-center justify-between pb-4 border-b border-surface-variant">
-<div class="flex items-center gap-3">
-<div class="w-12 h-12 rounded-full bg-surface-container flex items-center justify-center">
-<span class="material-symbols-outlined text-on-surface-variant text-[28px]">bluetooth_connected</span>
-</div>
-<div>
-<div class="text-headline-md font-headline-md text-on-surface">M33 康复机械臂</div>
-<div class="text-data-viz font-data-viz text-primary font-bold">已连接</div>
-</div>
-</div>
-</div>
-<!-- Real-time Metrics Grid -->
-<div class="grid grid-cols-2 gap-4">
-<!-- Heartbeat -->
-<div class="bg-surface-container-low p-4 rounded-lg flex flex-col gap-2">
-<span class="text-label-md font-label-md text-on-surface-variant flex items-center gap-1">
-<span class="material-symbols-outlined text-[16px]">monitor_heart</span>
-                        心跳状态
-                    </span>
-<div class="flex flex-col gap-1">
-<div class="flex justify-between items-baseline">
-<span class="text-data-viz font-data-viz text-on-surface-variant">M33:</span>
-<span class="text-body-md font-data-viz font-bold text-primary">120ms</span>
-</div>
-<div class="flex justify-between items-baseline">
-<span class="text-data-viz font-data-viz text-on-surface-variant">云端:</span>
-<span class="text-body-md font-data-viz font-bold text-on-surface">45ms</span>
-</div>
-</div>
-</div>
-<!-- Power -->
-<div class="bg-surface-container-low p-4 rounded-lg flex flex-col gap-2">
-<span class="text-label-md font-label-md text-on-surface-variant flex items-center gap-1">
-<span class="material-symbols-outlined text-[16px]">battery_charging_80</span>
-                        电源状态
-                    </span>
-<div class="flex flex-col justify-end h-full gap-2">
-<div class="flex justify-between items-baseline">
-<span class="text-data-viz font-data-viz text-on-surface-variant">机械臂电量:</span>
-<span class="text-body-md font-data-viz font-bold text-on-surface">85%</span>
-</div>
-<!-- Simple Progress Bar -->
-<div class="w-full bg-surface-variant rounded-full h-1.5 overflow-hidden">
-<div class="bg-primary h-1.5 rounded-full" style="width: 85%"></div>
-</div>
-</div>
-</div>
-</div>
-<!-- Sync Action -->
-<button class="w-full mt-2 bg-primary text-on-primary py-4 rounded-full font-headline-md font-bold text-[16px] shadow-sm hover:opacity-90 active:scale-95 transition-all flex justify-center items-center gap-2">
-<span class="material-symbols-outlined">sync</span>
-                一键同步训练计划
-            </button>
-<p class="text-center text-data-viz font-data-viz text-on-surface-variant mt-[-12px]">需要 M33 医疗系统授权。</p>
-<a class="w-full bg-surface-container-high text-on-surface py-3 rounded-full font-headline-md font-bold text-[15px] border border-outline-variant hover:opacity-90 active:scale-95 transition-all flex justify-center items-center gap-2" href="./bluetooth-debug.html">
-<span class="material-symbols-outlined">bug_report</span>
-                蓝牙调试 / 实机验证
-            </a>
-</section>
-<!-- Debug Info (Collapsed) -->
-<details class="group bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/30 overflow-hidden">
-<summary class="flex justify-between items-center p-4 cursor-pointer hover:bg-surface-container-low transition-colors select-none">
-<div class="flex items-center gap-2 text-on-surface-variant">
-<span class="material-symbols-outlined text-[20px]">bug_report</span>
-<span class="text-label-md font-label-md uppercase tracking-widest">调试信息</span>
-</div>
-<span class="material-symbols-outlined text-on-surface-variant group-open:rotate-180 transition-transform">expand_more</span>
-</summary>
-<div class="p-4 border-t border-surface-variant bg-surface-container-low/50">
-<div class="font-data-viz text-data-viz text-on-surface-variant flex flex-col gap-3">
-<div class="flex justify-between border-b border-surface-variant/50 pb-2">
-<span>服务 UUID:</span>
-<span class="font-bold">0000FFF0-0000-1000-8000-00805F9B34FB</span>
-</div>
-<div class="flex justify-between border-b border-surface-variant/50 pb-2">
-<span>发送特征值:</span>
-<span class="font-bold">0000FFF1-...</span>
-</div>
-<div class="flex justify-between border-b border-surface-variant/50 pb-2">
-<span>收发数据包:</span>
-<span class="font-bold">14205 / 8432</span>
-</div>
-<div class="flex justify-between text-error">
-<span>错误日志 (最近 1 小时):</span>
-<span class="font-bold">0</span>
-</div>
-</div>
-</div>
-</details>
 </main>
-<!-- Floating AI Assistant Button -->
-<button class="fixed bottom-28 right-6 w-14 h-14 bg-secondary text-on-secondary rounded-full shadow-[0_4px_16px_rgba(76,74,202,0.4)] flex justify-center items-center hover:scale-105 active:scale-95 transition-all z-40 group md:bottom-10">
-<span class="material-symbols-outlined text-[28px] group-hover:rotate-12 transition-transform">robot_2</span>
-</button>
 <!-- BottomNavBar -->
-<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-2 pb-safe h-20 bg-surface/90 backdrop-blur-2xl border-t border-outline-variant shadow-[0_-4px_12px_rgba(0,88,188,0.05)] md:hidden">
-<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors">
-<span class="material-symbols-outlined mb-1">home_health</span>
-<span class="text-label-md font-label-md text-[11px]">首页</span>
-</button>
-<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors">
-<span class="material-symbols-outlined mb-1">exercise</span>
-<span class="text-label-md font-label-md text-[11px]">训练</span>
-</button>
-<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors">
-<span class="material-symbols-outlined mb-1">monitoring</span>
-<span class="text-label-md font-label-md text-[11px]">肌电</span>
-</button>
-<!-- Active Tab -->
-<button class="flex flex-col items-center justify-center bg-primary-container text-on-primary-container rounded-full px-5 py-2 scale-100 transition-transform duration-150 relative -top-1 shadow-sm">
-<span class="material-symbols-outlined mb-0.5" style="font-variation-settings: 'FILL' 1;">precision_manufacturing</span>
-<span class="text-label-md font-label-md text-[11px] font-bold">设备</span>
-</button>
-<button class="flex flex-col items-center justify-center text-on-surface-variant px-4 py-1 hover:text-primary transition-colors">
-<span class="material-symbols-outlined mb-1">person</span>
-<span class="text-label-md font-label-md text-[11px]">我的</span>
-</button>
+<!-- Note: While wizard flows typically suppress navigation, the prompt explicitly requires rendering the bottom navigation. -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-xs py-sm bg-surface-container-lowest border-t border-outline-variant/20 shadow-lg rounded-t-xl pb-6">
+<a class="flex flex-col items-center justify-center text-on-surface-variant min-h-[48px] px-2 hover:text-primary transition-all active:scale-90 w-16" href="#">
+<span class="material-symbols-outlined mb-1">home</span>
+<span class="font-label-md text-label-md text-[10px]">首页</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant min-h-[48px] px-2 hover:text-primary transition-all active:scale-90 w-16" href="#">
+<span class="material-symbols-outlined mb-1">fitness_center</span>
+<span class="font-label-md text-label-md text-[10px]">训练</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant min-h-[48px] px-2 hover:text-primary transition-all active:scale-90 w-16" href="#">
+<span class="material-symbols-outlined mb-1">group</span>
+<span class="font-label-md text-label-md text-[10px]">社区</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant min-h-[48px] px-2 hover:text-primary transition-all active:scale-90 w-16" href="#">
+<span class="material-symbols-outlined mb-1">mail</span>
+<span class="font-label-md text-label-md text-[10px]">消息</span>
+</a>
+<!-- Using "My Profile" as the conceptual active tab since device binding is a personal account setting -->
+<a class="flex flex-col items-center justify-center text-primary bg-secondary-container/30 rounded-full px-4 py-1 min-h-[48px] transition-all active:scale-90" href="#">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="font-label-md text-label-md text-[10px]">我的</span>
+</a>
 </nav>
-<script src="./mobile-bridge.js"></script>
+<script>
+        function transitionToStep2() {
+            // Hide Step 1 content
+            document.querySelector('main > section:nth-of-type(3)').classList.add('hidden');
+            // Show Step 2 content
+            document.getElementById('step2-content').classList.remove('hidden');
+            document.getElementById('step2-content').classList.add('flex');
+            
+            // Update Stepper UI
+            const steps = document.querySelectorAll('.step-icon');
+            // Make Step 2 active style
+            steps[1].classList.remove('bg-surface-variant', 'text-on-surface-variant');
+            steps[1].classList.add('bg-primary', 'text-on-primary', 'shadow-md');
+            steps[1].nextElementSibling.classList.remove('text-on-surface-variant', 'opacity-70');
+            steps[1].nextElementSibling.classList.add('text-primary');
+            
+            // Update progress line
+            document.querySelector('.step-line').style.width = '66%';
+        }
+
+        function showBoundError() {
+            document.getElementById('error-state').classList.remove('hidden');
+        }
+    </script>
 </body></html>
