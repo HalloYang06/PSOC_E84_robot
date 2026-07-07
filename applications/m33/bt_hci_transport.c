@@ -8,6 +8,7 @@
 #include "cycfg_pins.h"
 #include "cybt_platform_config.h"
 #include "cycfg_bt_settings.h"
+#include "wiced_bt_stack.h"
 
 #define DBG_TAG "bt.hci"
 #define DBG_LVL DBG_INFO

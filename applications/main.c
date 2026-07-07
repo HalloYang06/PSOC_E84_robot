@@ -45,8 +45,12 @@ __attribute__((weak)) struct _reent _impure_data;
 #define M33_AUTO_EMG_SAMPLE_PERIOD_MS 20U
 #define M33_AUTO_EMG_MANAGE_F103 1
 
+#ifndef M33_ENABLE_APP_BLE_LINK
+#define M33_ENABLE_APP_BLE_LINK 1
+#endif
+
 #ifndef M33_ENABLE_BT_HCI
-#define M33_ENABLE_BT_HCI 0
+#define M33_ENABLE_BT_HCI M33_ENABLE_APP_BLE_LINK
 #endif
 
 typedef enum
@@ -566,6 +570,32 @@ static void m33_handle_ble_command(void)
     }
 }
 
+static void m33_handle_ble_command_minimal(void)
+{
+    app_ble_command_t cmd;
+
+    while (app_ble_service_peek_command(&cmd) == RT_EOK)
+    {
+        switch (cmd.type)
+        {
+        case APP_BLE_CMD_START_STREAM:
+        case APP_BLE_CMD_STOP_STREAM:
+        case APP_BLE_CMD_HEARTBEAT:
+            break;
+
+        case APP_BLE_CMD_EMERGENCY_STOP:
+            rt_kprintf("[ble] minimal framework received emergency stop\n");
+            break;
+
+        case APP_BLE_CMD_SET_MODE:
+        case APP_BLE_CMD_MOVE_JOINT:
+        default:
+            rt_kprintf("[ble] minimal framework ignored control command type=%d\n", cmd.type);
+            break;
+        }
+    }
+}
+
 static void m33_handle_ipc_command(void)
 {
     m33_m55_message_t msg;
@@ -940,40 +970,21 @@ static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
     }
 }
 
-static void m33_init_framework(void)
+static void m33_init_ble_app_link(void)
 {
+#if M33_ENABLE_APP_BLE_LINK
 #if M33_ENABLE_BT_HCI
     rt_err_t bt_err;
 #endif
 
-    m33_start_ipc_init_async();
-#if M33_XIAOZHI_MINIMAL_FRAMEWORK
-    return;
-#endif
-    rt_kprintf("[m33] init step2 bt_board_bridge\n");
+    rt_kprintf("[m33] app ble link step1 bt_board_bridge\n");
     bt_board_bridge_init();
-    rt_kprintf("[m33] init step3 app_ble_service_init\n");
+    rt_kprintf("[m33] app ble link step2 app_ble_service_init\n");
     app_ble_service_init();
-    rt_kprintf("[m33] init step4 app_ble_service_start\n");
+    rt_kprintf("[m33] app ble link step3 app_ble_service_start\n");
     app_ble_service_start();
-    rt_kprintf("[m33] init step5 sensor_manager_init\n");
-    sensor_manager_init();
-    rt_kprintf("[m33] init step6 input_buffer_init\n");
-    input_buffer_init();
-    rt_kprintf("[m33] init step7 control_manager_init\n");
-    control_manager_init();
-    rt_kprintf("[m33] init step8 can_driver_init\n");
-    can_driver_init();
-    rt_kprintf("[m33] init step9 safety_system_init\n");
-    safety_system_init();
-    rt_kprintf("[m33] init step10 http_server_init\n");
-    http_server_init();
-    rt_kprintf("[m33] init step11 http_server_start\n");
-    http_server_start();
-    rt_kprintf("[m33] init step12 openclaw_integration_init\n");
-    openclaw_integration_init();
 #if M33_ENABLE_BT_HCI
-    rt_kprintf("[m33] init step13 bt_hci_transport_init\n");
+    rt_kprintf("[m33] app ble link step4 bt_hci_transport_init\n");
     bt_err = bt_hci_transport_init();
     rt_kprintf("[m33] bt_hci_transport_init ret=%d state=%d\n",
                bt_err,
@@ -993,8 +1004,37 @@ static void m33_init_framework(void)
                    bt_err);
     }
 #else
-    rt_kprintf("[m33] init step13 bt_hci_transport skipped for M55 WiFi bring-up\n");
+    rt_kprintf("[m33] app ble link HCI disabled by M33_ENABLE_BT_HCI\n");
 #endif
+#else
+    rt_kprintf("[m33] app ble link disabled by M33_ENABLE_APP_BLE_LINK\n");
+#endif
+}
+
+static void m33_init_framework(void)
+{
+    m33_start_ipc_init_async();
+#if M33_XIAOZHI_MINIMAL_FRAMEWORK
+    m33_init_ble_app_link();
+    return;
+#endif
+    m33_init_ble_app_link();
+    rt_kprintf("[m33] init step5 sensor_manager_init\n");
+    sensor_manager_init();
+    rt_kprintf("[m33] init step6 input_buffer_init\n");
+    input_buffer_init();
+    rt_kprintf("[m33] init step7 control_manager_init\n");
+    control_manager_init();
+    rt_kprintf("[m33] init step8 can_driver_init\n");
+    can_driver_init();
+    rt_kprintf("[m33] init step9 safety_system_init\n");
+    safety_system_init();
+    rt_kprintf("[m33] init step10 http_server_init\n");
+    http_server_init();
+    rt_kprintf("[m33] init step11 http_server_start\n");
+    http_server_start();
+    rt_kprintf("[m33] init step12 openclaw_integration_init\n");
+    openclaw_integration_init();
 }
 
 #ifdef __cplusplus
@@ -1012,6 +1052,8 @@ int main(void)
 #if M33_XIAOZHI_MINIMAL_FRAMEWORK
     while (1)
     {
+        m33_handle_ble_command_minimal();
+        m33_publish_ble_telemetry(&g_main_sensor, &g_main_control, &g_runtime.safety);
         g_runtime.loop_count++;
 #if M33_ENABLE_LED_HEARTBEAT
         rt_pin_write(LED_PIN_B, ((g_runtime.loop_count % 10U) == 0U) ? PIN_HIGH : PIN_LOW);

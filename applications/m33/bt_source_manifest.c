@@ -1,6 +1,7 @@
 #include <rtthread.h>
 
-#include "bt_source_manifest.h"`r`n#include "bt_source_layout.h"
+#include "bt_source_manifest.h"
+#include "bt_source_layout.h"
 
 static const bt_source_component_t g_btstack_components[] = {
     {"btstack-core", RT_FALSE, "BTSTACK core sources are not integrated"},
