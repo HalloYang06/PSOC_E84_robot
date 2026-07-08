@@ -383,10 +383,10 @@ APK details:
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0.10 debug
-versionCode: 11
-size: 4,198,462 bytes
-sha256: DB674D09F46D0CF0B8DE9717D1904A52CE042BC19E49FB1BEB45BC4548E9BB52
+version: 1.0.12 debug
+versionCode: 13
+size: 4,183,199 bytes
+sha256: E189C4A7A92CEEEF44D2F7390457B3E290B4A62794983C4EFA49DEF7654B2059
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
@@ -395,9 +395,9 @@ Current user-release gate:
 
 ```text
 status: blocked
-reason: APK 1.0.11 connects to backend public-config/catalog/bootstrap/workflow, adds a社区内测 destination instead of dead tabs, routes消息/问康复师 through the App Agent backend, and can surface Android-paired Classic SPP devices through the native RehabArmSpp bridge. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
+reason: APK 1.0.12 connects to backend public-config/catalog/bootstrap/workflow, keeps profile phone binding synced after login/refresh, adds a社区内测 destination instead of dead tabs, routes消息/问康复师 through the App Agent backend, and can surface Android-paired Classic SPP devices through the native RehabArmSpp bridge. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
 hardware_protocol: legacy SPP profile available; UUID 00001101-0000-1000-8000-00805F9B34FB with newline-delimited UTF-8 JSON. Real Android pairing, backend device binding, frame send, and ACK/sensor evidence must be tested on hardware before motion-adjacent UX can be certified.
-download_sha256: 070EB7FB9B51F774596C9DDAD32BC62B6FD8EB059960500F5F373D8624A167BB
+download_sha256: E189C4A7A92CEEEF44D2F7390457B3E290B4A62794983C4EFA49DEF7654B2059
 ```
 
 Backend readiness endpoints:
@@ -450,7 +450,7 @@ Training Session -> 查看流程 -> 记录停止请求
 Profile -> 训练活动 / 查看最近记录
 ```
 
-Current 1.0.11 internal-test account setup path:
+Current 1.0.12 internal-test account setup path:
 
 ```text
 我的 -> 输入邮箱/密码 -> 登录云端账号

@@ -4,12 +4,48 @@ import json
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, inspect, text
 
+from app import seed as seed_module
+from app.db.base import Base
 from app.main import app
 from tests.helpers import auth_headers, create_project, issue_session_token, register_user
 
 
 client = TestClient(app)
+
+
+def test_rehab_arm_app_schema_extension_repairs_partial_phone_verification_table(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "partial-phone-verifications.db"
+    partial_engine = create_engine(f"sqlite:///{db_path}")
+    with partial_engine.begin() as connection:
+        connection.execute(text("CREATE TABLE rehab_app_phone_verifications (id VARCHAR(64) PRIMARY KEY)"))
+    Base.metadata.create_all(partial_engine, checkfirst=True)
+
+    monkeypatch.setattr(seed_module, "engine", partial_engine)
+    seed_module.ensure_schema_extensions()
+
+    inspector = inspect(partial_engine)
+    columns = {column["name"] for column in inspector.get_columns("rehab_app_phone_verifications")}
+    assert {
+        "id",
+        "user_id",
+        "phone",
+        "phone_number",
+        "code_hash",
+        "attempts",
+        "debug_code",
+        "purpose",
+        "status",
+        "expires_at",
+        "consumed_at",
+        "confirmed_at",
+        "created_at",
+    }.issubset(columns)
+    indexes = {index["name"] for index in inspector.get_indexes("rehab_app_phone_verifications")}
+    assert "ix_rehab_app_phone_verifications_user_id" in indexes
+    assert "ix_rehab_app_phone_verifications_phone_number" in indexes
+    assert "ix_rehab_app_phone_verifications_status" in indexes
 
 
 def _issue_rehab_app_token() -> tuple[str, str]:
@@ -196,7 +232,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "legacy_spp_profile_available"
     assert release_checks["PHONE_NATIVE_BLUETOOTH_BRIDGE"]["status"] == "debug_bridge_available"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
-    assert config_data["downloads"]["debug_apk_version"] == "1.0.11"
+    assert config_data["downloads"]["debug_apk_version"] == "1.0.12"
     assert len(config_data["downloads"]["debug_apk_sha256"]) == 64
     assert "backend_connected" in config_data["downloads"]["debug_apk_status"]
     assert "workflow_action_timeline" in config_data["downloads"]["debug_apk_status"]

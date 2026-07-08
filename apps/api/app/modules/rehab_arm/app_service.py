@@ -905,7 +905,10 @@ def create_phone_verification(db: Session, user_id: str, phone: str, purpose: st
     debug_code = "246810"
     verification = RehabAppPhoneVerification(
         user_id=user_id,
+        phone=normalized_phone,
         phone_number=normalized_phone,
+        code_hash=debug_code,
+        attempts=0,
         debug_code=debug_code,
         purpose=purpose,
         status="pending",
@@ -969,6 +972,7 @@ def confirm_phone_verification(db: Session, user_id: str, verification_id: str, 
     profile.phone_verified_at = now
     verification.status = "confirmed"
     verification.confirmed_at = now
+    verification.consumed_at = now
     db.add(profile)
     db.add(verification)
     db.flush()

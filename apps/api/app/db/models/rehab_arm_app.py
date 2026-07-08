@@ -30,11 +30,15 @@ class RehabAppPhoneVerification(Base):
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    phone: Mapped[str] = mapped_column(String(40), nullable=False, default="")
     phone_number: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     debug_code: Mapped[str] = mapped_column(String(12), nullable=False)
     purpose: Mapped[str] = mapped_column(String(40), nullable=False, default="bind_account")
     status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending", index=True)
     expires_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
     confirmed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

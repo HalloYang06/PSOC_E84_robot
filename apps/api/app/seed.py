@@ -77,6 +77,7 @@ def ensure_schema_extensions() -> None:
         ):
             if model.__tablename__ not in table_names:
                 model.__table__.create(bind=connection, checkfirst=True)
+                table_names.add(model.__tablename__)
 
         if "rehab_app_training_plan_syncs" in table_names:
             sync_columns = {column["name"] for column in inspector.get_columns("rehab_app_training_plan_syncs")}
@@ -92,6 +93,55 @@ def ensure_schema_extensions() -> None:
                 connection.execute(text("ALTER TABLE rehab_app_user_profiles ADD COLUMN phone_number VARCHAR(40) NOT NULL DEFAULT ''"))
             if "phone_verified_at" not in profile_columns:
                 connection.execute(text("ALTER TABLE rehab_app_user_profiles ADD COLUMN phone_verified_at DATETIME"))
+
+        if "rehab_app_phone_verifications" in table_names:
+            phone_verification_columns = {
+                column["name"] for column in inspector.get_columns("rehab_app_phone_verifications")
+            }
+            if "user_id" not in phone_verification_columns:
+                connection.execute(text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN user_id VARCHAR(36) NOT NULL DEFAULT ''"))
+            if "phone" not in phone_verification_columns:
+                connection.execute(text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN phone VARCHAR(40) NOT NULL DEFAULT ''"))
+            if "phone_number" not in phone_verification_columns:
+                connection.execute(
+                    text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN phone_number VARCHAR(40) NOT NULL DEFAULT ''")
+                )
+            if "code_hash" not in phone_verification_columns:
+                connection.execute(text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN code_hash VARCHAR(120) NOT NULL DEFAULT ''"))
+            if "attempts" not in phone_verification_columns:
+                connection.execute(text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0"))
+            if "debug_code" not in phone_verification_columns:
+                connection.execute(text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN debug_code VARCHAR(12) NOT NULL DEFAULT ''"))
+            if "purpose" not in phone_verification_columns:
+                connection.execute(
+                    text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN purpose VARCHAR(40) NOT NULL DEFAULT 'bind_account'")
+                )
+            if "status" not in phone_verification_columns:
+                connection.execute(
+                    text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN status VARCHAR(40) NOT NULL DEFAULT 'pending'")
+                )
+            if "expires_at" not in phone_verification_columns:
+                connection.execute(
+                    text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN expires_at DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00'")
+                )
+            if "confirmed_at" not in phone_verification_columns:
+                connection.execute(text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN confirmed_at DATETIME"))
+            if "consumed_at" not in phone_verification_columns:
+                connection.execute(text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN consumed_at DATETIME"))
+            if "created_at" not in phone_verification_columns:
+                connection.execute(text("ALTER TABLE rehab_app_phone_verifications ADD COLUMN created_at DATETIME"))
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_rehab_app_phone_verifications_user_id ON rehab_app_phone_verifications (user_id)")
+            )
+            connection.execute(
+                text(
+                    "CREATE INDEX IF NOT EXISTS ix_rehab_app_phone_verifications_phone_number "
+                    "ON rehab_app_phone_verifications (phone_number)"
+                )
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_rehab_app_phone_verifications_status ON rehab_app_phone_verifications (status)")
+            )
 
         if "tasks" in table_names:
             task_columns = {column["name"] for column in inspector.get_columns("tasks")}
