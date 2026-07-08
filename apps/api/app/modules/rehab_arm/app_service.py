@@ -5773,6 +5773,22 @@ def _fallback_agent_answer(message: str, context_snapshot: dict) -> str:
             "为了安全，我不能提供直接加大力度、修改电机参数、发送 CAN/原始运动命令或绕过 M33 的建议。"
             "如果你感觉训练太轻，应先记录疼痛、疲劳和完成情况，再由 App 生成训练计划草案，经过同步到设备、M33 接受和训练前检查后再执行。"
         )
+    if (context_snapshot or {}).get("requested_action") == "generate_training_advice_from_recent_records":
+        timeline = ((context_snapshot or {}).get("care_timeline") or {}).get("items") or []
+        plans = (context_snapshot or {}).get("training_plans") or []
+        blockers = ((context_snapshot or {}).get("daily_care_plan") or {}).get("blockers") or []
+        latest_plan = plans[0] if plans else {}
+        plan_title = latest_plan.get("title") or latest_plan.get("name") or "当前康复计划"
+        record_count = len(timeline)
+        blocker_text = "、".join(str(item) for item in blockers[:3]) if blockers else "暂无明显阻塞"
+        return (
+            f"我已读取最近康复记录和当前计划。近几天系统里可见 {record_count} 条训练/计划/复盘记录，当前参考计划为“{plan_title}”。"
+            f"当前需要注意的状态是：{blocker_text}。\n\n"
+            "下一次训练建议：先保持低强度，不追求加量；优先做同一关节方向的慢速训练，建议 2 组，每组 5-6 次，组间休息 60-90 秒。"
+            "如果训练前疼痛评分高于 4 分、出现刺痛/麻木，或前一次训练后疲劳超过 24 小时，应暂停并联系康复师。\n\n"
+            "闭环步骤：1. 在 App 中确认建议；2. 生成或接受训练计划草案；3. 同步到设备；4. 等待 M33 安全确认；5. 完成训练前检查后再开始记录。"
+            "我只提供训练建议，不会直接连接电机、发送 CAN 或绕过 M33。"
+        )
     if any(token in lower for token in ["疼", "痛", "酸", "疲劳", "fatigue", "pain"]):
         return (
             "如果今天训练后只是轻微酸胀或疲劳，下一次建议先保持同一动作类型，减少 1-2 次重复或延长组间休息 30 秒。"

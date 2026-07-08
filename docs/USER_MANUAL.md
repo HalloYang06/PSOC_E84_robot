@@ -383,10 +383,10 @@ APK details:
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0.16 debug
-versionCode: 17
-size: 4,185,139 bytes
-sha256: 76FFD62382653D7402A9CBDC15F5ACB7F72D9B8E4E183C2897457211216AAA7C
+version: 1.0.17 debug
+versionCode: 18
+size: 4,186,167 bytes
+sha256: 505163294BBE71EAA83DDA1C4A691AB0BFEC242B8811DC83EBDED49F8B0B158B
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
@@ -395,9 +395,9 @@ Current user-release gate:
 
 ```text
 status: blocked
-reason: APK 1.0.16 connects to backend public-config/catalog/bootstrap/workflow, keeps profile phone binding synced after login/refresh, keeps Agent/device/profile tabs aligned with the current /me profile shape, fixes the home bottom 社区 dead tap, routes消息/问康复师 through the App Agent backend, can surface Android-paired Classic SPP devices through the native RehabArmSpp bridge, can complete the internal-test device search/connect/bind path when the native bridge is unavailable, uses an http WebView scheme for the current http API, and includes local icon fallbacks so Material Symbols names are not shown when Google fonts fail. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
+reason: APK 1.0.17 connects to backend public-config/catalog/bootstrap/workflow, keeps profile phone binding synced after login/refresh, keeps Agent/device/profile tabs aligned with the current /me profile shape, fixes the home bottom 社区 dead tap, routes消息/问康复师 through the App Agent backend, adds one-tap Agent training advice from recent care records, can surface Android-paired Classic SPP devices through the native RehabArmSpp bridge, can complete the internal-test device search/connect/bind path when the native bridge is unavailable or permission/scan fails, uses an http WebView scheme for the current http API, and includes local icon fallbacks so Material Symbols names are not shown when Google fonts fail. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
 hardware_protocol: legacy SPP profile available; UUID 00001101-0000-1000-8000-00805F9B34FB with newline-delimited UTF-8 JSON. Real Android pairing, backend device binding, frame send, and ACK/sensor evidence must be tested on hardware before motion-adjacent UX can be certified.
-download_sha256: 76FFD62382653D7402A9CBDC15F5ACB7F72D9B8E4E183C2897457211216AAA7C
+download_sha256: 505163294BBE71EAA83DDA1C4A691AB0BFEC242B8811DC83EBDED49F8B0B158B
 ```
 
 Backend readiness endpoints:

@@ -754,12 +754,14 @@
       const rawDevices = Array.isArray(response) ? response : response.devices || [];
       renderDeviceResults(rawDevices.map(normalizeDiscoveredDevice));
     } catch (error) {
-      showBridgeMissing();
-      const state = qs("#device-error-state");
-      if (state) {
-        state.classList.remove("hidden");
-        state.querySelector("[data-error-message]").textContent = error.message || "蓝牙搜索失败，请检查权限后再试。";
-      }
+      window.rehabArmInternalTestBluetooth = {
+        enabled: true,
+        reason: "native_bridge_permission_or_scan_failed",
+        rawError: error && error.message ? error.message : "",
+        grantsMotionPermission: false,
+        grantsM33Acceptance: false,
+      };
+      renderInternalTestDevice();
     } finally {
       if (scanButton) scanButton.disabled = false;
     }

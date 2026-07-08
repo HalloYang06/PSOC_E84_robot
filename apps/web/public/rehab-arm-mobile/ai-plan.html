@@ -161,6 +161,9 @@
 <p class="mb-2">您好，我会根据您的训练记录、疼痛反馈、肌电摘要和计划状态给出康复建议。</p>
 <p>我只能提供训练建议和计划草案，不能直接控制机械臂。真实训练开始前仍需要设备同步、M33 确认和安全预检。</p>
 </div>
+<button class="mt-sm bg-primary text-on-primary rounded-full px-md min-h-[44px] font-label-md text-label-md shadow-ambient-sm active:scale-95 transition-transform" data-action="generate-training-advice" type="button">
+一键生成训练建议
+</button>
 </div>
 </main>
 <!-- Composer -->
@@ -722,6 +725,63 @@
     }
   }
 
+  function recentCareContext(data) {
+    const timeline = data.care_timeline || {};
+    const daily = data.daily_care_plan || {};
+    const home = data.home_status_guide || {};
+    return {
+      source: "mobile_app_training_advice_button",
+      requested_action: "generate_training_advice_from_recent_records",
+      care_timeline: {
+        items: (timeline.items || []).slice(0, 8),
+        summary: timeline.summary || {},
+      },
+      daily_care_plan: {
+        primary_task: daily.primary_task || daily.title || "",
+        next_action: daily.next_action || home.primary_action || {},
+        blockers: daily.blockers || home.blockers || [],
+      },
+      training_plans: (data.training_plans || []).slice(0, 5),
+      latest_open_ai_draft: data.latest_open_ai_draft || null,
+      agent_boundary: "advice_only_not_motion_permission",
+    };
+  }
+
+  async function generateTrainingAdvice() {
+    if (!getToken()) {
+      appendAgentMessage("assistant", "请先到“我的”页面登录云端账号，再生成训练建议。", "error");
+      return;
+    }
+    const button = qs('[data-action="generate-training-advice"]');
+    if (button) {
+      button.disabled = true;
+      button.textContent = "正在分析";
+    }
+    appendAgentMessage("user", "请读取我最近几天的训练记录，生成下一次训练建议。");
+    try {
+      const bootstrap = await apiRequest(bootstrapEndpoint, { method: "GET" });
+      const data = await apiRequest(agentMessageEndpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          message: "请基于最近几天训练记录、今日任务、训练计划和疼痛/疲劳线索，生成下一次训练建议。用患者能看懂的中文，包含强度、组数次数、注意事项和何时联系康复师。不要给任何设备控制或绕过 M33 的建议。",
+          context_snapshot: recentCareContext(bootstrap),
+        }),
+      });
+      appendAgentMessage("assistant", data.answer || "已根据最近训练记录生成建议。");
+      window.rehabAgentModelStatus = data.model_status || data.modelStatus || null;
+    } catch (error) {
+      const message = error.message === "Failed to fetch"
+        ? "网络连接失败，请检查网络后重试。"
+        : (error.message || "暂时无法生成训练建议，请稍后再试。");
+      appendAgentMessage("assistant", message, "error");
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = "一键生成训练建议";
+      }
+    }
+  }
+
   async function loginCloudAccount() {
     const emailInput = qs("#login-email");
     const passwordInput = qs("#login-password");
@@ -852,8 +912,10 @@
 
   function wireAgent() {
     const button = qs('[data-action="send-agent-message"]');
+    const adviceButton = qs('[data-action="generate-training-advice"]');
     const input = qs("#agent-message-input");
     if (button) button.addEventListener("click", sendAgentMessage);
+    if (adviceButton) adviceButton.addEventListener("click", generateTrainingAdvice);
     if (input) {
       input.addEventListener("keydown", (event) => {
         if (event.key === "Enter") sendAgentMessage();
