@@ -24,6 +24,19 @@ class RehabAppProfileRead(RehabAppProfileUpdate):
     control_boundary: str = "profile_data_only_not_medical_diagnosis"
 
 
+class RehabAppPhoneVerificationCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    phone: str = Field(min_length=5, max_length=40)
+    purpose: str = Field(default="bind_account", pattern="^bind_account$")
+
+
+class RehabAppPhoneVerificationConfirm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=4, max_length=12)
+
+
 class RehabAppDeviceBindRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

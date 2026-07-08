@@ -13,6 +13,7 @@
 - Lesson: do not add another Bluetooth stack before checking the installed native bridge name. Keep account device binding, SPP connection, frame send, ACK upload, and M33 acceptance as separate visible states.
 - Agent UX lesson: a server-backed message page still feels fake if it opens with hardcoded sample user/assistant messages. Keep only a real empty/welcome state, then render user messages and `/agent/messages` responses. If a safety example is needed, keep it in docs/tests, not as visible default chat history.
 - Mobile auth QA lesson: the current mobile runtime reads `localStorage.access_token`. Browser-injected QA that writes only an older key such as `rehab_arm_access_token` will hit login gates and falsely report that device scanning or binding is broken.
+- Phone-binding product lesson: a button that calls a missing endpoint is worse than a disabled control. The shipped profile page called `/account/phone-verifications`, so the backend must expose a debug-SMS contract during internal testing and persist `phone_number` / `phone_verified_at` before the user can trust that account setup is complete.
 
 - Symptom: the message page looked like an intelligent assistant but the current repo did not expose the exact `/agent/messages` App route the page was calling.
 - Root cause: frontend and cloud deployment had drifted ahead of the local backend contract.

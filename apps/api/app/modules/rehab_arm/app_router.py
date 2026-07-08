@@ -26,6 +26,8 @@ from .app_schemas import (
     RehabAppOfflineQueueItemCreate,
     RehabAppOfflineQueueReviewRequest,
     RehabAppOfflineQueueReplayRequest,
+    RehabAppPhoneVerificationConfirm,
+    RehabAppPhoneVerificationCreate,
     RehabAppPlanConstraintReviewCreate,
     RehabAppPlatformSyncRequest,
     RehabAppPreflightCheckCreate,
@@ -54,6 +56,8 @@ from .app_service import (
     create_preflight_check,
     create_training_report_review,
     create_training_plan,
+    confirm_phone_verification,
+    create_phone_verification,
     draft_next_plan_from_report,
     emg_history,
     execute_workflow_action,
@@ -279,6 +283,21 @@ def api_execute_me_workflow_action(payload: RehabAppWorkflowActionRequest, reque
 @router.patch("/me/profile")
 def api_update_profile(payload: RehabAppProfileUpdate, request: Request, db: Session = Depends(get_db)):
     return ok(upsert_profile(db, _user_id(db, request), payload))
+
+
+@router.post("/account/phone-verifications")
+def api_create_phone_verification(payload: RehabAppPhoneVerificationCreate, request: Request, db: Session = Depends(get_db)):
+    return ok(create_phone_verification(db, _user_id(db, request), payload.phone, payload.purpose))
+
+
+@router.post("/account/phone-verifications/{verification_id}/confirm")
+def api_confirm_phone_verification(
+    verification_id: str,
+    payload: RehabAppPhoneVerificationConfirm,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    return ok(confirm_phone_verification(db, _user_id(db, request), verification_id, payload.code))
 
 
 @router.post("/devices/bind")

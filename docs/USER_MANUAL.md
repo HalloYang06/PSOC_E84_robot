@@ -450,6 +450,24 @@ Training Session -> 查看流程 -> 记录停止请求
 Profile -> 训练活动 / 查看最近记录
 ```
 
+Current 1.0.11 internal-test account setup path:
+
+```text
+我的 -> 输入邮箱/密码 -> 登录云端账号
+手机号 -> 获取验证码 -> read "当前为内测验证模式，内测验证码：xxxx"
+输入内测验证码 -> 绑定手机号
+刷新 我的 -> badge stays 已绑定 and /me/profile returns profile.phone.verified=true
+```
+
+Backend endpoints used by the current profile page:
+
+```text
+POST /api/auth/session
+POST /api/rehab-arm/app/v1/account/phone-verifications
+POST /api/rehab-arm/app/v1/account/phone-verifications/{verification_id}/confirm
+GET /api/rehab-arm/app/v1/me/profile
+```
+
 Pass criteria: every tap must either navigate to the target page, show the backend workflow panel, call a safe App endpoint, or display a clear toast explaining the missing prerequisite. The App must not show a silent button, fake realtime value, fake report/EMG/session success, or any text implying that the phone can bypass M33, release emergency stop, send raw CAN, or command motor current/torque/position/velocity.
 
 Rebuild locally:

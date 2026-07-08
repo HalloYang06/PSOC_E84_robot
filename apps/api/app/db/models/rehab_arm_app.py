@@ -19,6 +19,8 @@ class RehabAppUserProfile(Base):
     rehab_stage: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     medical_constraints: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     pain_baseline: Mapped[float | None] = mapped_column(Float, nullable=True)
+    phone_number: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    phone_verified_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

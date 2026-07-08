@@ -84,6 +84,13 @@ def ensure_schema_extensions() -> None:
                     text("CREATE INDEX IF NOT EXISTS ix_rehab_app_training_plan_syncs_plan_version ON rehab_app_training_plan_syncs (plan_version)")
                 )
 
+        if "rehab_app_user_profiles" in table_names:
+            profile_columns = {column["name"] for column in inspector.get_columns("rehab_app_user_profiles")}
+            if "phone_number" not in profile_columns:
+                connection.execute(text("ALTER TABLE rehab_app_user_profiles ADD COLUMN phone_number VARCHAR(40) NOT NULL DEFAULT ''"))
+            if "phone_verified_at" not in profile_columns:
+                connection.execute(text("ALTER TABLE rehab_app_user_profiles ADD COLUMN phone_verified_at DATETIME"))
+
         if "tasks" in table_names:
             task_columns = {column["name"] for column in inspector.get_columns("tasks")}
             if "due_at" not in task_columns:

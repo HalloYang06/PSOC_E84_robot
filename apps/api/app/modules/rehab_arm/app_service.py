@@ -58,6 +58,8 @@ DANGEROUS_AI_PLAN_KEYS = {
     "release_estop",
     "emergency_stop_release",
 }
+
+_PHONE_VERIFICATIONS: dict[str, dict[str, Any]] = {}
 DANGEROUS_AI_PLAN_KEY_SUBSTRINGS = (
     "can_frame",
     "canframe",
@@ -347,6 +349,8 @@ def _normalize_training_plan_data(data: dict, *, partial: bool = False) -> dict:
 
 
 def _profile_dict(profile: RehabAppUserProfile) -> dict:
+    phone_value = str(getattr(profile, "phone_number", "") or "")
+    phone_verified_at = getattr(profile, "phone_verified_at", None)
     return {
         "id": profile.id,
         "user_id": profile.user_id,
@@ -356,6 +360,14 @@ def _profile_dict(profile: RehabAppUserProfile) -> dict:
         "rehab_stage": profile.rehab_stage,
         "medical_constraints": profile.medical_constraints or [],
         "pain_baseline": profile.pain_baseline,
+        "phone": {
+            "value": phone_value,
+            "verified": bool(phone_value and phone_verified_at),
+            "verified_at": phone_verified_at,
+            "mode": "debug_sms",
+            "control_boundary": "phone_binding_identity_evidence_only_not_motion_permission",
+        },
+        "phone_verified": bool(phone_value and phone_verified_at),
         "created_at": profile.created_at,
         "updated_at": profile.updated_at,
         "control_boundary": "profile_data_only_not_medical_diagnosis",
@@ -882,6 +894,93 @@ def upsert_profile(db: Session, user_id: str, payload: RehabAppProfileUpdate) ->
 def get_profile(db: Session, user_id: str) -> dict | None:
     profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
     return _profile_dict(profile) if profile else None
+
+
+def create_phone_verification(db: Session, user_id: str, phone: str, purpose: str = "bind_account") -> dict:
+    normalized_phone = "".join(ch for ch in str(phone or "").strip() if ch.isdigit() or ch == "+")
+    if len(normalized_phone) < 5:
+        raise AppError("PHONE_INVALID", "请输入有效手机号", status_code=400)
+    if purpose != "bind_account":
+        raise AppError("PHONE_PURPOSE_UNSUPPORTED", "unsupported phone verification purpose", status_code=400)
+    verification_id = str(uuid.uuid4())
+    debug_code = "246810"
+    expires_at = datetime.now(timezone.utc).timestamp() + 600
+    _PHONE_VERIFICATIONS[verification_id] = {
+        "user_id": user_id,
+        "phone": normalized_phone,
+        "code": debug_code,
+        "expires_at": expires_at,
+        "purpose": purpose,
+    }
+    create_audit_log(
+        db,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.phone_verification.created",
+        resource_type="rehab_app_phone_verification",
+        resource_id=verification_id,
+        after={
+            "phone_masked": f"{normalized_phone[:3]}****{normalized_phone[-4:]}" if len(normalized_phone) >= 7 else "***",
+            "purpose": purpose,
+            "mode": "debug_sms",
+            "control_boundary": "phone_verification_identity_only_not_motion_permission",
+        },
+    )
+    db.commit()
+    return {
+        "verification_id": verification_id,
+        "debug_code": debug_code,
+        "expires_in": 600,
+        "mode": "debug_sms",
+        "message": "当前为内测验证模式，内测验证码已返回给 App。",
+        "control_boundary": "phone_verification_identity_only_not_motion_permission",
+    }
+
+
+def confirm_phone_verification(db: Session, user_id: str, verification_id: str, code: str) -> dict:
+    verification = _PHONE_VERIFICATIONS.get(verification_id)
+    if not verification or verification.get("user_id") != user_id:
+        raise AppError("PHONE_VERIFICATION_NOT_FOUND", "请先获取验证码。", status_code=404)
+    if float(verification.get("expires_at") or 0) < datetime.now(timezone.utc).timestamp():
+        _PHONE_VERIFICATIONS.pop(verification_id, None)
+        raise AppError("PHONE_VERIFICATION_EXPIRED", "验证码已过期，请重新获取。", status_code=400)
+    if str(code or "").strip() != verification.get("code"):
+        raise AppError("PHONE_VERIFICATION_CODE_INVALID", "验证码不正确或已过期，请重新输入。", status_code=400)
+    profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
+    if profile is None:
+        profile = RehabAppUserProfile(
+            user_id=user_id,
+            name="Rehab App User",
+            role="patient",
+            affected_side="",
+            rehab_stage="",
+            medical_constraints=[],
+        )
+    profile.phone_number = verification["phone"]
+    profile.phone_verified_at = datetime.now(timezone.utc)
+    db.add(profile)
+    db.flush()
+    _PHONE_VERIFICATIONS.pop(verification_id, None)
+    create_audit_log(
+        db,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.phone_verification.confirmed",
+        resource_type="rehab_app_profile",
+        resource_id=profile.id,
+        after={
+            "phone_verified": True,
+            "mode": "debug_sms",
+            "control_boundary": "phone_binding_identity_evidence_only_not_motion_permission",
+        },
+    )
+    db.commit()
+    db.refresh(profile)
+    return {
+        "phone_verified": True,
+        "profile": _profile_dict(profile),
+        "control_boundary": "phone_binding_identity_evidence_only_not_motion_permission",
+    }
 
 
 def _onboarding_step(code: str, status: str, title: str, description: str, endpoint: str, method: str, payload_hint: dict | None = None) -> dict:

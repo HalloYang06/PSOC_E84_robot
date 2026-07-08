@@ -211,6 +211,29 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert catalog["unsupported_policy"]["error_code"] == "TRAINING_MOVEMENT_UNSUPPORTED"
     assert catalog["m33_legacy_spp_profile"]["packet_delimiter"] == "\\n"
     assert catalog["control_boundary"] == "rehab_app_catalog_options_only_not_medical_diagnosis_or_motion_permission"
+    phone_verification = client.post(
+        "/api/rehab-arm/app/v1/account/phone-verifications",
+        headers=auth_headers(owner_token),
+        json={"phone": "13900001111", "purpose": "bind_account"},
+    )
+    assert phone_verification.status_code == 200
+    phone_verification_data = phone_verification.json()["data"]
+    assert phone_verification_data["mode"] == "debug_sms"
+    assert phone_verification_data["debug_code"]
+    assert phone_verification_data["control_boundary"] == "phone_verification_identity_only_not_motion_permission"
+    confirm_phone = client.post(
+        f"/api/rehab-arm/app/v1/account/phone-verifications/{phone_verification_data['verification_id']}/confirm",
+        headers=auth_headers(owner_token),
+        json={"code": phone_verification_data["debug_code"]},
+    )
+    assert confirm_phone.status_code == 200
+    assert confirm_phone.json()["data"]["phone_verified"] is True
+    assert confirm_phone.json()["data"]["profile"]["phone"]["value"] == "13900001111"
+    assert confirm_phone.json()["data"]["profile"]["phone"]["verified"] is True
+    refreshed_profile = client.get("/api/rehab-arm/app/v1/me/profile", headers=auth_headers(owner_token))
+    assert refreshed_profile.status_code == 200
+    assert refreshed_profile.json()["data"]["phone"]["value"] == "13900001111"
+    assert refreshed_profile.json()["data"]["phone"]["verified"] is True
     cors_preflight = client.options(
         "/api/rehab-arm/app/v1/public-config",
         headers={
