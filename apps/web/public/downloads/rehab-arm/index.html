@@ -182,17 +182,22 @@
           <dt>包名</dt>
           <dd>com.lingdong.rehabarm</dd>
           <dt>版本</dt>
-          <dd>1.0.14 L1 staging</dd>
+          <dd>1.0.16 L1 staging</dd>
           <dt>大小</dt>
-          <dd>4,183,455 bytes</dd>
+          <dd>4,185,139 bytes</dd>
           <dt>SHA256</dt>
-          <dd>44F8452D5801D8D5F152F994C13FE0DAEF9063B7F6EEBFEEA452CBE32B88A66D</dd>
+          <dd>76FFD62382653D7402A9CBDC15F5ACB7F72D9B8E4E183C2897457211216AAA7C</dd>
         </dl>
       </section>
 
       <section>
-        <h2>1.0.14 更新</h2>
+        <h2>1.0.16 更新</h2>
         <ol>
+          <li>修复 Android APK 登录时可能出现网络请求失败的问题：当前内测包使用 <code>http://localhost</code> WebView 本地源，避免本地页面请求当前 HTTP API 时被系统拦截。</li>
+          <li>新增本地图标兜底：网络或字体服务不可用时，顶部返回、设置和底部导航不再显示 <code>arrow_back</code>、<code>person</code>、<code>mail</code> 等英文图标名。</li>
+          <li>登录网络失败提示改为中文，不再直接显示浏览器原始英文错误。</li>
+          <li>设备页补齐内测连接路径：无 Android 蓝牙桥时也能完成“搜索设备、绑定设备、显示已连接”的连接流程。</li>
+          <li>连接完成后仍保留正式训练安全门禁：训练计划同步、M33 安全确认和训练前检查不会被设备页状态绕过。</li>
           <li>修复首页底部“社区”tab 无跳转的问题，点击后进入社区内测页，不再像死按钮。</li>
           <li>消息页和设备页同步兼容当前 <code>/api/rehab-arm/app/v1/me</code> 的顶层 <code>profile</code> 数据形态，避免不同 tab 登录/绑定状态显示不一致。</li>
           <li>设备页浏览器无蓝牙桥时增加明确下一步：安装 Android APK、系统蓝牙先配对 M33/SPP 设备，再回到 App 搜索；仍失败时截图联系内测负责人。</li>
@@ -226,7 +231,7 @@
       </section>
 
       <section>
-        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电、AI 草稿和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.14 已补齐社区入口、首页社区 tab 跳转、康复师 Agent 后端中转、设备页 Android SPP 桥兼容、内测验证码文案、手机号绑定刷新闭环和设备无桥下一步提示；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
+        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电、AI 草稿和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.16 已补齐社区入口、首页社区 tab 跳转、康复师 Agent 后端中转、设备页 Android SPP 桥兼容、内测验证码文案、手机号绑定刷新闭环、设备连接路径、APK 登录请求修复和本地图标兜底；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
       </section>
     </main>
   </body>

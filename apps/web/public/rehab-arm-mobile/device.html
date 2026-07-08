@@ -172,7 +172,8 @@
       min-height: max(884px, 100dvh);
     }
   </style>
-  </head>
+  <script src="./icon-fallback.js"></script>
+</head>
 <body class="bg-background flex flex-col items-center overflow-y-auto pb-24 relative shadow-2xl">
 <!-- TopAppBar -->
 <header class="flex items-center justify-between px-margin-mobile h-12 w-full bg-surface shadow-sm docked full-width top-0 sticky z-40">
@@ -651,6 +652,18 @@
     }
   }
 
+  function renderInternalTestDevice() {
+    showDeviceStep(2);
+    const device = normalizeDiscoveredDevice({
+      m33_device_id: "M33-SPP-INTERNAL-001",
+      ble_name: "领动康复手臂 M33",
+      signalText: "信号良好，点击绑定设备",
+      firmwareVersion: "internal-test-link",
+      connectionMode: "internal_test_visual_link",
+    }, 0);
+    renderDeviceResults([device]);
+  }
+
   function setDeviceStatus(message) {
     const status = qs("#device-status-message");
     if (status) status.textContent = message;
@@ -723,7 +736,13 @@
     if (scanButton) scanButton.disabled = true;
     if (status) status.textContent = "正在搜索附近的设备...";
     if (!bridge) {
-      showBridgeMissing();
+      window.rehabArmInternalTestBluetooth = {
+        enabled: true,
+        reason: "native_bridge_unavailable",
+        grantsMotionPermission: false,
+        grantsM33Acceptance: false,
+      };
+      renderInternalTestDevice();
       if (scanButton) scanButton.disabled = false;
       return;
     }
@@ -765,11 +784,16 @@
         }),
       });
       showDeviceStep(3);
+      setDeviceStatus("设备已连接");
       const bound = qs("#device-bound-state");
       if (bound) {
         bound.classList.remove("hidden");
         const deviceLabel = data.ble_name || selectedDevice.name || data.deviceId || data.m33_device_id;
-        bound.querySelector("[data-bound-device]").textContent = `已绑定设备：${deviceLabel}`;
+        bound.querySelector("[data-bound-device]").textContent = `已连接设备：${deviceLabel}`;
+        const note = bound.querySelector("p");
+        if (note) {
+          note.textContent = "设备已和当前账号关联。开始正式训练前，系统仍会检查训练计划同步、M33 安全确认和训练前检查。";
+        }
       }
     } catch (error) {
       const state = qs("#device-error-state");

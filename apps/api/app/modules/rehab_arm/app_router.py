@@ -199,8 +199,8 @@ def api_public_config(request: Request):
             "m33_legacy_spp_profile": LEGACY_M33_SPP_PROFILE,
             "downloads": {
                 "debug_apk_url": _download_url(api_base),
-                "debug_apk_version": "1.0.14",
-                "debug_apk_sha256": "44F8452D5801D8D5F152F994C13FE0DAEF9063B7F6EEBFEEA452CBE32B88A66D",
+                "debug_apk_version": "1.0.16",
+                "debug_apk_sha256": "76FFD62382653D7402A9CBDC15F5ACB7F72D9B8E4E183C2897457211216AAA7C",
                 "debug_apk_status": "backend_connected_workflow_action_timeline_ai_training_planner_training_library_backend_plan_binding_stitch_bluetooth_debug_spp_pairing_backend_bind_frame_ack_sensor_debug_build_current_m33_confirmation_pending",
             },
             "mobile_boot_flow": [
@@ -228,7 +228,7 @@ def api_public_config(request: Request):
                     {
                         "code": "APK_FRONTEND_API_WIRING",
                         "status": "pass",
-                        "description": "Debug APK 1.0.14 loads public-config/catalog/workflow, uses Bearer token login, keeps profile phone binding synced after refresh, keeps Agent and device pages aligned with the current /me profile contract, fixes the home bottom community tab dead tap, overlays backend workflow/readiness, renders backend care timeline/daily care plan, binds the training library to backend plans after AI draft acceptance, can execute safe workflow actions through /me/workflow/actions, and includes a Stitch-designed Bluetooth debug page for Android SPP pairing, backend device binding, backend-approved frame send, and inbound ACK/sensor evidence upload.",
+                        "description": "Debug APK 1.0.16 loads public-config/catalog/workflow, uses Bearer token login, keeps profile phone binding synced after refresh, keeps Agent and device pages aligned with the current /me profile contract, fixes the home bottom community tab dead tap, overlays backend workflow/readiness, renders backend care timeline/daily care plan, binds the training library to backend plans after AI draft acceptance, can execute safe workflow actions through /me/workflow/actions, includes Android SPP support, uses an http WebView scheme for the current http API, and includes local icon fallbacks so Material Symbols names are not shown when Google fonts fail.",
                     },
                     {
                         "code": "HARDWARE_PROTOCOL_PACKET_MAP",
@@ -238,7 +238,7 @@ def api_public_config(request: Request):
                     {
                         "code": "PHONE_NATIVE_BLUETOOTH_BRIDGE",
                         "status": "debug_bridge_available",
-                        "description": "APK 1.0.14 includes a Capacitor/Android Bluetooth Classic SPP bridge plus a Stitch-designed Bluetooth debug page for listing paired devices, binding one as a backend trusted device, connecting SPP, sending backend-approved legacy frames, and uploading inbound ACK/sensor evidence. User release still needs physical validation with current M33 firmware.",
+                        "description": "APK 1.0.16 includes a Capacitor/Android Bluetooth Classic SPP bridge plus a Stitch-designed Bluetooth debug page for listing paired devices, binding one as a backend trusted device, connecting SPP, sending backend-approved legacy frames, and uploading inbound ACK/sensor evidence. The device page also has an internal-test visible connection path when no native bridge is detected. User release still needs physical validation with current M33 firmware.",
                     },
                 ],
                 "required_frontend_work": [

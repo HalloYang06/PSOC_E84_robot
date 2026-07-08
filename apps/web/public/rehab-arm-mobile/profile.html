@@ -351,6 +351,7 @@
       font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
     }
   </style>
+<script src="./icon-fallback.js"></script>
 </head>
 <body data-page="profile">
   <header class="header">
@@ -1020,7 +1021,9 @@
       setAuthState(false);
       const message = error.code === "AUTH_INVALID"
         ? "账号或密码不正确，请重新输入。"
-        : (error.message || "登录暂时失败，请稍后再试。");
+        : error.message === "Failed to fetch"
+          ? "网络连接失败，请检查网络后重试。"
+          : (error.message || "登录暂时失败，请稍后再试。");
       setLoginStatus(message, "error");
       if (passwordInput) passwordInput.focus();
     } finally {

@@ -116,7 +116,7 @@ Phone target:
 
 - First runnable target is a mobile Web/PWA at `apps/web/public/rehab-arm-mobile/index.html`.
 - The phone App is not Python. Python/FastAPI owns the backend API only.
-- The current internal-test Android package wraps the same PWA surface with Capacitor under `apps/mobile/rehab-arm-android`; APK `1.0.14` includes the repaired profile phone-binding bootstrap, Agent/device page `/me.profile` compatibility, and the fixed home community-tab navigation while still remaining blocked on real M33/SPP hardware validation.
+- The current internal-test Android package wraps the same PWA surface with Capacitor under `apps/mobile/rehab-arm-android`; APK `1.0.16` includes the repaired profile phone-binding bootstrap, Agent/device page `/me.profile` compatibility, fixed home community-tab navigation, a polished internal-test device search/connect/bind path, Android WebView `http` scheme compatibility for the current HTTP API, and local icon fallbacks while still remaining blocked on real M33/SPP hardware validation.
 - Real phone-to-M33 transport uses the old verified Android App protocol when enabled: Bluetooth Classic SPP/RFCOMM UUID `00001101-0000-1000-8000-00805F9B34FB`, UTF-8 newline-delimited JSON. Browser/PWA JavaScript cannot open RFCOMM directly, so the Android package needs a native bridge before this becomes a usable hardware path.
 
 Frontend ownership:

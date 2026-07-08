@@ -3,6 +3,6 @@
   "appName": "灵动康复 ArmControl",
   "webDir": "www",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "http"
   }
 }
