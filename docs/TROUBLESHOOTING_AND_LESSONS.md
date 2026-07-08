@@ -19,6 +19,7 @@
 - Release deployment lesson: updating `apps/web/public/...` on the server is not enough if the user installs an APK. For App-visible fixes, sync Web assets into the Capacitor wrapper, rebuild the APK, update public-config/download-page version and SHA, upload the new APK, then verify the downloaded bytes hash.
 - Agent QA lesson: icon-only send buttons can confuse broad Playwright selectors. For user-path QA on `ai-plan.html`, click `[data-action="send-agent-message"]` explicitly and assert the network request to `/api/rehab-arm/app/v1/agent/messages`; otherwise a test can click a visually nearby control and falsely report that the Agent is disconnected.
 - Device no-bridge lesson: "browser cannot use Bluetooth Classic SPP" is correct but incomplete. The UI must also say the next user action: install the Android APK, pair the M33/SPP device in system Bluetooth, then return to App search. This keeps the no-hardware state honest without making the device flow feel like a dead end.
+- Bottom-nav lesson: Stitch pages can mix `<a href>` tabs and `div[data-nav-target]` tabs. A single tab missing `data-nav-target` looks visually fine but is a dead tap. For every mobile release, click all five bottom tabs from the actual page, not just grep for `href`.
 
 - Symptom: the message page looked like an intelligent assistant but the current repo did not expose the exact `/agent/messages` App route the page was calling.
 - Root cause: frontend and cloud deployment had drifted ahead of the local backend contract.
