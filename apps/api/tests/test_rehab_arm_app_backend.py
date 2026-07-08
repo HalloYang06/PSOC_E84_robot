@@ -232,10 +232,11 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "legacy_spp_profile_available"
     assert release_checks["PHONE_NATIVE_BLUETOOTH_BRIDGE"]["status"] == "debug_bridge_available"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
-    assert config_data["downloads"]["debug_apk_version"] == "1.0.17"
+    assert config_data["downloads"]["debug_apk_version"] == "1.0.18"
     assert len(config_data["downloads"]["debug_apk_sha256"]) == 64
     assert "backend_connected" in config_data["downloads"]["debug_apk_status"]
     assert "workflow_action_timeline" in config_data["downloads"]["debug_apk_status"]
+    assert "agent_next_plan_export" in config_data["downloads"]["debug_apk_status"]
     assert config_data["control_boundary"] == "rehab_app_public_config_only_not_auth_token_or_motion_permission"
     catalog_response = client.get("/api/rehab-arm/app/v1/catalog")
     assert catalog_response.status_code == 200

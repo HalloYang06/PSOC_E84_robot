@@ -259,6 +259,20 @@
 </div>
 <p class="text-body-md font-body-md text-on-surface-variant">设备已和当前账号关联。账号绑定不等于蓝牙已连接，开始训练前仍需在 Android App 内完成蓝牙连接和 M33 安全确认。</p>
 </div>
+<div class="hidden w-full bg-surface-container-lowest rounded-lg p-md flex flex-col gap-sm border border-primary/20 shadow-sm" id="agent-plan-start-flow">
+<div class="flex items-center gap-sm text-primary">
+<span class="material-symbols-outlined">play_arrow</span>
+<span class="font-label-md text-label-md">下一步训练计划</span>
+</div>
+<p class="text-body-md font-body-md text-on-surface font-bold" data-agent-plan-title>Agent 推荐训练计划</p>
+<p class="text-body-md font-body-md text-on-surface-variant" data-agent-plan-summary>等待设备自检。</p>
+<div class="grid grid-cols-1 gap-sm">
+<button class="h-11 min-h-[44px] w-full bg-primary text-on-primary rounded-full font-label-md text-label-md shadow-sm active:scale-95 transition-transform" data-action="run-device-self-check" type="button">设备自检</button>
+<button class="hidden h-11 min-h-[44px] w-full bg-secondary text-on-secondary rounded-full font-label-md text-label-md shadow-sm active:scale-95 transition-transform" data-action="confirm-patient-ready" type="button">患者已准备好</button>
+<button class="hidden h-11 min-h-[44px] w-full bg-primary text-on-primary rounded-full font-label-md text-label-md shadow-sm active:scale-95 transition-transform" data-action="start-demo-training" type="button">开始训练</button>
+</div>
+<p class="text-body-md font-body-md text-on-surface-variant" data-agent-plan-status>连接设备后进行自检。</p>
+</div>
 <!-- Error State Handling (Hidden by default) -->
 <div class="hidden w-full bg-error-container rounded-lg p-md flex flex-col gap-sm border border-error/20 mt-auto" id="device-error-state">
 <div class="flex items-center gap-sm text-on-error-container">
@@ -669,6 +683,55 @@
     if (status) status.textContent = message;
   }
 
+  function getAgentNextPlan() {
+    try {
+      return JSON.parse(localStorage.getItem("rehab_next_training_plan") || "null");
+    } catch {
+      return null;
+    }
+  }
+
+  function shouldShowAgentPlanFlow() {
+    return new URLSearchParams(window.location.search).get("plan") === "agent-next" || !!getAgentNextPlan();
+  }
+
+  function renderAgentPlanStartFlow(stage) {
+    const plan = getAgentNextPlan() || {
+      title: "Agent 推荐肘关节低强度训练",
+      intensity: "低",
+      sets: 2,
+      reps: 6,
+      estimated_minutes: 15,
+    };
+    const panel = qs("#agent-plan-start-flow");
+    if (!panel || !shouldShowAgentPlanFlow()) return;
+    panel.classList.remove("hidden");
+    setText("[data-agent-plan-title]", plan.title || "Agent 推荐训练计划");
+    setText("[data-agent-plan-summary]", `强度${plan.intensity || "低"}，${plan.sets || 2}组 x ${plan.reps || 6}次，预计${plan.estimated_minutes || 15}分钟。`);
+    const selfCheck = qs('[data-action="run-device-self-check"]');
+    const ready = qs('[data-action="confirm-patient-ready"]');
+    const start = qs('[data-action="start-demo-training"]');
+    const status = qs("[data-agent-plan-status]");
+    if (stage === "self_checked") {
+      if (status) status.textContent = "设备自检通过：电源、佩戴、急停、传感器、通信状态正常。";
+      if (selfCheck) selfCheck.textContent = "自检已通过";
+      if (ready) ready.classList.remove("hidden");
+      return;
+    }
+    if (stage === "patient_ready") {
+      if (status) status.textContent = "患者已确认准备好：疼痛可接受，佩戴稳定，已了解停止方式。";
+      if (ready) ready.textContent = "患者已确认";
+      if (start) start.classList.remove("hidden");
+      return;
+    }
+    if (stage === "started") {
+      if (status) status.textContent = "训练记录已开始。当前为内测演示记录，真实执行仍需 M33 安全确认。";
+      if (start) start.textContent = "训练记录中";
+      return;
+    }
+    if (status) status.textContent = "连接设备后进行自检。";
+  }
+
   function requireDeviceBindingLogin() {
     if (getToken()) return true;
     showDeviceStep(2);
@@ -797,6 +860,7 @@
           note.textContent = "设备已和当前账号关联。开始正式训练前，系统仍会检查训练计划同步、M33 安全确认和训练前检查。";
         }
       }
+      renderAgentPlanStartFlow("connected");
     } catch (error) {
       const state = qs("#device-error-state");
       if (state) {
@@ -977,6 +1041,33 @@
       if (!button) return;
       bindSelectedDevice({ currentTarget: button, target: button });
     });
+    const selfCheck = qs('[data-action="run-device-self-check"]');
+    if (selfCheck) {
+      selfCheck.addEventListener("click", () => {
+        localStorage.setItem("rehab_device_self_check", JSON.stringify({ status: "passed", at: new Date().toISOString() }));
+        renderAgentPlanStartFlow("self_checked");
+      });
+    }
+    const ready = qs('[data-action="confirm-patient-ready"]');
+    if (ready) {
+      ready.addEventListener("click", () => {
+        localStorage.setItem("rehab_patient_ready", JSON.stringify({ status: "confirmed", at: new Date().toISOString() }));
+        renderAgentPlanStartFlow("patient_ready");
+      });
+    }
+    const start = qs('[data-action="start-demo-training"]');
+    if (start) {
+      start.addEventListener("click", () => {
+        const plan = getAgentNextPlan() || {};
+        localStorage.setItem("rehab_demo_training_session", JSON.stringify({
+          status: "started",
+          plan_title: plan.title || "Agent 推荐训练计划",
+          started_at: new Date().toISOString(),
+          control_boundary: "demo_training_record_only_not_motion_permission",
+        }));
+        renderAgentPlanStartFlow("started");
+      });
+    }
   }
 
   function wireAgent() {

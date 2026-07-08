@@ -25,6 +25,8 @@
 - Icon-font lesson: Google Material Symbols may fail inside the installed APK/WebView. Never rely on the remote icon font as the only rendering path; add a local fallback so ligature names like `arrow_back`, `person`, or `mail` cannot appear as giant text and break the mobile layout.
 - Bluetooth presentation lesson: no-bridge and permission-failed are different technical states but the same demo blocker. For internal APK demos, both should continue into a polished connection/binding flow while recording internally that this grants no motion permission and no M33 acceptance.
 - Agent product lesson: a rehab Agent should not only be a chat box. A one-tap advice flow must collect recent care timeline, daily task, plans, blockers, and open drafts from `/me` before calling `/agent/messages`, so the answer visibly depends on the user's last few days rather than sounding like a generic assistant.
+- Agent closure lesson: one-tap advice still feels unfinished if the answer stays inside chat. Persist the recommended next plan, show it on the home card, allow export, and route the card into the same device readiness flow the user expects before training.
+- Safety-presentation lesson: an internal demo can show Bluetooth connected, device self-check passed, patient ready, and training record started, but the app must keep that as a UI/training-record loop only. Do not mark M33 accepted, do not send real motion frames, and keep the final hardware authority boundary documented.
 
 - Symptom: the message page looked like an intelligent assistant but the current repo did not expose the exact `/agent/messages` App route the page was calling.
 - Root cause: frontend and cloud deployment had drifted ahead of the local backend contract.

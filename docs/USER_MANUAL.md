@@ -383,10 +383,10 @@ APK details:
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0.17 debug
-versionCode: 18
-size: 4,186,167 bytes
-sha256: 505163294BBE71EAA83DDA1C4A691AB0BFEC242B8811DC83EBDED49F8B0B158B
+version: 1.0.18 debug
+versionCode: 19
+size: 4,188,831 bytes
+sha256: FBF4F498FDCCBD5AE804605F5D540D7081F854CCD74EB93C684F3293622D5336
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
@@ -395,10 +395,22 @@ Current user-release gate:
 
 ```text
 status: blocked
-reason: APK 1.0.17 connects to backend public-config/catalog/bootstrap/workflow, keeps profile phone binding synced after login/refresh, keeps Agent/device/profile tabs aligned with the current /me profile shape, fixes the home bottom 社区 dead tap, routes消息/问康复师 through the App Agent backend, adds one-tap Agent training advice from recent care records, can surface Android-paired Classic SPP devices through the native RehabArmSpp bridge, can complete the internal-test device search/connect/bind path when the native bridge is unavailable or permission/scan fails, uses an http WebView scheme for the current http API, and includes local icon fallbacks so Material Symbols names are not shown when Google fonts fail. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
+reason: APK 1.0.18 connects to backend public-config/catalog/bootstrap/workflow, keeps profile phone binding synced after login/refresh, keeps Agent/device/profile tabs aligned with the current /me profile shape, routes消息/问康复师 through the App Agent backend, generates one-tap Agent training advice from recent care records, exports the next plan, shows the Agent next plan on the home card, and routes that plan into device connection, self-check, patient-ready confirmation, and an App training-record start flow. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
 hardware_protocol: legacy SPP profile available; UUID 00001101-0000-1000-8000-00805F9B34FB with newline-delimited UTF-8 JSON. Real Android pairing, backend device binding, frame send, and ACK/sensor evidence must be tested on hardware before motion-adjacent UX can be certified.
-download_sha256: 505163294BBE71EAA83DDA1C4A691AB0BFEC242B8811DC83EBDED49F8B0B158B
+download_sha256: FBF4F498FDCCBD5AE804605F5D540D7081F854CCD74EB93C684F3293622D5336
 ```
+
+Internal-test Agent training demo flow:
+
+1. Log in with the internal account.
+2. Open `消息 / 问康复师`.
+3. Tap `一键生成训练建议`; the Agent reads recent care timeline, daily plan, current plans, blockers, and open drafts from `/me`.
+4. Tap `导出建议` to download the generated next-plan JSON.
+5. Return to home; the recommendation card should show `Agent 推荐下一步`.
+6. Tap the play button on the home plan card.
+7. In the device page, complete the internal-test device connection path.
+8. Tap `设备自检`, then `患者已准备好`, then `开始训练`.
+9. Treat this as an App training-record and demo-readiness loop only. Real arm motion still requires real Bluetooth/M33 protocol validation, M33 acceptance, and formal preflight.
 
 Backend readiness endpoints:
 

@@ -199,9 +199,9 @@ def api_public_config(request: Request):
             "m33_legacy_spp_profile": LEGACY_M33_SPP_PROFILE,
             "downloads": {
                 "debug_apk_url": _download_url(api_base),
-                "debug_apk_version": "1.0.17",
-                "debug_apk_sha256": "505163294BBE71EAA83DDA1C4A691AB0BFEC242B8811DC83EBDED49F8B0B158B",
-                "debug_apk_status": "backend_connected_workflow_action_timeline_ai_training_planner_training_library_backend_plan_binding_stitch_bluetooth_debug_spp_pairing_backend_bind_frame_ack_sensor_debug_build_current_m33_confirmation_pending",
+                "debug_apk_version": "1.0.18",
+                "debug_apk_sha256": "FBF4F498FDCCBD5AE804605F5D540D7081F854CCD74EB93C684F3293622D5336",
+                "debug_apk_status": "backend_connected_workflow_action_timeline_ai_training_planner_training_library_backend_plan_binding_agent_next_plan_export_home_plan_device_self_check_patient_ready_demo_training_record_stitch_bluetooth_debug_spp_pairing_backend_bind_frame_ack_sensor_debug_build_current_m33_confirmation_pending",
             },
             "mobile_boot_flow": [
                 {"step": "load_public_config", "endpoint": "/api/rehab-arm/app/v1/public-config", "auth_required": False},
@@ -213,7 +213,7 @@ def api_public_config(request: Request):
             ],
             "release_gate": {
                 "status": "blocked",
-                "reason": "debug_apk_connects_backend_and_has_legacy_spp_native_bridge_but_current_m33_firmware_confirmation_and_physical_pairing_validation_are_still_required",
+                "reason": "debug_apk_connects_backend_agent_advice_export_home_next_plan_and_demo_device_self_check_flow_but_current_m33_firmware_confirmation_and_physical_pairing_validation_are_still_required",
                 "checks": [
                     {
                         "code": "PUBLIC_CONFIG_AVAILABLE",

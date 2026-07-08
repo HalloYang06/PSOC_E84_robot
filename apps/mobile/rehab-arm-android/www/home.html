@@ -242,20 +242,21 @@
 </div>
 </section>
 <!-- Recommended Exercise -->
-<section class="glass-card rounded-xl p-0 overflow-hidden flex flex-col relative">
+<section class="glass-card rounded-xl p-0 overflow-hidden flex flex-col relative" id="agent-next-plan-card">
 <div class="h-32 w-full bg-surface-container-high relative overflow-hidden" data-alt="A serene, well-lit modern rehabilitation room with a soft, warm aesthetic. Light mode UI design. A patient's arm is gently guided by a sleek, minimalist robotic arm device. Sunlight streams through a window, highlighting the calming teal and white color palette. The scene conveys safety, progress, and clinical excellence without feeling sterile." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuB_2H-IE501GXCziRsa0Tfm6tHyVNoIApSifnIb2GAKLk-X9f_XfKW4XMmz16N0wo6AJAsnJLGdGLuw7_LmdbDXF3aSBBm1qEeG3e0CgsKqRIaWemihx4UGgu2iROjQalct5u3o3DZa2-HX2uof1dnq2kwsp4Mk0hvtRLc9JywY8Gz_Jsgoyy4oqnkkiES_ZO4HBn9oUuvi4gSjUOEKNve6XLLwyZ1W1qJucftbKgeVLwjqB_DlM192wzhud8RBoZ_Cj1EHKTni8Vs'); background-size: cover; background-position: center 58%;">
 <div class="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
 <div class="absolute bottom-4 left-4 text-white">
-<span class="bg-primary/80 backdrop-blur-sm text-xs px-2 py-1 rounded-md mb-2 inline-block">下一个任务</span>
-<h3 class="font-label-md text-label-md font-bold text-lg">基础屈伸训练</h3>
+<span class="bg-primary/80 backdrop-blur-sm text-xs px-2 py-1 rounded-md mb-2 inline-block" id="agent-plan-badge">下一个任务</span>
+<h3 class="font-label-md text-label-md font-bold text-lg" id="agent-plan-title">基础屈伸训练</h3>
 </div>
 </div>
 <div class="p-4 flex justify-between items-center bg-surface">
 <div class="flex flex-col">
-<span class="font-body-md text-body-md text-on-surface-variant text-sm">预计耗时: 15分钟</span>
-<span class="font-body-md text-body-md text-on-surface-variant text-sm">强度: 低</span>
+<span class="font-body-md text-body-md text-on-surface-variant text-sm" id="agent-plan-duration">预计耗时: 15分钟</span>
+<span class="font-body-md text-body-md text-on-surface-variant text-sm" id="agent-plan-intensity">强度: 低</span>
+<span class="font-body-md text-body-md text-on-surface-variant text-sm hidden" id="agent-plan-source">Agent 已根据最近训练生成</span>
 </div>
-<button aria-label="开始训练" class="bg-primary text-on-primary rounded-full w-12 h-12 flex items-center justify-center hover:bg-primary-container transition-colors shadow-sm" data-nav-target="device.html" type="button">
+<button aria-label="开始训练" class="bg-primary text-on-primary rounded-full w-12 h-12 flex items-center justify-center hover:bg-primary-container transition-colors shadow-sm" data-nav-target="device.html?plan=agent-next" type="button" id="agent-plan-start">
 <span class="material-symbols-outlined">play_arrow</span>
 </button>
 </div>
@@ -965,9 +966,26 @@
     }
   }
 
+  function renderAgentNextPlan() {
+    let plan = null;
+    try {
+      plan = JSON.parse(localStorage.getItem("rehab_next_training_plan") || "null");
+    } catch {
+      plan = null;
+    }
+    if (!plan) return;
+    setText("#agent-plan-badge", "Agent 推荐下一步");
+    setText("#agent-plan-title", plan.title || "Agent 推荐训练计划");
+    setText("#agent-plan-duration", `预计耗时: ${plan.estimated_minutes || 15}分钟`);
+    setText("#agent-plan-intensity", `强度: ${plan.intensity || "低"}`);
+    const source = qs("#agent-plan-source");
+    if (source) source.classList.remove("hidden");
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     wirePhoneBinding();
     wireLogin();
+    renderAgentNextPlan();
     loadBootstrap();
     wireDeviceBinding();
     wireAgent();

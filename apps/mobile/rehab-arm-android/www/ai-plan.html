@@ -161,9 +161,14 @@
 <p class="mb-2">您好，我会根据您的训练记录、疼痛反馈、肌电摘要和计划状态给出康复建议。</p>
 <p>我只能提供训练建议和计划草案，不能直接控制机械臂。真实训练开始前仍需要设备同步、M33 确认和安全预检。</p>
 </div>
-<button class="mt-sm bg-primary text-on-primary rounded-full px-md min-h-[44px] font-label-md text-label-md shadow-ambient-sm active:scale-95 transition-transform" data-action="generate-training-advice" type="button">
+<div class="mt-sm flex gap-sm flex-wrap">
+<button class="bg-primary text-on-primary rounded-full px-md min-h-[44px] font-label-md text-label-md shadow-ambient-sm active:scale-95 transition-transform" data-action="generate-training-advice" type="button">
 一键生成训练建议
 </button>
+<button class="bg-surface text-primary border border-primary rounded-full px-md min-h-[44px] font-label-md text-label-md shadow-ambient-sm active:scale-95 transition-transform" data-action="export-training-advice" type="button">
+导出建议
+</button>
+</div>
 </div>
 </main>
 <!-- Composer -->
@@ -747,6 +752,45 @@
     };
   }
 
+  function saveNextTrainingPlan(answer, context) {
+    const plans = context.training_plans || [];
+    const latestPlan = plans[0] || {};
+    const nextPlan = {
+      schema_version: "rehab_mobile_agent_next_plan_v1",
+      source: "app_agent_recent_training_advice",
+      title: latestPlan.title || latestPlan.name || "Agent 推荐肘关节低强度训练",
+      movement_type: latestPlan.movement_type || latestPlan.movementType || "elbow_flexion",
+      intensity: "低",
+      sets: Number(latestPlan.sets) || 2,
+      reps: Number(latestPlan.reps) || 6,
+      estimated_minutes: 15,
+      advice_text: answer,
+      safety_steps: ["设备自检", "患者确认", "M33 安全确认", "训练前检查"],
+      control_boundary: "agent_plan_advice_only_not_motion_permission",
+      created_at: new Date().toISOString(),
+    };
+    localStorage.setItem("rehab_next_training_plan", JSON.stringify(nextPlan));
+    return nextPlan;
+  }
+
+  function exportTrainingAdvice() {
+    const raw = localStorage.getItem("rehab_next_training_plan");
+    if (!raw) {
+      appendAgentMessage("assistant", "还没有可导出的训练建议。请先点击“一键生成训练建议”。", "error");
+      return;
+    }
+    const blob = new Blob([raw], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `lingdong-next-training-plan-${Date.now()}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    appendAgentMessage("assistant", "已导出下一步训练建议。首页会同步显示这条 Agent 推荐计划。");
+  }
+
   async function generateTrainingAdvice() {
     if (!getToken()) {
       appendAgentMessage("assistant", "请先到“我的”页面登录云端账号，再生成训练建议。", "error");
@@ -760,14 +804,17 @@
     appendAgentMessage("user", "请读取我最近几天的训练记录，生成下一次训练建议。");
     try {
       const bootstrap = await apiRequest(bootstrapEndpoint, { method: "GET" });
+      const context = recentCareContext(bootstrap);
       const data = await apiRequest(agentMessageEndpoint, {
         method: "POST",
         body: JSON.stringify({
           message: "请基于最近几天训练记录、今日任务、训练计划和疼痛/疲劳线索，生成下一次训练建议。用患者能看懂的中文，包含强度、组数次数、注意事项和何时联系康复师。不要给任何设备控制或绕过 M33 的建议。",
-          context_snapshot: recentCareContext(bootstrap),
+          context_snapshot: context,
         }),
       });
-      appendAgentMessage("assistant", data.answer || "已根据最近训练记录生成建议。");
+      const answer = data.answer || "已根据最近训练记录生成建议。";
+      const nextPlan = saveNextTrainingPlan(answer, context);
+      appendAgentMessage("assistant", `${answer}\n\n已生成“${nextPlan.title}”，可在首页查看并进入设备自检。`);
       window.rehabAgentModelStatus = data.model_status || data.modelStatus || null;
     } catch (error) {
       const message = error.message === "Failed to fetch"
@@ -913,9 +960,11 @@
   function wireAgent() {
     const button = qs('[data-action="send-agent-message"]');
     const adviceButton = qs('[data-action="generate-training-advice"]');
+    const exportButton = qs('[data-action="export-training-advice"]');
     const input = qs("#agent-message-input");
     if (button) button.addEventListener("click", sendAgentMessage);
     if (adviceButton) adviceButton.addEventListener("click", generateTrainingAdvice);
+    if (exportButton) exportButton.addEventListener("click", exportTrainingAdvice);
     if (input) {
       input.addEventListener("keydown", (event) => {
         if (event.key === "Enter") sendAgentMessage();
