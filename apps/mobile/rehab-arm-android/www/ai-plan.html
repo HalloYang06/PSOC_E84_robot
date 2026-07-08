@@ -774,10 +774,11 @@
     try {
       const data = await apiRequest(bootstrapEndpoint, { method: "GET" });
       setAuthState(true, { showReadyMessage: false });
-      const home = data.patient_view && data.patient_view.home;
-      const profile = data.patient_view && data.patient_view.profile;
-      const device = data.patient_view && data.patient_view.device;
-      const agent = data.patient_view && data.patient_view.agent;
+      const patientView = data.patient_view || data.patientView || {};
+      const home = patientView.home || data.home_status_guide || data.home || null;
+      const profile = patientView.profile || data.profile || null;
+      const device = patientView.device || data.device_operational_guide || data.device || null;
+      const agent = patientView.agent || data.agent || null;
       window.rehabPatientView = { home, profile, device, agent };
       window.rehabModelStatus = data.model_status || data.modelStatus || null;
       if (profile) {

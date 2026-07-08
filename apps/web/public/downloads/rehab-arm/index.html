@@ -182,17 +182,19 @@
           <dt>包名</dt>
           <dd>com.lingdong.rehabarm</dd>
           <dt>版本</dt>
-          <dd>1.0.12 L1 staging</dd>
+          <dd>1.0.13 L1 staging</dd>
           <dt>大小</dt>
-          <dd>4,183,199 bytes</dd>
+          <dd>4,196,593 bytes</dd>
           <dt>SHA256</dt>
-          <dd>E189C4A7A92CEEEF44D2F7390457B3E290B4A62794983C4EFA49DEF7654B2059</dd>
+          <dd>DDD4EC7B43332FF5E09B25EEDA8974448BC87D479950DD3D5C51A41341971B1A</dd>
         </dl>
       </section>
 
       <section>
-        <h2>1.0.12 更新</h2>
+        <h2>1.0.13 更新</h2>
         <ol>
+          <li>消息页和设备页同步兼容当前 <code>/api/rehab-arm/app/v1/me</code> 的顶层 <code>profile</code> 数据形态，避免不同 tab 登录/绑定状态显示不一致。</li>
+          <li>设备页浏览器无蓝牙桥时增加明确下一步：安装 Android APK、系统蓝牙先配对 M33/SPP 设备，再回到 App 搜索；仍失败时截图联系内测负责人。</li>
           <li>修复我的页读取 <code>/api/rehab-arm/app/v1/me</code> 后未识别顶层 <code>profile.phone</code> 的问题，登录和刷新后都能显示已绑定手机号。</li>
           <li>修复生产库旧手机号验证表兼容问题，内测账号点击“获取验证码”不再因为旧字段约束返回 500。</li>
           <li>内测手机号绑定继续使用 <code>debug_sms</code>，页面显示“当前为内测验证模式，内测验证码：xxxx”。</li>
@@ -223,7 +225,7 @@
       </section>
 
       <section>
-        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电、AI 草稿和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.12 已补齐社区入口、康复师 Agent 后端中转、设备页 Android SPP 桥兼容、内测验证码文案和手机号绑定刷新闭环；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
+        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电、AI 草稿和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.13 已补齐社区入口、康复师 Agent 后端中转、设备页 Android SPP 桥兼容、内测验证码文案、手机号绑定刷新闭环和设备无桥下一步提示；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
       </section>
     </main>
   </body>

@@ -383,10 +383,10 @@ APK details:
 ```text
 package: com.lingdong.rehabarm
 label: 灵动康复 ArmControl
-version: 1.0.12 debug
-versionCode: 13
-size: 4,183,199 bytes
-sha256: E189C4A7A92CEEEF44D2F7390457B3E290B4A62794983C4EFA49DEF7654B2059
+version: 1.0.13 debug
+versionCode: 14
+size: 4,196,593 bytes
+sha256: DDD4EC7B43332FF5E09B25EEDA8974448BC87D479950DD3D5C51A41341971B1A
 ```
 
 Android may warn that this debug build is from an unknown source. This is expected for the current unsigned-store debug APK. Use it only for internal testing.
@@ -395,9 +395,9 @@ Current user-release gate:
 
 ```text
 status: blocked
-reason: APK 1.0.12 connects to backend public-config/catalog/bootstrap/workflow, keeps profile phone binding synced after login/refresh, adds a社区内测 destination instead of dead tabs, routes消息/问康复师 through the App Agent backend, and can surface Android-paired Classic SPP devices through the native RehabArmSpp bridge. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
+reason: APK 1.0.13 connects to backend public-config/catalog/bootstrap/workflow, keeps profile phone binding synced after login/refresh, keeps Agent/device/profile tabs aligned with the current /me profile shape, adds a社区内测 destination instead of dead tabs, routes消息/问康复师 through the App Agent backend, and can surface Android-paired Classic SPP devices through the native RehabArmSpp bridge. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
 hardware_protocol: legacy SPP profile available; UUID 00001101-0000-1000-8000-00805F9B34FB with newline-delimited UTF-8 JSON. Real Android pairing, backend device binding, frame send, and ACK/sensor evidence must be tested on hardware before motion-adjacent UX can be certified.
-download_sha256: E189C4A7A92CEEEF44D2F7390457B3E290B4A62794983C4EFA49DEF7654B2059
+download_sha256: DDD4EC7B43332FF5E09B25EEDA8974448BC87D479950DD3D5C51A41341971B1A
 ```
 
 Backend readiness endpoints:
@@ -450,7 +450,7 @@ Training Session -> 查看流程 -> 记录停止请求
 Profile -> 训练活动 / 查看最近记录
 ```
 
-Current 1.0.12 internal-test account setup path:
+Current 1.0.13 internal-test account setup path:
 
 ```text
 我的 -> 输入邮箱/密码 -> 登录云端账号
