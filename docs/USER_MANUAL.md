@@ -395,8 +395,9 @@ Current user-release gate:
 
 ```text
 status: blocked
-reason: APK 1.0.10 connects to backend public-config/catalog/bootstrap/workflow, renders backend care timeline/daily workflow state, shows accepted AI plans inside the training library, can execute safe workflow actions, includes the Android native Bluetooth Classic SPP bridge, and exposes a Stitch-designed Bluetooth debug / M33 validation page that can bind a paired SPP device as a backend trusted device. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
+reason: APK 1.0.11 connects to backend public-config/catalog/bootstrap/workflow, adds a社区内测 destination instead of dead tabs, routes消息/问康复师 through the App Agent backend, and can surface Android-paired Classic SPP devices through the native RehabArmSpp bridge. Current M33 firmware compatibility and physical phone-to-M33 ACK validation are still pending.
 hardware_protocol: legacy SPP profile available; UUID 00001101-0000-1000-8000-00805F9B34FB with newline-delimited UTF-8 JSON. Real Android pairing, backend device binding, frame send, and ACK/sensor evidence must be tested on hardware before motion-adjacent UX can be certified.
+download_sha256: 070EB7FB9B51F774596C9DDAD32BC62B6FD8EB059960500F5F373D8624A167BB
 ```
 
 Backend readiness endpoints:
@@ -406,6 +407,7 @@ GET /api/rehab-arm/app/v1/public-config
 GET /api/rehab-arm/app/v1/me
 GET /api/rehab-arm/app/v1/me/workflow
 POST /api/rehab-arm/app/v1/me/workflow/actions
+POST /api/rehab-arm/app/v1/agent/messages
 ```
 
 `public-config.release_gate.checks` reports the install-package release blockers. Authenticated `/me.mobile_readiness_guide` reports account onboarding, device, plan, M33/preflight, offline evidence, safety review, APK wiring, old SPP protocol availability, and native phone-bridge blockers. These responses are workflow/evidence guidance only and do not grant Bluetooth send authority, CAN, motor, or M33 override authority.
@@ -425,6 +427,16 @@ Device page -> 蓝牙调试 / 实机验证
 On an Android install, first pair the M33/PSoC SPP device in system Bluetooth settings. Then open the App, log in, enter the device page, open `蓝牙调试 / 实机验证`, tap `读取已配对设备`, tap `绑定` on the target device to write it to `/devices/bind`, tap `连接`, sync a training plan to generate a backend `legacy_transport_frame`, then tap `发送后端批准帧`. The page should show TX/RX/API evidence after `memory_ack`, `execute_ack`, `sensor`, or `error` returns from M33. In normal browser/PWA mode it should show `仅 Web/无权限`, because Web Bluetooth does not support Classic SPP.
 
 Safety boundary: the debug page does not expose CAN frames, raw motor commands, motor current/torque/position/velocity, M33 override, or emergency-stop release. SPP ACKs prove transport/device response only; they do not automatically mark a plan as M33-accepted.
+
+Community and Agent:
+
+```text
+Bottom nav -> 社区
+Community -> 问康复师
+Messages/AI -> send text -> POST /api/rehab-arm/app/v1/agent/messages
+```
+
+The community page is an internal-test holding page, not a live social feature. The Agent endpoint returns safe rehab guidance with `model_status.relay_channel=app_rehab_agent`; it is separate from XiaoZhi/L semantic routing and cannot authorize motion.
 
 Mobile user-view QA path:
 

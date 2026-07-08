@@ -14,6 +14,7 @@ from app.db.session import get_db
 from .app_schemas import (
     RehabAppDeviceBindRequest,
     RehabAppDeviceUnbindRequest,
+    RehabAppAgentMessageRequest,
     RehabAppAiTrainingDraftGenerateRequest,
     RehabAppBleAckCreate,
     RehabAppBleMessageCreate,
@@ -58,6 +59,7 @@ from .app_service import (
     execute_workflow_action,
     generate_ai_training_draft,
     get_app_catalog,
+    generate_agent_message,
     generate_training_report,
     get_ai_training_draft,
     get_app_bootstrap,
@@ -171,6 +173,7 @@ def api_public_config(request: Request):
                 "workflow_action_endpoint": "/api/rehab-arm/app/v1/me/workflow/actions",
                 "profile_endpoint": "/api/rehab-arm/app/v1/me/profile",
                 "catalog_endpoint": "/api/rehab-arm/app/v1/catalog",
+                "agent_message_endpoint": "/api/rehab-arm/app/v1/agent/messages",
                 "ai_training_draft_generate_endpoint": "/api/rehab-arm/app/v1/ai-training-drafts/generate",
                 "ai_training_drafts_endpoint": "/api/rehab-arm/app/v1/ai-training-drafts",
                 "ai_training_report_next_plan_endpoint_template": "/api/rehab-arm/app/v1/training-reports/{report_id}/draft-next-plan",
@@ -192,8 +195,8 @@ def api_public_config(request: Request):
             "m33_legacy_spp_profile": LEGACY_M33_SPP_PROFILE,
             "downloads": {
                 "debug_apk_url": _download_url(api_base),
-                "debug_apk_version": "1.0.10",
-                "debug_apk_sha256": "DB674D09F46D0CF0B8DE9717D1904A52CE042BC19E49FB1BEB45BC4548E9BB52",
+                "debug_apk_version": "1.0.11",
+                "debug_apk_sha256": "070EB7FB9B51F774596C9DDAD32BC62B6FD8EB059960500F5F373D8624A167BB",
                 "debug_apk_status": "backend_connected_workflow_action_timeline_ai_training_planner_training_library_backend_plan_binding_stitch_bluetooth_debug_spp_pairing_backend_bind_frame_ack_sensor_debug_build_current_m33_confirmation_pending",
             },
             "mobile_boot_flow": [
@@ -511,6 +514,11 @@ def api_record_intent_summary(payload: RehabAppIntentSummaryCreate, request: Req
 @router.post("/ai-training-drafts/generate")
 def api_generate_ai_training_draft(payload: RehabAppAiTrainingDraftGenerateRequest, request: Request, db: Session = Depends(get_db)):
     return ok(generate_ai_training_draft(db, _user_id(db, request), payload.input_text, payload.context_snapshot))
+
+
+@router.post("/agent/messages")
+def api_agent_message(payload: RehabAppAgentMessageRequest, request: Request, db: Session = Depends(get_db)):
+    return ok(generate_agent_message(db, _user_id(db, request), payload.message, payload.context_snapshot))
 
 
 @router.get("/ai-training-drafts")

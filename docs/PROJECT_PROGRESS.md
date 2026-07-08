@@ -1,5 +1,17 @@
 # Project Progress
 
+## 2026-07-08
+
+- Continued product QA for the rebuilt `app/rehab-arm-mobile-stitch` mobile App from a real phone-user path. The acceptance matrix found P0 dead ends in the bottom `社区` tab, device-page back button, profile settings button, and the debug SMS wording.
+- Used Stitch MCP project `9733571660387876930` to generate a mobile `社区内测` screen, then added `apps/web/public/rehab-arm-mobile/community.html` and wired all bottom `社区` tabs to it. The page is honest about closed-beta status and routes users to `问康复师` instead of pretending a live community exists.
+- Added a formal App backend康复师 Agent endpoint: `POST /api/rehab-arm/app/v1/agent/messages`. It reuses server-side model relay settings when configured, falls back to safe rule guidance when not configured, records `relay_channel=app_rehab_agent`, `client_type=app`, `purpose=rehab_agent_chat`, `scope=patient_training_guidance`, and `does_not_touch_xiaozhi_l=true`, and refuses dangerous CAN/motor/M33 override style requests. XiaoZhi/L WebSocket and semantic L chain were not touched.
+- Improved the device binding page toward real Android Bluetooth use: browser mode now clearly says it needs the Android App Bluetooth bridge, and the WebView code can use the existing Capacitor `RehabArmSpp` native plugin as a compatibility bridge by mapping `listBondedDevices()` into the current device-search UI. Account binding remains separate from actual SPP connection/M33 ACK.
+- Updated the internal-test phone verification copy from `测试环境验证码` to `当前为内测验证模式，内测验证码：xxxx`, added profile settings feedback, and fixed device/AI top back actions.
+- Removed remaining static demo chat from `ai-plan.html`; the message screen now opens with a real Agent empty state and renders only user-sent messages plus responses from `POST /api/rehab-arm/app/v1/agent/messages`.
+- Rebuilt the Android debug APK as version `1.0.11` (`versionCode=12`) and copied it to `apps/web/public/downloads/rehab-arm/lingdong-rehab-arm-debug.apk`. Final SHA256 is `070EB7FB9B51F774596C9DDAD32BC62B6FD8EB059960500F5F373D8624A167BB`, size `4,184,675 bytes`; APK asset inspection confirmed `community.html`, `device.html`, `ai-plan.html`, `home.html`, and `profile.html`, with the Agent endpoint and `RehabArmSpp` bridge code present and the old sample chat absent.
+- Validation passed: `python -m pytest apps/api/tests/test_rehab_arm_app_backend.py -q -o faulthandler_timeout=60` (`14 passed`), `node apps/web/scripts/qa-profile-auth-lock.cjs`, `node apps/web/scripts/qa-device-binding-isolation.cjs`, `node --check` for PWA/Android runtimes, `npm run build:debug`, local Playwright click QA for home bottom nav -> message Agent -> device SPP search/bind -> download page, and injected `RehabArmSpp` WebView fallback QA showing a paired SPP device in the device list.
+- Still not certified as a real hardware training release: current M33 firmware pairing, SPP frame send, ACK/sensor evidence, M33 `m33_accepted`, and preflight-to-session start must be verified on an Android phone with the actual device.
+
 ## 2026-07-04
 
 - Repaired and redeployed the rehab-arm control-room `3D / 孪生` page after the previous fix was reported ineffective. The IK dry-run coordinate fields now preserve focus and typed values during Stitch iframe/dashboard refresh by reusing the focused panel and keeping unsent values in an iframe draft until generate/export.

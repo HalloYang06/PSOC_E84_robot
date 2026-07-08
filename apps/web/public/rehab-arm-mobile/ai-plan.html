@@ -130,7 +130,7 @@
 <div class="mobile-viewport">
 <!-- TopAppBar -->
 <header class="bg-surface shadow-sm docked full-width top-0 z-50 flex items-center justify-between px-margin-mobile h-12 w-full sticky top-0 bg-opacity-95 backdrop-blur-md border-b border-surface-variant">
-<button aria-label="Back" class="text-primary hover:bg-primary-container/20 active:scale-95 transition-transform flex items-center justify-center rounded-full p-2 min-w-[48px] min-h-[48px]" type="button">
+<button aria-label="返回首页" class="text-primary hover:bg-primary-container/20 active:scale-95 transition-transform flex items-center justify-center rounded-full p-2 min-w-[48px] min-h-[48px]" data-nav-target="home.html" type="button">
 <span class="material-symbols-outlined">arrow_back</span>
 </button>
 <h1 class="font-headline-md text-headline-md font-bold text-primary truncate flex-1 text-center">AI康复助手</h1>
@@ -142,24 +142,9 @@
 </header>
 <!-- Main Chat Area -->
 <main class="flex-1 overflow-y-auto px-margin-mobile pt-lg pb-[176px] flex flex-col gap-lg bg-surface" id="agent-thread">
-<!-- Welcome Message -->
 <div class="text-center text-on-surface-variant font-label-md text-label-md mb-md">
-                今天 09:41
+                康复师 Agent 已连接
             </div>
-<!-- Patient Message 1 -->
-<div class="flex justify-end mb-sm">
-<div class="flex flex-col items-end max-w-[85%]">
-<div class="bg-primary text-on-primary rounded-2xl rounded-tr-none px-md py-sm shadow-ambient-sm font-body-md text-body-md">
-                        训练后感觉手臂有点酸痛，这正常吗？
-                    </div>
-</div>
-<div class="ml-xs mt-1 shrink-0">
-<div class="w-8 h-8 bg-surface-variant rounded-full flex items-center justify-center shadow-ambient-sm border border-outline-variant/30 overflow-hidden">
-<img class="w-full h-full object-cover" data-alt="A minimal, flat vector illustration of a generic user avatar in soft pastel colors, suitable for a healthcare app profile picture. The style is modern, friendly, and clean." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCGHhxwNqv9jD1ceQDU_KUXyhXsEwDCf3C7ReMxihj6P_KCkpQcyu4x54tXTxsFPtNNj8rlZvHvtdY3j7NDQEBZZGfhUYfGZUJeR5uxTjw1HeY-UTGA2dMbnIijO6AOhu95W5JJCFoH25QChIXaFdsh64xkWb0Bp58JU4pmK6FY4ODWogRhspSBTG1qUNiZzs0f_W-coJmi_5HS963oiZBh5Lw-dAc8z7K5kYu8v6CAAaWoH1ZlvR4ErPXL_a0PvnWf3P-Mu7BYMc4"/>
-</div>
-</div>
-</div>
-<!-- Assistant Message 1 (Safe Answer) -->
 <div class="flex justify-start mb-sm">
 <div class="mr-xs mt-1 shrink-0">
 <div class="w-8 h-8 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center shadow-ambient-sm border border-primary/20">
@@ -172,59 +157,8 @@
                         康复建议
                     </div>
 <div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl rounded-tl-none px-md py-sm shadow-ambient-md font-body-md text-body-md text-on-surface">
-<p class="mb-2">您好，训练后出现轻微的肌肉酸痛是正常的生理反应，这说明您的肌肉正在适应新的负荷并进行重建。</p>
-<p class="mb-2">建议您：</p>
-<ul class="list-disc pl-4 space-y-1 mb-2 text-on-surface-variant">
-<li>适当休息，避免连续进行高强度训练。</li>
-<li>可以进行轻柔的拉伸动作缓解紧张。</li>
-<li>如果酸痛持续超过48小时或伴有刺痛感，请及时咨询康复师。</li>
-</ul>
-<p>请继续保持平稳的心态，您的康复进展很好。</p>
-</div>
-</div>
-</div>
-<!-- Patient Message 2 (Unsafe Request) -->
-<div class="flex justify-end mb-sm">
-<div class="flex flex-col items-end max-w-[85%]">
-<div class="bg-primary text-on-primary rounded-2xl rounded-tr-none px-md py-sm shadow-ambient-sm font-body-md text-body-md">
-                        我可以尝试快速加大力度吗？
-                    </div>
-</div>
-<div class="ml-xs mt-1 shrink-0">
-<div class="w-8 h-8 bg-surface-variant rounded-full flex items-center justify-center shadow-ambient-sm border border-outline-variant/30 overflow-hidden">
-<img class="w-full h-full object-cover" data-alt="A minimal, flat vector illustration of a generic user avatar in soft pastel colors, suitable for a healthcare app profile picture. The style is modern, friendly, and clean." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtF--HbWsOxkoYs9gJYyLDh9Qlfzwja0ZIUyN1QXyMgrALaVIAfIgO2dP37fLbUqc1SNo2TRV-32X78eWT3Vgxp9LODFpxeOuuB8OD_tmFApM1lKK7dvKrOpZ-sfcDYAmaOpecmAX27jXssBuaUpifGs9F5VzO9lEZGg8FAKbKOjalWBX_z1qM0xidkN9N5lry0PqDdpB6wC5niOEHIdsEhBzV-iTjQ3tbi99wIn3eKDViPi_usGrH6mFEblUTfsHuL0rvDKfDiNE"/>
-</div>
-</div>
-</div>
-<!-- Assistant Message 2 (Unsafe Refusal) -->
-<div class="flex justify-start mb-sm">
-<div class="mr-xs mt-1 shrink-0">
-<div class="w-8 h-8 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center shadow-ambient-sm border border-primary/20">
-<span class="material-symbols-outlined filled" style="font-size: 18px;">smart_toy</span>
-</div>
-</div>
-<div class="flex flex-col items-start max-w-[85%]">
-<div class="flex items-center gap-1 mb-1 text-error font-label-md text-xs">
-<span class="material-symbols-outlined" style="font-size: 14px;">warning</span>
-                        安全回复
-                    </div>
-<div class="bg-error-container/20 border border-error/30 rounded-2xl rounded-tl-none px-md py-sm shadow-ambient-md font-body-md text-body-md text-on-surface">
-<p class="mb-2">抱歉，为了您的安全，我无法执行直接调整设备参数或提供可能导致过度训练的建议。</p>
-<p>康复训练需要循序渐进。过快增加力度可能会导致肌肉拉伤或关节受损。强烈建议您在增加训练强度前，咨询专业的康复师以获取个性化的安全评估。</p>
-</div>
-</div>
-</div>
-<!-- Typing Indicator (Simulated) -->
-<div class="flex justify-start">
-<div class="mr-xs mt-1 shrink-0 opacity-50">
-<div class="w-8 h-8 bg-primary-container text-on-primary-container rounded-full flex items-center justify-center shadow-ambient-sm border border-primary/20">
-<span class="material-symbols-outlined filled" style="font-size: 18px;">smart_toy</span>
-</div>
-</div>
-<div class="bg-surface-container-lowest border border-outline-variant/20 rounded-2xl rounded-tl-none px-md py-3 shadow-ambient-md flex items-center gap-1">
-<div class="w-2 h-2 bg-primary/40 rounded-full animate-bounce"></div>
-<div class="w-2 h-2 bg-primary/60 rounded-full animate-bounce" style="animation-delay: 0.2s"></div>
-<div class="w-2 h-2 bg-primary/80 rounded-full animate-bounce" style="animation-delay: 0.4s"></div>
+<p class="mb-2">您好，我会根据您的训练记录、疼痛反馈、肌电摘要和计划状态给出康复建议。</p>
+<p>我只能提供训练建议和计划草案，不能直接控制机械臂。真实训练开始前仍需要设备同步、M33 确认和安全预检。</p>
 </div>
 </div>
 </main>
@@ -245,7 +179,7 @@
 <span class="material-symbols-outlined mb-1">fitness_center</span>
 <span class="font-label-md text-label-md text-[10px]">训练</span>
 </a>
-<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-200 min-h-[48px] w-16 px-2" href="#">
+<a class="flex flex-col items-center justify-center text-on-surface-variant hover:text-primary transition-all active:scale-90 duration-200 min-h-[48px] w-16 px-2" href="community.html">
 <span class="material-symbols-outlined mb-1">group</span>
 <span class="font-label-md text-label-md text-[10px]">社区</span>
 </a>
@@ -507,7 +441,7 @@
         body: JSON.stringify({ phone, purpose: "bind_account" }),
       });
       verificationId = data.verification_id || "";
-      const smsHint = data.debug_code ? `测试环境验证码：${data.debug_code}` : "验证码已发送，请查看短信。";
+      const smsHint = data.debug_code ? `当前为内测验证模式，内测验证码：${data.debug_code}` : "验证码已发送，请查看短信。";
       setPhoneStatus(smsHint, "success");
       startPhoneCountdown(Math.min(Number(data.expires_in) || 60, 60));
     } catch (error) {
@@ -564,6 +498,26 @@
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.RehabArmBluetooth) {
       return window.Capacitor.Plugins.RehabArmBluetooth;
     }
+    const spp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.RehabArmSpp;
+    if (spp && spp.listBondedDevices) {
+      return {
+        requestBluetoothPermissions: () => spp.status ? spp.status() : Promise.resolve({ permission: "android_spp" }),
+        scanDevices: async () => {
+          const result = await spp.listBondedDevices();
+          const devices = Array.isArray(result.devices) ? result.devices : [];
+          return {
+            transport: result.transport || "bluetooth_classic_spp_rfcomm",
+            devices: devices.map((device) => ({
+              ...device,
+              m33_device_id: device.address || device.name,
+              ble_name: device.name || "已配对 SPP 设备",
+              signalText: "Android 已配对 SPP，点击绑定账号后仍需连接验证",
+              transport: "bluetooth_classic_spp_rfcomm",
+            })),
+          };
+        },
+      };
+    }
     return null;
   }
 
@@ -589,7 +543,7 @@
     showDeviceStep(2);
     const unavailable = qs("#bluetoothUnavailable");
     const status = qs("#device-status-message");
-    if (status) status.textContent = "需要手机蓝牙权限";
+    if (status) status.textContent = "需要 Android App 蓝牙桥";
     if (unavailable) unavailable.classList.remove("hidden");
   }
 
@@ -905,12 +859,22 @@
     }
   }
 
+  function wireUtilityActions() {
+    qsa("[data-nav-target]").forEach((control) => {
+      control.addEventListener("click", () => {
+        const target = control.getAttribute("data-nav-target");
+        if (target) window.location.href = target;
+      });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     wirePhoneBinding();
     wireLogin();
     loadBootstrap();
     wireDeviceBinding();
     wireAgent();
+    wireUtilityActions();
   });
 
   window.loginCloudAccount = loginCloudAccount;

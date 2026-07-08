@@ -243,7 +243,7 @@
         body: JSON.stringify({ phone, purpose: "bind_account" }),
       });
       verificationId = data.verification_id || "";
-      const smsHint = data.debug_code ? `测试环境验证码：${data.debug_code}` : "验证码已发送，请查看短信。";
+      const smsHint = data.debug_code ? `当前为内测验证模式，内测验证码：${data.debug_code}` : "验证码已发送，请查看短信。";
       setPhoneStatus(smsHint, "success");
       startPhoneCountdown(Math.min(Number(data.expires_in) || 60, 60));
     } catch (error) {
@@ -300,6 +300,26 @@
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.RehabArmBluetooth) {
       return window.Capacitor.Plugins.RehabArmBluetooth;
     }
+    const spp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.RehabArmSpp;
+    if (spp && spp.listBondedDevices) {
+      return {
+        requestBluetoothPermissions: () => spp.status ? spp.status() : Promise.resolve({ permission: "android_spp" }),
+        scanDevices: async () => {
+          const result = await spp.listBondedDevices();
+          const devices = Array.isArray(result.devices) ? result.devices : [];
+          return {
+            transport: result.transport || "bluetooth_classic_spp_rfcomm",
+            devices: devices.map((device) => ({
+              ...device,
+              m33_device_id: device.address || device.name,
+              ble_name: device.name || "已配对 SPP 设备",
+              signalText: "Android 已配对 SPP，点击绑定账号后仍需连接验证",
+              transport: "bluetooth_classic_spp_rfcomm",
+            })),
+          };
+        },
+      };
+    }
     return null;
   }
 
@@ -325,7 +345,7 @@
     showDeviceStep(2);
     const unavailable = qs("#bluetoothUnavailable");
     const status = qs("#device-status-message");
-    if (status) status.textContent = "需要手机蓝牙权限";
+    if (status) status.textContent = "需要 Android App 蓝牙桥";
     if (unavailable) unavailable.classList.remove("hidden");
   }
 

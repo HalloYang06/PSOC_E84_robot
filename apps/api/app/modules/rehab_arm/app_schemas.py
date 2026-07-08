@@ -344,6 +344,13 @@ class RehabAppAiTrainingDraftGenerateRequest(BaseModel):
     context_snapshot: dict = Field(default_factory=dict)
 
 
+class RehabAppAgentMessageRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message: str = Field(min_length=1, max_length=2000)
+    context_snapshot: dict = Field(default_factory=dict)
+
+
 class RehabAppPlatformSyncRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

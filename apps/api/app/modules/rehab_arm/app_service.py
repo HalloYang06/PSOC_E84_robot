@@ -5627,6 +5627,152 @@ def _call_external_ai_training_planner(input_text: str, context_snapshot: dict, 
     return generated_plan, evidence
 
 
+def _looks_like_dangerous_motion_request(message: str) -> bool:
+    normalized = (message or "").lower()
+    risky_tokens = [
+        "can",
+        "电机",
+        "力矩",
+        "扭矩",
+        "电流",
+        "速度命令",
+        "速度指令",
+        "原始速度",
+        "位置命令",
+        "位置指令",
+        "原始位置",
+        "急停释放",
+        "释放急停",
+        "override",
+        "m33 override",
+        "快速加大力度",
+        "加大力度",
+        "直接运动",
+    ]
+    return any(token in normalized for token in risky_tokens)
+
+
+def _fallback_agent_answer(message: str, context_snapshot: dict) -> str:
+    lower = (message or "").lower()
+    if _looks_like_dangerous_motion_request(message):
+        return (
+            "为了安全，我不能提供直接加大力度、修改电机参数、发送 CAN/原始运动命令或绕过 M33 的建议。"
+            "如果你感觉训练太轻，应先记录疼痛、疲劳和完成情况，再由 App 生成训练计划草案，经过同步到设备、M33 接受和训练前检查后再执行。"
+        )
+    if any(token in lower for token in ["疼", "痛", "酸", "疲劳", "fatigue", "pain"]):
+        return (
+            "如果今天训练后只是轻微酸胀或疲劳，下一次建议先保持同一动作类型，减少 1-2 次重复或延长组间休息 30 秒。"
+            "训练前请确认疼痛评分不高于平时基线；如果疼痛达到 5 分以上、持续超过 48 小时或出现刺痛/麻木，应暂停并联系康复师。"
+        )
+    if any(token in lower for token in ["计划", "下一次", "训练", "安排"]):
+        return (
+            "可以先按“低强度、少量、可复盘”的原则安排下一次训练：保持当前关节动作，2 组，每组 5-6 次，速度慢，训练后记录疼痛和疲劳。"
+            "如果要形成正式训练计划，请使用 AI 训练草案并在接受后走设备同步、M33 接受和 preflight。"
+        )
+    return (
+        "我可以帮你判断训练后的感受、整理下一次训练建议，或提醒需要康复师复核的风险。"
+        "请告诉我今天训练的动作、组数、次数、疼痛评分和疲劳程度；我只提供建议，不会直接控制设备。"
+    )
+
+
+def _call_external_agent_message(message: str, context_snapshot: dict, fallback_answer: str) -> tuple[str, dict]:
+    settings = get_settings()
+    base_url = str(settings.rehab_arm_model_relay_base_url or "").strip()
+    model = str(settings.rehab_arm_model_relay_model or "").strip()
+    api_key = str(settings.rehab_arm_model_relay_api_key or "").strip()
+    provider = str(settings.rehab_arm_model_relay_provider or "openai_compatible").strip() or "openai_compatible"
+    evidence = {
+        "schema_version": "rehab_app_agent_message_v1",
+        "relay_channel": "app_rehab_agent",
+        "client_type": "app",
+        "purpose": "rehab_agent_chat",
+        "scope": "patient_training_guidance",
+        "shared_model_relay_config": True,
+        "does_not_touch_xiaozhi_l": True,
+        "provider": provider,
+        "model": model or "not_configured",
+        "external_enabled": bool(settings.rehab_arm_model_relay_external_enabled),
+        "status": "fallback_rule_based",
+        "api_key_exposed_to_app": False,
+        "control_boundary": "agent_advice_only_not_motion_permission",
+    }
+    if _looks_like_dangerous_motion_request(message):
+        evidence["status"] = "safety_refusal"
+        return fallback_answer, evidence
+    if not settings.rehab_arm_model_relay_external_enabled:
+        evidence["error"] = "external_disabled"
+        return fallback_answer, evidence
+    if not base_url or not model or not api_key:
+        evidence["error"] = "model_relay_config_incomplete"
+        return fallback_answer, evidence
+    system = (
+        "You are a cautious rehabilitation assistant inside a wearable arm exoskeleton mobile app. "
+        "Answer in concise Chinese. Give safe training advice and ask for pain/fatigue details when needed. "
+        "Never provide CAN frames, motor commands, current, torque, raw position/velocity, M33 override, "
+        "emergency-stop release, or instructions to bypass device safety. Mention that formal plans must still "
+        "go through device sync, M33 acceptance, and preflight."
+    )
+    body = {
+        "model": model,
+        "temperature": 0.2,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": json.dumps({"message": message, "context_snapshot": _json_safe(context_snapshot)}, ensure_ascii=False)},
+        ],
+    }
+    request = urllib.request.Request(
+        _relay_chat_url(base_url),
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={"authorization": f"Bearer {api_key}", "content-type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            raw = response.read().decode("utf-8", errors="replace")
+        data = json.loads(raw)
+        answer = str((((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "")).strip()
+    except (OSError, urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+        evidence["error"] = f"external_call_failed:{type(exc).__name__}"
+        return fallback_answer, evidence
+    if not answer or _contains_dangerous_ai_plan_key({"answer": answer}):
+        evidence["status"] = "external_rejected_fallback_rule_based"
+        return fallback_answer, evidence
+    evidence["status"] = "external_used"
+    return answer[:2000], evidence
+
+
+def generate_agent_message(db: Session, user_id: str, message: str, context_snapshot: dict) -> dict:
+    fallback_answer = _fallback_agent_answer(message, context_snapshot)
+    answer, model_status = _call_external_agent_message(message, context_snapshot, fallback_answer)
+    create_audit_log(
+        db,
+        actor_type="human",
+        actor_id=user_id,
+        action="rehab_app.agent.message",
+        resource_type="rehab_app_agent_message",
+        resource_id=str(uuid.uuid4()),
+        before={
+            "message_preview": message[:160],
+            "context_snapshot": _json_safe(context_snapshot),
+            "client_type": "app",
+            "purpose": "rehab_agent_chat",
+            "scope": "patient_training_guidance",
+            "does_not_touch_xiaozhi_l": True,
+        },
+        after=model_status,
+    )
+    db.commit()
+    return {
+        "answer": answer,
+        "model_status": model_status,
+        "safety_notes": [
+            "康复师 Agent 只提供建议，不代表训练执行许可。",
+            "正式训练仍需训练计划、设备同步、M33 接受和 preflight。",
+        ],
+        "control_boundary": "agent_advice_only_not_motion_permission",
+    }
+
+
 def _app_ai_training_draft_audit_after(context_snapshot: dict, generated_plan: dict) -> dict:
     planner = (context_snapshot or {}).get("ai_planner") or {}
     return {

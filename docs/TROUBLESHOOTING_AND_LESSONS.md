@@ -1,5 +1,24 @@
 # Troubleshooting and Lessons
 
+## 2026-07-08
+
+- Symptom: users could tap the bottom `社区` tab on several mobile pages and see no useful result.
+- Root cause: the rebuilt Stitch mobile pages still had `href="#"` placeholders for a product area that was not ready.
+- Fix: generate a Stitch-first `社区内测` screen and route every `社区` tab to `community.html`; closed-beta features now show honest status and route users to the working康复师 Agent.
+- Lesson: a disabled product area still needs a user-facing destination. `href="#"` reads as a broken App, not as a roadmap.
+
+- Symptom: the App device page reported no Bluetooth bridge in APK-oriented flows even though the Android wrapper already had a tested Classic SPP plugin.
+- Root cause: the current page looked for `RehabArmBluetooth.scanDevices`, while the Android wrapper exposes `RehabArmSpp.listBondedDevices/connect/sendLegacyFrame`.
+- Fix: add a compatibility adapter in the mobile runtime that maps `RehabArmSpp.listBondedDevices()` into the existing device-search UI. This proves the APK can surface paired SPP devices without reintroducing BLE firmware code into M33.
+- Lesson: do not add another Bluetooth stack before checking the installed native bridge name. Keep account device binding, SPP connection, frame send, ACK upload, and M33 acceptance as separate visible states.
+- Agent UX lesson: a server-backed message page still feels fake if it opens with hardcoded sample user/assistant messages. Keep only a real empty/welcome state, then render user messages and `/agent/messages` responses. If a safety example is needed, keep it in docs/tests, not as visible default chat history.
+- Mobile auth QA lesson: the current mobile runtime reads `localStorage.access_token`. Browser-injected QA that writes only an older key such as `rehab_arm_access_token` will hit login gates and falsely report that device scanning or binding is broken.
+
+- Symptom: the message page looked like an intelligent assistant but the current repo did not expose the exact `/agent/messages` App route the page was calling.
+- Root cause: frontend and cloud deployment had drifted ahead of the local backend contract.
+- Fix: add `POST /api/rehab-arm/app/v1/agent/messages` with explicit App relay metadata, model/fallback status, audit logs, and dangerous request refusal.
+- Lesson: every App chat/agent surface needs the same source/purpose/scope separation as the training planner, otherwise platform logs can mix patient guidance with XiaoZhi/L semantic routing.
+
 ## 2026-07-04
 
 - Symptom: the `3D / 孪生` IK coordinate inputs still felt impossible to edit after a prior persistence fix, and the visible Stitch URDF upload area could show a new filename without changing the real Three.js/URDF model.

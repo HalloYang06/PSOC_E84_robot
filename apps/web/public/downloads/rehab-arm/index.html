@@ -182,17 +182,21 @@
           <dt>包名</dt>
           <dd>com.lingdong.rehabarm</dd>
           <dt>版本</dt>
-          <dd>1.0.10 L1 staging</dd>
+          <dd>1.0.11 L1 staging</dd>
           <dt>大小</dt>
-          <dd>3,814,651 bytes</dd>
+          <dd>4,184,675 bytes</dd>
           <dt>SHA256</dt>
-          <dd>46F268774831B86E9358C9E1CC322D84A1DF893AFDAD3227FD4F61EDD78F5383</dd>
+          <dd>070EB7FB9B51F774596C9DDAD32BC62B6FD8EB059960500F5F373D8624A167BB</dd>
         </dl>
       </section>
 
       <section>
-        <h2>1.0.10 更新</h2>
+        <h2>1.0.11 更新</h2>
         <ol>
+          <li>新增社区内测页，底部“社区”不再是死链，用户可看到真实开放状态并跳转问康复师。</li>
+          <li>消息页接入后端康复师 Agent 接口 <code>/api/rehab-arm/app/v1/agent/messages</code>，服务端记录 client_type/purpose/scope，危险运动请求会安全拒绝。</li>
+          <li>设备页兼容 Android 原生 <code>RehabArmSpp</code> 桥，可读取已配对 Classic SPP 设备并继续账号绑定；浏览器环境会明确提示需要 Android App 蓝牙桥。</li>
+          <li>我的页设置按钮和设备页返回按钮补齐反馈/跳转，内测短信文案显示“内测验证码”。</li>
           <li>我的页修正手机号绑定流程：未登录时手机号绑定区默认锁定，先登录云端账号后才可获取验证码和绑定。</li>
           <li>云端 API 请求统一落到 8011 服务，避免登录和手机号绑定误打静态站。</li>
           <li>设备绑定增加资源隔离：未登录时不会触发蓝牙权限、扫描或绑定接口，避免占用设备和账号资源。</li>
@@ -216,7 +220,7 @@
       </section>
 
       <section>
-        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电、AI 草稿和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.10 已加入 Stitch 蓝牙调试 / 实机验证页、已配对设备列表、后端可信设备绑定、SPP 连接/断开、后端批准帧发送、ACK/sensor 证据显示、AI 草稿闭环和训练库真实计划绑定；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
+        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电、AI 草稿和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.11 已补齐社区入口、康复师 Agent 后端中转、设备页 Android SPP 桥兼容和内测验证码文案；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
       </section>
     </main>
   </body>

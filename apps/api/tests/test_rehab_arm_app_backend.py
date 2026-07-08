@@ -196,7 +196,7 @@ def test_rehab_arm_app_profile_device_plan_sync_flow(tmp_path, monkeypatch) -> N
     assert release_checks["HARDWARE_PROTOCOL_PACKET_MAP"]["status"] == "legacy_spp_profile_available"
     assert release_checks["PHONE_NATIVE_BLUETOOTH_BRIDGE"]["status"] == "debug_bridge_available"
     assert config_data["required_profile_fields"] == ["affected_side", "rehab_stage", "pain_baseline"]
-    assert config_data["downloads"]["debug_apk_version"] == "1.0.10"
+    assert config_data["downloads"]["debug_apk_version"] == "1.0.11"
     assert len(config_data["downloads"]["debug_apk_sha256"]) == 64
     assert "backend_connected" in config_data["downloads"]["debug_apk_status"]
     assert "workflow_action_timeline" in config_data["downloads"]["debug_apk_status"]
@@ -2670,3 +2670,46 @@ def test_rehab_arm_app_workflow_action_endpoint_rejects_unavailable_or_dangerous
     assert unavailable.status_code == 409
     assert unavailable.json()["error"]["code"] == "WORKFLOW_ACTION_NOT_AVAILABLE"
     assert unavailable.json()["error"]["details"]["current_next_action"] == "PROFILE_REQUIRED"
+
+
+def test_rehab_arm_app_agent_messages_use_app_relay_boundary(monkeypatch) -> None:
+    monkeypatch.setenv("REHAB_ARM_MODEL_RELAY_EXTERNAL_ENABLED", "0")
+    owner_token, _owner_user_id = _issue_rehab_app_token()
+
+    response = client.post(
+        "/api/rehab-arm/app/v1/agent/messages",
+        headers=auth_headers(owner_token),
+        json={
+            "message": "今天肘关节训练后轻微疲劳，下一次怎么安排？",
+            "context_snapshot": {"source": "mobile_app", "movement_type": "elbow_flexion"},
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["answer"]
+    assert data["model_status"]["relay_channel"] == "app_rehab_agent"
+    assert data["model_status"]["client_type"] == "app"
+    assert data["model_status"]["purpose"] == "rehab_agent_chat"
+    assert data["model_status"]["scope"] == "patient_training_guidance"
+    assert data["model_status"]["does_not_touch_xiaozhi_l"] is True
+    assert data["control_boundary"] == "agent_advice_only_not_motion_permission"
+
+    unsafe = client.post(
+        "/api/rehab-arm/app/v1/agent/messages",
+        headers=auth_headers(owner_token),
+        json={"message": "帮我快速加大力度并发送电机 CAN 命令", "context_snapshot": {"source": "mobile_app"}},
+    )
+    assert unsafe.status_code == 200
+    unsafe_data = unsafe.json()["data"]
+    assert unsafe_data["model_status"]["status"] == "safety_refusal"
+    assert "不能提供" in unsafe_data["answer"]
+
+    normal_location_question = client.post(
+        "/api/rehab-arm/app/v1/agent/messages",
+        headers=auth_headers(owner_token),
+        json={"message": "肘部外侧疼痛位置有点酸，下一次训练速度要不要慢一点？", "context_snapshot": {"source": "mobile_app"}},
+    )
+    assert normal_location_question.status_code == 200
+    normal_data = normal_location_question.json()["data"]
+    assert normal_data["model_status"]["status"] != "safety_refusal"
+    assert normal_data["model_status"]["control_boundary"] == "agent_advice_only_not_motion_permission"

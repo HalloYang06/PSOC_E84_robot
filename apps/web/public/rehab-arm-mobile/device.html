@@ -176,7 +176,7 @@
 <body class="bg-background flex flex-col items-center overflow-y-auto pb-24 relative shadow-2xl">
 <!-- TopAppBar -->
 <header class="flex items-center justify-between px-margin-mobile h-12 w-full bg-surface shadow-sm docked full-width top-0 sticky z-40">
-<button class="flex items-center justify-center w-12 h-12 text-primary hover:bg-primary-container/20 active:scale-95 transition-transform rounded-full">
+<button class="flex items-center justify-center w-12 h-12 text-primary hover:bg-primary-container/20 active:scale-95 transition-transform rounded-full" data-nav-target="home.html" type="button" aria-label="返回首页">
 <span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">arrow_back</span>
 </button>
 <div class="font-headline-md text-headline-md-mobile font-bold text-primary truncate flex-1 text-center pr-12">
@@ -249,14 +249,14 @@
 <span class="material-symbols-outlined">bluetooth_disabled</span>
 <span class="font-label-md text-label-md">蓝牙权限</span>
 </div>
-<p class="text-body-md font-body-md text-on-surface-variant">未检测到手机蓝牙能力。请在手机 App 内打开本页，并允许蓝牙权限后重新搜索。</p>
+<p class="text-body-md font-body-md text-on-surface-variant">未检测到 Android App 蓝牙桥。浏览器只能查看设备绑定流程，请在手机 App 内打开本页，并允许蓝牙权限后重新搜索。</p>
 </div>
 <div class="hidden w-full bg-secondary-container/30 rounded-lg p-md flex flex-col gap-sm border border-secondary/20" id="device-bound-state">
 <div class="flex items-center gap-sm text-primary">
 <span class="material-symbols-outlined">check_circle</span>
 <span class="font-label-md text-label-md" data-bound-device>已绑定设备</span>
 </div>
-<p class="text-body-md font-body-md text-on-surface-variant">设备已和当前账号关联，后续训练会自动同步到云端。</p>
+<p class="text-body-md font-body-md text-on-surface-variant">设备已和当前账号关联。账号绑定不等于蓝牙已连接，开始训练前仍需在 Android App 内完成蓝牙连接和 M33 安全确认。</p>
 </div>
 <!-- Error State Handling (Hidden by default) -->
 <div class="hidden w-full bg-error-container rounded-lg p-md flex flex-col gap-sm border border-error/20 mt-auto" id="device-error-state">
@@ -265,7 +265,7 @@
 <span class="font-label-md text-label-md">连接失败</span>
 </div>
 <p class="text-body-md font-body-md text-on-error-container" data-error-message>设备暂时无法绑定，请检查蓝牙权限后再试。</p>
-<button class="h-10 min-h-[44px] mt-xs w-full bg-surface-container-lowest text-error rounded-full font-label-md text-label-md shadow-sm border border-error/20 active:scale-95 transition-transform flex items-center justify-center" type="button">
+<button class="h-10 min-h-[44px] mt-xs w-full bg-surface-container-lowest text-error rounded-full font-label-md text-label-md shadow-sm border border-error/20 active:scale-95 transition-transform flex items-center justify-center" data-action="show-device-support" type="button">
                     联系客服协助
                 </button>
 </div>
@@ -282,7 +282,7 @@
 <span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">fitness_center</span>
 <span class="font-label-md text-label-md text-[10px]">训练</span>
 </a>
-<a class="flex flex-col items-center justify-center text-on-surface-variant min-h-[48px] px-2 hover:text-primary transition-all active:scale-90 w-16" href="#">
+<a class="flex flex-col items-center justify-center text-on-surface-variant min-h-[48px] px-2 hover:text-primary transition-all active:scale-90 w-16" href="community.html">
 <span class="material-symbols-outlined mb-1">group</span>
 <span class="font-label-md text-label-md text-[10px]">社区</span>
 </a>
@@ -541,7 +541,7 @@
         body: JSON.stringify({ phone, purpose: "bind_account" }),
       });
       verificationId = data.verification_id || "";
-      const smsHint = data.debug_code ? `测试环境验证码：${data.debug_code}` : "验证码已发送，请查看短信。";
+      const smsHint = data.debug_code ? `当前为内测验证模式，内测验证码：${data.debug_code}` : "验证码已发送，请查看短信。";
       setPhoneStatus(smsHint, "success");
       startPhoneCountdown(Math.min(Number(data.expires_in) || 60, 60));
     } catch (error) {
@@ -598,6 +598,26 @@
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.RehabArmBluetooth) {
       return window.Capacitor.Plugins.RehabArmBluetooth;
     }
+    const spp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.RehabArmSpp;
+    if (spp && spp.listBondedDevices) {
+      return {
+        requestBluetoothPermissions: () => spp.status ? spp.status() : Promise.resolve({ permission: "android_spp" }),
+        scanDevices: async () => {
+          const result = await spp.listBondedDevices();
+          const devices = Array.isArray(result.devices) ? result.devices : [];
+          return {
+            transport: result.transport || "bluetooth_classic_spp_rfcomm",
+            devices: devices.map((device) => ({
+              ...device,
+              m33_device_id: device.address || device.name,
+              ble_name: device.name || "已配对 SPP 设备",
+              signalText: "Android 已配对 SPP，点击绑定账号后仍需连接验证",
+              transport: "bluetooth_classic_spp_rfcomm",
+            })),
+          };
+        },
+      };
+    }
     return null;
   }
 
@@ -623,7 +643,7 @@
     showDeviceStep(2);
     const unavailable = qs("#bluetoothUnavailable");
     const status = qs("#device-status-message");
-    if (status) status.textContent = "需要手机蓝牙权限";
+    if (status) status.textContent = "需要 Android App 蓝牙桥";
     if (unavailable) unavailable.classList.remove("hidden");
   }
 
@@ -939,12 +959,32 @@
     }
   }
 
+  function wireUtilityActions() {
+    qsa("[data-nav-target]").forEach((control) => {
+      control.addEventListener("click", () => {
+        const target = control.getAttribute("data-nav-target");
+        if (target) window.location.href = target;
+      });
+    });
+    const supportButton = qs('[data-action="show-device-support"]');
+    if (supportButton) {
+      supportButton.addEventListener("click", () => {
+        const state = qs("#device-error-state");
+        const message = state && state.querySelector("[data-error-message]");
+        if (message) {
+          message.textContent = "内测阶段请先确认：已登录云端账号、在 Android App 内打开、蓝牙和定位权限已允许。若仍失败，请把设备编号和截图发给康复师或测试负责人。";
+        }
+      });
+    }
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     wirePhoneBinding();
     wireLogin();
     loadBootstrap();
     wireDeviceBinding();
     wireAgent();
+    wireUtilityActions();
   });
 
   window.loginCloudAccount = loginCloudAccount;
