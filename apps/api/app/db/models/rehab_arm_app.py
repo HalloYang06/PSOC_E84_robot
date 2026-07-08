@@ -25,6 +25,20 @@ class RehabAppUserProfile(Base):
     updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class RehabAppPhoneVerification(Base):
+    __tablename__ = "rehab_app_phone_verifications"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    phone_number: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    debug_code: Mapped[str] = mapped_column(String(12), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(40), nullable=False, default="bind_account")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending", index=True)
+    expires_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)
+    confirmed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class RehabAppDeviceBinding(Base):
     __tablename__ = "rehab_app_device_bindings"
 

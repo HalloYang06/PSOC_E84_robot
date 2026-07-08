@@ -4,7 +4,7 @@ import uuid
 import json
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import select
@@ -23,6 +23,7 @@ from app.db.models.rehab_arm_app import (
     RehabAppOfflineQueueItem,
     RehabAppPlanConstraintReview,
     RehabAppPlatformSyncRun,
+    RehabAppPhoneVerification,
     RehabAppPreflightCheck,
     RehabAppSessionSafetyEvent,
     RehabAppTrainingPlan,
@@ -59,7 +60,6 @@ DANGEROUS_AI_PLAN_KEYS = {
     "emergency_stop_release",
 }
 
-_PHONE_VERIFICATIONS: dict[str, dict[str, Any]] = {}
 DANGEROUS_AI_PLAN_KEY_SUBSTRINGS = (
     "can_frame",
     "canframe",
@@ -902,23 +902,24 @@ def create_phone_verification(db: Session, user_id: str, phone: str, purpose: st
         raise AppError("PHONE_INVALID", "请输入有效手机号", status_code=400)
     if purpose != "bind_account":
         raise AppError("PHONE_PURPOSE_UNSUPPORTED", "unsupported phone verification purpose", status_code=400)
-    verification_id = str(uuid.uuid4())
     debug_code = "246810"
-    expires_at = datetime.now(timezone.utc).timestamp() + 600
-    _PHONE_VERIFICATIONS[verification_id] = {
-        "user_id": user_id,
-        "phone": normalized_phone,
-        "code": debug_code,
-        "expires_at": expires_at,
-        "purpose": purpose,
-    }
+    verification = RehabAppPhoneVerification(
+        user_id=user_id,
+        phone_number=normalized_phone,
+        debug_code=debug_code,
+        purpose=purpose,
+        status="pending",
+        expires_at=datetime.now(timezone.utc) + timedelta(seconds=600),
+    )
+    db.add(verification)
+    db.flush()
     create_audit_log(
         db,
         actor_type="human",
         actor_id=user_id,
         action="rehab_app.phone_verification.created",
         resource_type="rehab_app_phone_verification",
-        resource_id=verification_id,
+        resource_id=verification.id,
         after={
             "phone_masked": f"{normalized_phone[:3]}****{normalized_phone[-4:]}" if len(normalized_phone) >= 7 else "***",
             "purpose": purpose,
@@ -928,7 +929,7 @@ def create_phone_verification(db: Session, user_id: str, phone: str, purpose: st
     )
     db.commit()
     return {
-        "verification_id": verification_id,
+        "verification_id": verification.id,
         "debug_code": debug_code,
         "expires_in": 600,
         "mode": "debug_sms",
@@ -938,13 +939,20 @@ def create_phone_verification(db: Session, user_id: str, phone: str, purpose: st
 
 
 def confirm_phone_verification(db: Session, user_id: str, verification_id: str, code: str) -> dict:
-    verification = _PHONE_VERIFICATIONS.get(verification_id)
-    if not verification or verification.get("user_id") != user_id:
+    verification = db.get(RehabAppPhoneVerification, verification_id)
+    if not verification or verification.user_id != user_id:
         raise AppError("PHONE_VERIFICATION_NOT_FOUND", "请先获取验证码。", status_code=404)
-    if float(verification.get("expires_at") or 0) < datetime.now(timezone.utc).timestamp():
-        _PHONE_VERIFICATIONS.pop(verification_id, None)
+    if verification.status == "confirmed":
+        raise AppError("PHONE_VERIFICATION_ALREADY_CONFIRMED", "该验证码已使用，请重新获取。", status_code=400)
+    expires_at = verification.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at < datetime.now(timezone.utc):
+        verification.status = "expired"
+        db.add(verification)
+        db.commit()
         raise AppError("PHONE_VERIFICATION_EXPIRED", "验证码已过期，请重新获取。", status_code=400)
-    if str(code or "").strip() != verification.get("code"):
+    if str(code or "").strip() != verification.debug_code:
         raise AppError("PHONE_VERIFICATION_CODE_INVALID", "验证码不正确或已过期，请重新输入。", status_code=400)
     profile = db.scalar(select(RehabAppUserProfile).where(RehabAppUserProfile.user_id == user_id))
     if profile is None:
@@ -956,11 +964,14 @@ def confirm_phone_verification(db: Session, user_id: str, verification_id: str, 
             rehab_stage="",
             medical_constraints=[],
         )
-    profile.phone_number = verification["phone"]
-    profile.phone_verified_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
+    profile.phone_number = verification.phone_number
+    profile.phone_verified_at = now
+    verification.status = "confirmed"
+    verification.confirmed_at = now
     db.add(profile)
+    db.add(verification)
     db.flush()
-    _PHONE_VERIFICATIONS.pop(verification_id, None)
     create_audit_log(
         db,
         actor_type="human",
