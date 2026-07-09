@@ -117,6 +117,10 @@ static int16_t audio_voice_sample(uint32_t phase, uint8_t vowel, uint32_t env_q1
 
 rt_err_t audio_playback_init(void)
 {
+#ifndef BSP_USING_AUDIO
+    rt_kprintf("[audio_playback] unavailable: M55 owns sound0 for Xiaozhi\n");
+    return -RT_ENOSYS;
+#else
     rt_err_t ret;
     struct rt_audio_caps caps;
     const char *speaker_name = RT_NULL;
@@ -171,10 +175,14 @@ rt_err_t audio_playback_init(void)
                AUDIO_BITS_PER_SAMPLE);
 
     return RT_EOK;
+#endif
 }
 
 rt_err_t audio_playback_start(void)
 {
+#ifndef BSP_USING_AUDIO
+    return -RT_ENOSYS;
+#else
     if (!g_playback.initialized)
     {
         return -RT_ERROR;
@@ -188,6 +196,7 @@ rt_err_t audio_playback_start(void)
     g_playback.playing = RT_TRUE;
     rt_kprintf("[audio_playback] Started\n");
     return RT_EOK;
+#endif
 }
 
 rt_err_t audio_playback_stop(void)
@@ -205,6 +214,11 @@ rt_err_t audio_playback_stop(void)
 
 rt_err_t audio_playback_write(const uint8_t *data, uint32_t len)
 {
+#ifndef BSP_USING_AUDIO
+    RT_UNUSED(data);
+    RT_UNUSED(len);
+    return -RT_ENOSYS;
+#else
     uint32_t offset = 0U;
 
     if (!g_playback.initialized || !data || len == 0)
@@ -253,10 +267,14 @@ rt_err_t audio_playback_write(const uint8_t *data, uint32_t len)
     }
 
     return RT_EOK;
+#endif
 }
 
 rt_err_t audio_playback_flush(void)
 {
+#ifndef BSP_USING_AUDIO
+    return RT_EOK;
+#else
     rt_size_t written = 1U;
 
     if (!g_playback.initialized || (g_playback.speaker == RT_NULL))
@@ -284,6 +302,7 @@ rt_err_t audio_playback_flush(void)
                (unsigned long)g_playback.written_frames,
                (unsigned long)written);
     return written == 0 ? -RT_ERROR : RT_EOK;
+#endif
 }
 
 void audio_playback_clear(void)
