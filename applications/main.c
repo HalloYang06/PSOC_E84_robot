@@ -27,6 +27,7 @@
 __attribute__((weak)) struct _reent _impure_data;
 
 #define LED_PIN_B GET_PIN(16, 5)
+#define LED_PIN_R GET_PIN(16, 7)
 #define FRAME_PERIOD_MS 100
 #define PCM_CAPTURE_MAX_BYTES (16000U * 2U * 2U)
 #define M33_TTS_IDLE_FLUSH_MS 500U
@@ -1005,6 +1006,8 @@ int main(void)
     rt_memset(&g_runtime, 0, sizeof(g_runtime));
 
 #if M33_ENABLE_LED_HEARTBEAT
+    rt_pin_mode(LED_PIN_R, PIN_MODE_OUTPUT);
+    rt_pin_write(LED_PIN_R, PIN_HIGH);
     rt_pin_mode(LED_PIN_B, PIN_MODE_OUTPUT);
     rt_pin_write(LED_PIN_B, PIN_HIGH);
 #endif
