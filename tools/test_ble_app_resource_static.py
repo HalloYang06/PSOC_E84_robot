@@ -76,10 +76,12 @@ def main():
     for needle in (
         "#ifndef M33_ENABLE_APP_BLE_LINK",
         "#define M33_ENABLE_APP_BLE_LINK 1",
-        "#define M33_ENABLE_BT_HCI M33_ENABLE_APP_BLE_LINK",
+        "#define M33_ENABLE_BT_HCI 0",
+        '#error "M33 BT HCI is blocked until the vendor BTSTACK passes RT-Thread hardware bring-up"',
         "static void m33_init_ble_app_link(void)",
         "m33_init_ble_app_link();",
         "static void m33_handle_ble_command_minimal(void)",
+        "#if M33_ENABLE_APP_BLE_LINK\n    app_ble_command_t cmd;",
         "m33_handle_ble_command_minimal();",
     ):
         require(main_c, needle, "main.c BLE app-link minimal framework path")

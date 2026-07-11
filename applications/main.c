@@ -50,7 +50,11 @@ __attribute__((weak)) struct _reent _impure_data;
 #endif
 
 #ifndef M33_ENABLE_BT_HCI
-#define M33_ENABLE_BT_HCI M33_ENABLE_APP_BLE_LINK
+#define M33_ENABLE_BT_HCI 0
+#endif
+
+#if M33_ENABLE_BT_HCI
+#error "M33 BT HCI is blocked until the vendor BTSTACK passes RT-Thread hardware bring-up"
 #endif
 
 typedef enum
@@ -572,6 +576,7 @@ static void m33_handle_ble_command(void)
 
 static void m33_handle_ble_command_minimal(void)
 {
+#if M33_ENABLE_APP_BLE_LINK
     app_ble_command_t cmd;
 
     while (app_ble_service_peek_command(&cmd) == RT_EOK)
@@ -594,6 +599,7 @@ static void m33_handle_ble_command_minimal(void)
             break;
         }
     }
+#endif
 }
 
 static void m33_handle_ipc_command(void)
@@ -973,39 +979,13 @@ static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
 static void m33_init_ble_app_link(void)
 {
 #if M33_ENABLE_APP_BLE_LINK
-#if M33_ENABLE_BT_HCI
-    rt_err_t bt_err;
-#endif
-
     rt_kprintf("[m33] app ble link step1 bt_board_bridge\n");
     bt_board_bridge_init();
     rt_kprintf("[m33] app ble link step2 app_ble_service_init\n");
     app_ble_service_init();
     rt_kprintf("[m33] app ble link step3 app_ble_service_start\n");
     app_ble_service_start();
-#if M33_ENABLE_BT_HCI
-    rt_kprintf("[m33] app ble link step4 bt_hci_transport_init\n");
-    bt_err = bt_hci_transport_init();
-    rt_kprintf("[m33] bt_hci_transport_init ret=%d state=%d\n",
-               bt_err,
-               bt_hci_transport_get_runtime()->state);
-    if (bt_err == RT_EOK)
-    {
-        bt_err = bt_hci_transport_start();
-        rt_kprintf("[m33] bt_hci_transport_start ret=%d state=%d\n",
-                   bt_err,
-                   bt_hci_transport_get_runtime()->state);
-    }
-
-    if (bt_err != RT_EOK)
-    {
-        rt_kprintf("[m33] bluetooth middleware not integrated yet, transport state=%d err=%d\n",
-                   bt_hci_transport_get_runtime()->state,
-                   bt_err);
-    }
-#else
     rt_kprintf("[m33] app ble link HCI disabled by M33_ENABLE_BT_HCI\n");
-#endif
 #else
     rt_kprintf("[m33] app ble link disabled by M33_ENABLE_APP_BLE_LINK\n");
 #endif

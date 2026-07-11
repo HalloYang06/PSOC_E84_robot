@@ -2205,3 +2205,23 @@ Fix / reusable guard:
 
 Status:
 - Source and full firmware build validated; hardware behavior remains unverified.
+
+## 2026-07-11 - Static BLE integration can pass while vendor HCI HardFaults on hardware
+
+Symptoms:
+- HCI-enabled M33 image burns and verifies, but the board shows a red LED and COM26 does not reach a usable shell.
+- Secure fault state showed `PC=0xEFFFFFFE`, exception 3, `HFSR=0x40000000`, and `CFSR=0x00010000`.
+
+Diagnosis:
+- GDB hardware breakpoints proved the non-secure image reached `Reset_Handler`, `main`, the BLE worker, and `bt_hci_transport_init()`.
+- The failure occurred before `bt_hci_transport_start()`/`wiced_bt_stack_init()` could be proven, around the transport return/logging path after the vendor BTSTACK was linked.
+- Disabling only HCI removed about 275 KB of linked BTSTACK code and restored stable non-secure idle operation with no SCB fault bits.
+- A separate assertion was found when all App BLE initialization was disabled but the minimal loop still consumed the BLE queue; guard the queue pump with `M33_ENABLE_APP_BLE_LINK`.
+
+Fix / boundary:
+- Keep `M33_ENABLE_BT_HCI=0` on the product baseline until the vendor library and RT-Thread port are rebuilt/validated together.
+- Do not claim BLE is restored from GATT source presence, a successful link, or a successful flash verify. Require a cold boot, `Bluetooth stack ready`, `OpenClaw-NUS` advertising, NUS RX/TX, and concurrent CAN/IPC liveness.
+- Preserve the last stable firmware on the board when HCI bring-up fails; do not leave the wearable controller in a red-LED fault state.
+
+Status:
+- Product baseline recovered. BLE radio bring-up remains blocked.
