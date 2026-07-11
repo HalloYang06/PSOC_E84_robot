@@ -2188,3 +2188,20 @@ Status:
 
 Boundary:
 - Do not debug this symptom by changing M33 CAN/motion, NanoPi camera/V, WiFi token, or project routing unless those counters actually regress.
+## 2026-07-11 - BLE can compile cleanly yet still be disabled by the minimal boot path
+
+Symptoms:
+- NUS/GATT source files exist and compile, but the board does not advertise.
+- `applications/main.c` defines `M33_ENABLE_BT_HCI=0`, and `M33_XIAOZHI_MINIMAL_FRAMEWORK` returns before BLE initialization.
+
+Root cause:
+- App BLE was intentionally removed from the demo path in commit `0672a9fa`; this was a boot-path policy change, not loss of the BLE implementation.
+
+Fix / reusable guard:
+- Restore the isolated BLE initializer and call it from both minimal and full framework paths.
+- Keep BLE as transport only: it must not consume the M55 IPC RX queue or directly call motor, mode, or voice-control functions.
+- Use a bounded command queue so BLE bursts cannot overwrite commands or monopolize the control loop.
+- A successful build is not proof of radio bring-up. Require advertising, NUS RX/TX, and simultaneous CAN/IPC counter checks after flashing.
+
+Status:
+- Source and full firmware build validated; hardware behavior remains unverified.
