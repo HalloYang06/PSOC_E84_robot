@@ -1,0 +1,11 @@
+{
+  "image": "frame_00123.jpg",
+  "task_type": "pick_and_place",
+  "object_id": "bottle_01",
+  "robot_state": {
+    "gripper_open": true,
+    "has_object": false,
+    "current_phase": "search"
+  },
+  "phase": "approach"
+}

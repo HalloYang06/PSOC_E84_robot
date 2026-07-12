@@ -1,0 +1,32 @@
+{
+  "text": "把高架上的东西拿下来",
+  "objects": [
+    {
+      "object_id": "medicine_box_01",
+      "class_name": "medicine_box",
+      "position": [0.22, 0.66, 1.22]
+    },
+    {
+      "object_id": "cup_01",
+      "class_name": "cup",
+      "position": [0.27, 0.63, 1.19]
+    }
+  ],
+  "regions": [
+    {
+      "region_id": "shelf_01",
+      "region_type": "shelf",
+      "position": [0.20, 0.60, 1.20]
+    }
+  ],
+  "relations": [
+    {"subject": "medicine_box_01", "predicate": "on", "object": "shelf_01"},
+    {"subject": "cup_01", "predicate": "on", "object": "shelf_01"}
+  ],
+  "robot_state": {
+    "gripper_open": true,
+    "has_object": false,
+    "current_phase": "search"
+  },
+  "execution_history": []
+}
