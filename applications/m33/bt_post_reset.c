@@ -7,15 +7,12 @@
 #include "bt_hci_uart_prm.h"
 #include "cybt_platform_config.h"
 #include "cybt_platform_hci.h"
-#include "cybt_platform_util.h"
 #include "wiced_bt_dev.h"
 #include "wiced_bt_stack_platform.h"
 
 #define HCI_VSC_UPDATE_BAUDRATE_CMD                (0xFC18)
 #define HCI_VSC_UPDATE_BAUDRATE_LEN                (6u)
-#ifndef HCI_UART_DEFAULT_BAUDRATE
 #define HCI_UART_DEFAULT_BAUDRATE                  (115200u)
-#endif
 
 typedef enum
 {

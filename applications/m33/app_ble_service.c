@@ -7,23 +7,11 @@ static struct
 {
     struct rt_mutex lock;
     app_ble_runtime_t runtime;
-    app_ble_command_t command_queue[APP_BLE_COMMAND_QUEUE_DEPTH];
-    rt_uint8_t command_head;
-    rt_uint8_t command_tail;
-    rt_uint8_t command_count;
+    app_ble_command_t last_command;
+    rt_bool_t has_command;
     rt_bool_t initialized;
     char last_payload[256];
 } g_app_ble;
-
-static rt_uint8_t app_ble_next_queue_index(rt_uint8_t index)
-{
-    index++;
-    if (index >= APP_BLE_COMMAND_QUEUE_DEPTH)
-    {
-        return 0U;
-    }
-    return index;
-}
 
 static long app_ble_float_to_scaled(float value, float scale)
 {
@@ -90,10 +78,7 @@ rt_err_t app_ble_service_init(void)
     }
 
     rt_memset(&g_app_ble.runtime, 0, sizeof(g_app_ble.runtime));
-    rt_memset(g_app_ble.command_queue, 0, sizeof(g_app_ble.command_queue));
-    g_app_ble.command_head = 0U;
-    g_app_ble.command_tail = 0U;
-    g_app_ble.command_count = 0U;
+    rt_memset(&g_app_ble.last_command, 0, sizeof(g_app_ble.last_command));
     rt_memset(g_app_ble.last_payload, 0, sizeof(g_app_ble.last_payload));
     rt_strncpy(g_app_ble.last_payload, "{}", sizeof(g_app_ble.last_payload) - 1);
     g_app_ble.initialized = RT_TRUE;
@@ -115,13 +100,6 @@ rt_err_t app_ble_service_set_link_state(rt_bool_t connected, rt_bool_t streaming
     rt_bool_t was_connected = g_app_ble.runtime.connected;
     g_app_ble.runtime.connected = connected;
     g_app_ble.runtime.streaming_enabled = streaming_enabled;
-    if (!connected)
-    {
-        g_app_ble.command_head = 0U;
-        g_app_ble.command_tail = 0U;
-        g_app_ble.command_count = 0U;
-        g_app_ble.runtime.queued_commands = 0U;
-    }
     rt_mutex_release(&g_app_ble.lock);
 
     if (connected && !was_connected)
@@ -195,17 +173,8 @@ rt_err_t app_ble_service_submit_command(const app_ble_command_t *cmd)
     }
 
     rt_mutex_take(&g_app_ble.lock, RT_WAITING_FOREVER);
-    if (g_app_ble.command_count >= APP_BLE_COMMAND_QUEUE_DEPTH)
-    {
-        g_app_ble.runtime.dropped_commands++;
-        rt_mutex_release(&g_app_ble.lock);
-        return -RT_EFULL;
-    }
-
-    g_app_ble.command_queue[g_app_ble.command_tail] = *cmd;
-    g_app_ble.command_tail = app_ble_next_queue_index(g_app_ble.command_tail);
-    g_app_ble.command_count++;
-    g_app_ble.runtime.queued_commands = g_app_ble.command_count;
+    g_app_ble.last_command = *cmd;
+    g_app_ble.has_command = RT_TRUE;
     g_app_ble.runtime.downlink_packets++;
     g_app_ble.runtime.last_command_tick = cmd->timestamp;
     if (cmd->type == APP_BLE_CMD_START_STREAM)
@@ -228,16 +197,14 @@ rt_err_t app_ble_service_peek_command(app_ble_command_t *cmd)
     }
 
     rt_mutex_take(&g_app_ble.lock, RT_WAITING_FOREVER);
-    if (g_app_ble.command_count == 0U)
+    if (!g_app_ble.has_command)
     {
         rt_mutex_release(&g_app_ble.lock);
         return -RT_EEMPTY;
     }
 
-    *cmd = g_app_ble.command_queue[g_app_ble.command_head];
-    g_app_ble.command_head = app_ble_next_queue_index(g_app_ble.command_head);
-    g_app_ble.command_count--;
-    g_app_ble.runtime.queued_commands = g_app_ble.command_count;
+    *cmd = g_app_ble.last_command;
+    g_app_ble.has_command = RT_FALSE;
     rt_mutex_release(&g_app_ble.lock);
     return RT_EOK;
 }

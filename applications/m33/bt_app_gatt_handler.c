@@ -325,16 +325,6 @@ wiced_bt_gatt_status_t app_bt_gatt_req_read_by_type_handler(uint16_t conn_id,
 
 wiced_bt_gatt_status_t app_bt_gatt_connection_up(wiced_bt_gatt_connection_status_t *p_status)
 {
-    if ((hello_sensor_state.conn_id != 0u) &&
-        (hello_sensor_state.conn_id != p_status->conn_id))
-    {
-        rt_kprintf("[bt] rejecting extra BLE connection conn_id=%u active=%u\n",
-                   p_status->conn_id,
-                   hello_sensor_state.conn_id);
-        (void)wiced_bt_gatt_disconnect(p_status->conn_id);
-        return WICED_BT_GATT_SUCCESS;
-    }
-
     hello_sensor_state.conn_id = p_status->conn_id;
     memcpy(hello_sensor_state.remote_addr, p_status->bd_addr, sizeof(wiced_bt_device_address_t));
     pairing_mode = WICED_FALSE;
@@ -405,7 +395,6 @@ wiced_bt_gatt_status_t app_bt_set_value(uint16_t attr_handle,
     case HDLC_NUS_RX_VALUE:
     {
         app_ble_command_t cmd;
-        rt_err_t submit_ret;
         char frame[MAX_LEN_NUS_RX + 1u];
         char response[64];
 
@@ -417,25 +406,13 @@ wiced_bt_gatt_status_t app_bt_set_value(uint16_t attr_handle,
         memcpy(frame, p_val, len);
         if (app_ble_service_parse_ascii_frame(frame, &cmd) == RT_EOK)
         {
-            submit_ret = app_ble_service_submit_command(&cmd);
-            if (submit_ret == RT_EOK)
-            {
-                app_ble_service_set_link_state(RT_TRUE, app_ble_service_get_runtime()->streaming_enabled);
-                rt_snprintf(response, sizeof(response), "OK:%s\n", frame);
-                rt_kprintf("[bt] Command accepted: %s\n", frame);
-            }
-            else if (submit_ret == -RT_EFULL)
-            {
-                rt_snprintf(response, sizeof(response), "ERR:busy\n");
-                rt_kprintf("[bt] Command queue full: %s\n", frame);
-            }
-            else
-            {
-                rt_snprintf(response, sizeof(response), "ERR:queue\n");
-                rt_kprintf("[bt] Command queue failed ret=%d: %s\n", submit_ret, frame);
-            }
+            (void)app_ble_service_submit_command(&cmd);
+            app_ble_service_set_link_state(RT_TRUE, app_ble_service_get_runtime()->streaming_enabled);
+
+            rt_snprintf(response, sizeof(response), "OK:%s\n", frame);
             memcpy(app_nus_tx, response, rt_strlen(response));
             app_nus_tx_len = (uint16_t)rt_strlen(response);
+            rt_kprintf("[bt] Command accepted: %s\n", frame);
         }
         else
         {
