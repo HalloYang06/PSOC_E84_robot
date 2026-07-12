@@ -36,9 +36,9 @@ flowchart LR
 以下“已验证”是截至本 README 提交前已有的迁移、源码契约与自动化证据，不等价于新的实机验收：
 
 - 六组来源历史已按精确 source SHA 导入，来源提交保持为 integration merge 的第二父提交；provenance 测试可复核 ancestry、路径与来源映射。
-- M33、M55、C8T6 源码树及其既有历史已完整落入新前缀；迁移前来源基线已有的构建/硬件验证属于源工程证据，本轮只验证迁移完整性，尚未在新路径重新完成固件构建、烧录和实机闭环。
-- ROS 2 正式路径边界测试已验证 mainline 不启用 demo trajectory、VLA 不直连 CAN、target TX 默认关闭，以及 M33 仍是最终裁决点；这不是 ROS colcon 构建通过声明。
-- 平台 Web 构建已通过；康复 API 的 `test_rehab_arm_app_backend.py`、`test_rehab_arm_app_live_emg.py`、`test_rehab_arm_sync.py` 与 `test_rehab_arm_vla_closed_loop_status.py` 四文件测试在迁移验证中为 **55 passed**；完整 `platform/api/tests` 尚未成为通过门禁，因为 collection 仍遇到缺失的 `runner.logs` 旧依赖。Android/Capacitor Web 资源同步已通过，但新的 APK 构建未在本轮执行。
+- M33 与 C8T6 已在 2026-07-13 从新前缀完成源码构建；M55 编译后在链接阶段因缺失 `ifx_deepcraft_wake_*` 实现而失败。三者均未烧录或进行实机闭环，详细环境与警告见[迁移验证记录](docs/validation/migration-validation.md)。
+- ROS 2 正式路径边界测试已验证 mainline 不启用 demo trajectory、VLA 不直连 CAN、target TX 默认关闭，以及 M33 仍是最终裁决点；本机缺少 ROS 2 Jazzy 与 `colcon`，因此 ROS build/test 结果为 `not-run`，不是通过声明。
+- 平台 Web 构建已通过；康复 API 的 `test_rehab_arm_app_backend.py`、`test_rehab_arm_app_live_emg.py`、`test_rehab_arm_sync.py` 与 `test_rehab_arm_vla_closed_loop_status.py` 四文件测试为 **55 passed**；完整 `platform/api/tests` 因缺失 `runner.logs` 在 collection 阶段失败，不作为门禁。Android/Capacitor Web 资源同步已通过；因缺少 Java、ADB 与 Android SDK 环境，APK 构建为 `not-run`。
 - VLA 边界与 schema 测试为 **14 passed**，其结果只允许 high-level request/dry-run candidate。
 - `tools/test` 仓库布局、历史来源、协议索引和路径守卫已通过；根 README 的内容与相对链接也由同一测试集持续检查。
 
@@ -50,7 +50,7 @@ flowchart LR
 - 真实 EMG 模型、数据集治理、产品级训练/评估与实机意图识别验证；当前模型路径不可视作产品模型。
 - C8T6 在真实 CAN 总线上的长期采集、错误恢复、语义一致性和整机联调。
 - VLA 真实控制明确禁止；如需进入正式链路，必须先形成受检候选并经过 NanoPi 与 M33，不得新增直控路径。
-- Task 11 尚待执行：M33/M55/C8T6 新前缀构建、ROS 2 colcon build/test、新 Android APK 构建及统一环境验证记录。
+- M55 默认构建的 Deepcraft backend/source-graph 链接缺口、ROS 2 Jazzy/colcon 环境验证及 Android APK 构建仍未完成；Task 11 的实际 `pass` / `fail` / `not-run` 矩阵见[迁移验证记录](docs/validation/migration-validation.md)。
 
 ## 目录结构
 
@@ -80,28 +80,28 @@ tools/      仓库验证、构建辅助与隔离的 bench-debug 工具
 
 ## 快速开始与构建入口
 
-下列命令均从仓库根目录执行。标注“待 Task 11 验证”的命令是当前工程入口，不代表已在本次迁移环境成功运行。
+下列命令均从仓库根目录执行；括号中的状态来自 2026-07-13 的 Task 11 环境，工具路径、警告与未运行条件见[迁移验证记录](docs/validation/migration-validation.md)。
 
-**M33（待 Task 11 验证）**
+**M33（pass；未烧录/未实机验证）**
 
 ```powershell
 scons -C firmware/m33 -j4
 ```
 
-**M55（待 Task 11 验证）**
+**M55（fail；`ifx_deepcraft_wake_*` 链接缺失）**
 
 ```powershell
 scons -C firmware/m55 -j4
 ```
 
-**C8T6（待 Task 11 验证）**
+**C8T6（pass；未烧录/未实机验证）**
 
 ```powershell
 cmake --preset Debug -S firmware/c8t6
 cmake --build firmware/c8t6/build/Debug
 ```
 
-**ROS 2 Jazzy / Linux（待 Task 11 在 ROS 环境验证）**
+**ROS 2 Jazzy / Linux（not-run；本机无 Jazzy/colcon）**
 
 ```bash
 source /opt/ros/jazzy/setup.bash
@@ -110,14 +110,14 @@ colcon test --base-paths ros/rehab_arm_ws/src
 colcon test-result --verbose
 ```
 
-**Platform Web（迁移阶段已验证 build）**
+**Platform Web（pass）**
 
 ```powershell
 npm --prefix platform ci
 npm --prefix platform run build:web
 ```
 
-**Platform API（迁移阶段仅验证下列康复四文件；完整测试集门禁待修复 `runner.logs` 旧依赖）**
+**Platform API（康复四文件 pass：55 passed；完整测试集 fail：`runner.logs` collection 缺失）**
 
 ```powershell
 python -m pip install -r platform/api/requirements.txt
@@ -125,7 +125,7 @@ python -m pytest platform/api/tests/test_rehab_arm_app_backend.py platform/api/t
 python -m uvicorn app.main:app --app-dir platform/api
 ```
 
-**Android/Capacitor（sync 已验证；APK build 待 Task 11 验证）**
+**Android/Capacitor（sync pass；APK not-run：缺少 Java/ADB/Android SDK）**
 
 ```powershell
 npm --prefix apps/mobile ci
@@ -133,7 +133,7 @@ npm --prefix apps/mobile run sync:web
 npm --prefix apps/mobile run build:debug
 ```
 
-**VLA（迁移阶段已验证 pytest）**
+**VLA（pass：14 passed）**
 
 ```powershell
 python -m pytest ai/vla/tests -q
@@ -176,7 +176,7 @@ npm --prefix platform run build:web
 npm --prefix apps/mobile run sync:web
 ```
 
-这些命令分别证明其测试或构建契约，不自动证明固件可烧录、ROS 可 colcon 构建、APK 可安装、CAN 实车可用或医疗安全合格。Task 11 将补充逐工程的 `pass` / `fail` / `not-run` 环境记录。
+这些命令分别证明其测试或构建契约，不自动证明固件可烧录、ROS 可 colcon 构建、APK 可安装、CAN 实车可用或医疗安全合格。逐工程的实际 `pass` / `fail` / `not-run` 环境记录见[迁移验证记录](docs/validation/migration-validation.md)。
 
 ## Git 历史与迁移来源
 
