@@ -1,0 +1,101 @@
+#include "can_proto.h"
+
+#include <string.h>
+
+int32_t can_proto_encode_sensor(const fusion_snapshot_t *snapshot, can_message_t *message)
+{
+    uint8_t i;
+
+    if ((snapshot == 0) || (message == 0))
+    {
+        return -1;
+    }
+
+    message->id = F103_CAN_ID_SENSOR_TX;
+    message->dlc = 8U;
+    for (i = 0U; i < FUSION_ADC_CHANNEL_COUNT; ++i)
+    {
+        const uint16_t sample = snapshot->adc_raw[i];
+        message->data[i * 2U] = (uint8_t)(sample & 0xFFU);
+        message->data[(i * 2U) + 1U] = (uint8_t)((sample >> 8) & 0xFFU);
+    }
+    return 0;
+}
+
+int32_t can_proto_encode_health(node_state_t state,
+                                uint16_t error_count,
+                                uint8_t q_fill,
+                                uint16_t rx_count,
+                                uint16_t tx_count,
+                                can_message_t *message)
+{
+    if (message == 0)
+    {
+        return -1;
+    }
+
+    message->id = F103_CAN_ID_HEALTH_TX;
+    message->dlc = 8U;
+    message->data[0] = (uint8_t)state;
+    message->data[1] = (uint8_t)(error_count & 0xFFU);
+    message->data[2] = (uint8_t)((error_count >> 8) & 0xFFU);
+    message->data[3] = q_fill;
+    message->data[4] = (uint8_t)(rx_count & 0xFFU);
+    message->data[5] = (uint8_t)((rx_count >> 8) & 0xFFU);
+    message->data[6] = (uint8_t)(tx_count & 0xFFU);
+    message->data[7] = (uint8_t)((tx_count >> 8) & 0xFFU);
+    return 0;
+}
+
+int32_t can_proto_decode_control(const can_message_t *message, can_proto_command_t *command)
+{
+    if ((message == 0) || (command == 0))
+    {
+        return -1;
+    }
+
+    if ((message->id != F103_CAN_ID_CTRL_RX) || (message->dlc != 8U))
+    {
+        return -1;
+    }
+
+    command->cmd_id = message->data[0];
+    command->seq = message->data[1];
+    command->payload_len = 6U;
+    (void)memcpy(command->payload, &message->data[2], 6U);
+    return 0;
+}
+
+int32_t can_proto_encode_ack(uint8_t cmd_id,
+                             uint8_t seq,
+                             uint8_t status,
+                             const uint8_t *resp_payload,
+                             uint8_t resp_len,
+                             can_message_t *message)
+{
+    if (message == 0)
+    {
+        return -1;
+    }
+
+    message->id = F103_CAN_ID_ACK_TX;
+    message->dlc = 8U;
+    message->data[0] = cmd_id;
+    message->data[1] = seq;
+    message->data[2] = status;
+    message->data[3] = 0U;
+    message->data[4] = 0U;
+    message->data[5] = 0U;
+    message->data[6] = 0U;
+    message->data[7] = 0U;
+
+    if ((resp_payload != 0) && (resp_len > 0U))
+    {
+        if (resp_len > 5U)
+        {
+            resp_len = 5U;
+        }
+        (void)memcpy(&message->data[3], resp_payload, resp_len);
+    }
+    return 0;
+}
