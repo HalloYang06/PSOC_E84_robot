@@ -2241,3 +2241,19 @@ Fix / reusable trick:
 
 Status:
 - External blocker: board/KitProg must be physically reconnected before final M33 BLE validation.
+
+## 2026-07-12 - Do not manually restart CM55 while M33 Bluetooth is active
+
+Symptoms:
+- After a healthy clean-build boot and successful BLE advertising, running `m33_cm55_restart` caused BLE to disappear and M33 to stop responding.
+- OpenOCD showed Secure `CFSR=0x00010000`, `HFSR=0x40000000`, PC `0xEFFFFFFE`; Non-secure Fault registers stayed zero.
+
+Root cause:
+- The manual CM55 reset changes shared chip power/runtime state while the CYW55500 HCI/BTSTACK path is active. It is not a safe runtime recovery operation in this profile.
+
+Fix / reusable trick:
+- Do not use `m33_cm55_restart` during BLE operation or BLE soak tests.
+- Recover with a full system reset/power cycle, then preserve the normal startup order: M55 runtime ready first, Bluetooth power-up second.
+
+Status:
+- Operational restriction documented. A full system reset restored M55, Bluetooth, NUS, heartbeat, and zero Fault registers.

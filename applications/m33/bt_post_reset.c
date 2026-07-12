@@ -7,12 +7,12 @@
 #include "bt_hci_uart_prm.h"
 #include "cybt_platform_config.h"
 #include "cybt_platform_hci.h"
+#include "cybt_platform_util.h"
 #include "wiced_bt_dev.h"
 #include "wiced_bt_stack_platform.h"
 
 #define HCI_VSC_UPDATE_BAUDRATE_CMD                (0xFC18)
 #define HCI_VSC_UPDATE_BAUDRATE_LEN                (6u)
-#define HCI_UART_DEFAULT_BAUDRATE                  (115200u)
 
 typedef enum
 {
@@ -221,7 +221,7 @@ void bt_post_reset_cback(void)
         return;
     }
 
-    if ((brcm_patch_ram_length <= 0) || (brcm_patchram_buf == RT_NULL))
+    if (brcm_patch_ram_length <= 0)
     {
         rt_kprintf("[bt.hci] patch image invalid\n");
         g_bt_fwdl_cb.state = BT_POST_RESET_STATE_DONE;
