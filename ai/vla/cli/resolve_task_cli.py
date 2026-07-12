@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from vla_system.services.vla_bridge_service import VLABridgeService
+from ai.vla.services.vla_bridge_service import VLABridgeService
 
 
 def build_parser() -> argparse.ArgumentParser:

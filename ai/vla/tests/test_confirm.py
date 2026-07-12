@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from vla_system.services.confirm_service import ConfirmationService
-from vla_system.utils.json_schema import GroundingResult, RankedCandidate, SceneObject, SceneRegion, SceneRelation, TaskDraft, TaskType
+from ai.vla.services.confirm_service import ConfirmationService
+from ai.vla.utils.json_schema import GroundingResult, RankedCandidate, SceneObject, SceneRegion, SceneRelation, TaskDraft, TaskType
 
 
 class ConfirmationServiceTest(unittest.TestCase):

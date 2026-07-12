@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from vla_system.utils.json_schema import GroundingResult, SceneObject, SceneRegion, SceneRelation, TaskDraft
-from vla_system.utils.relation_encoder import object_region_ids
-from vla_system.utils.scene_encoder import (
+from ai.vla.utils.json_schema import GroundingResult, SceneObject, SceneRegion, SceneRelation, TaskDraft
+from ai.vla.utils.relation_encoder import object_region_ids
+from ai.vla.utils.scene_encoder import (
     display_name,
     normalize_object_label,
     normalize_region_label,

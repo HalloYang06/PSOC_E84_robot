@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from vla_system.utils.json_schema import SceneObject, SceneRegion, SceneRelation
-from vla_system.utils.scene_encoder import normalize_region_label
+from ai.vla.utils.json_schema import SceneObject, SceneRegion, SceneRelation
+from ai.vla.utils.scene_encoder import normalize_region_label
 
 
 REGION_PREDICATES = {"on", "in", "inside"}

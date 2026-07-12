@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from vla_system.services.confirm_service import ConfirmationService
-from vla_system.services.grounding_service import GroundingService
-from vla_system.services.phase_service import PhaseService
-from vla_system.services.task_parser_service import TaskParserService
-from vla_system.utils.json_schema import CONFIG_DIR, ResolveTaskInput, ResolvedTask, load_json_yaml
-from vla_system.utils.scene_encoder import load_task_schema, normalize_object_label, scene_object_index
-from vla_system.utils.validators import validate_resolve_request, validate_resolved_task
+from ai.vla.services.confirm_service import ConfirmationService
+from ai.vla.services.grounding_service import GroundingService
+from ai.vla.services.phase_service import PhaseService
+from ai.vla.services.task_parser_service import TaskParserService
+from ai.vla.utils.json_schema import CONFIG_DIR, ResolveTaskInput, ResolvedTask, load_json_yaml
+from ai.vla.utils.scene_encoder import load_task_schema, normalize_object_label, scene_object_index
+from ai.vla.utils.validators import validate_resolve_request, validate_resolved_task
 
 
 class VLABridgeService:

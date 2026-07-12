@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from vla_system.services.grounding_service import GroundingService
-from vla_system.utils.json_schema import SceneObject, SceneRegion, SceneRelation, TaskDraft, TaskType
+from ai.vla.services.grounding_service import GroundingService
+from ai.vla.utils.json_schema import SceneObject, SceneRegion, SceneRelation, TaskDraft, TaskType
 
 
 class GroundingServiceTest(unittest.TestCase):

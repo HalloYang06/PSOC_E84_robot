@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from vla_system.services.vla_bridge_service import VLABridgeService
+from ai.vla.services.vla_bridge_service import VLABridgeService
 
 
 class VLABridgeServiceTest(unittest.TestCase):

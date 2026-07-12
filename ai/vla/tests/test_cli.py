@@ -9,13 +9,13 @@ from pathlib import Path
 
 class ResolveTaskCliTest(unittest.TestCase):
     def test_cli_resolves_example_payload(self) -> None:
-        repo_root = Path(__file__).resolve().parents[2]
-        input_path = repo_root / "vla_system" / "examples" / "clear_pick_and_place.json"
+        repo_root = Path(__file__).resolve().parents[3]
+        input_path = repo_root / "ai" / "vla" / "examples" / "clear_pick_and_place.json"
         result = subprocess.run(
             [
                 sys.executable,
                 "-m",
-                "vla_system.cli.resolve_task_cli",
+                "ai.vla.cli.resolve_task_cli",
                 "--input",
                 str(input_path),
                 "--pretty",

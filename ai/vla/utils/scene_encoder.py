@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
-from vla_system.utils.json_schema import CONFIG_DIR, SceneObject, SceneRegion, load_json_yaml
+from ai.vla.utils.json_schema import CONFIG_DIR, SceneObject, SceneRegion, load_json_yaml
 
 
 @lru_cache(maxsize=1)

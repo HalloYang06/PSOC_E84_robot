@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from vla_system.services.vla_bridge_service import VLABridgeService
+from ai.vla.services.vla_bridge_service import VLABridgeService
 
 try:
     import rclpy

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from vla_system.utils.json_schema import Phase, PhasePrediction, RobotState, TaskType
+from ai.vla.utils.json_schema import Phase, PhasePrediction, RobotState, TaskType
 
 
 class PhaseService:

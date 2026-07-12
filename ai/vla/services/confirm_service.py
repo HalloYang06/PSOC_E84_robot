@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from vla_system.utils.json_schema import CONFIG_DIR, ConfirmationResult, GroundingResult, SceneObject, SceneRegion, SceneRelation, TaskDraft, load_json_yaml
-from vla_system.utils.prompt_builder import build_confirmation_question
+from ai.vla.utils.json_schema import CONFIG_DIR, ConfirmationResult, GroundingResult, SceneObject, SceneRegion, SceneRelation, TaskDraft, load_json_yaml
+from ai.vla.utils.prompt_builder import build_confirmation_question
 
 
 class ConfirmationService:

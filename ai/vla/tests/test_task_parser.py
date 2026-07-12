@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from vla_system.services.task_parser_service import TaskParserService
+from ai.vla.services.task_parser_service import TaskParserService
 
 
 class TaskParserServiceTest(unittest.TestCase):

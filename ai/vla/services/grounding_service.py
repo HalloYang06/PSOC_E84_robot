@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
-from vla_system.utils.json_schema import GroundingResult, RankedCandidate, SceneObject, SceneRegion, SceneRelation, TaskDraft
-from vla_system.utils.relation_encoder import direction_score, height_score, object_in_region_type
-from vla_system.utils.scene_encoder import (
+from ai.vla.utils.json_schema import GroundingResult, RankedCandidate, SceneObject, SceneRegion, SceneRelation, TaskDraft
+from ai.vla.utils.relation_encoder import direction_score, height_score, object_in_region_type
+from ai.vla.utils.scene_encoder import (
     detect_canonical_term,
     load_task_schema,
     normalize_object_label,
@@ -121,4 +121,3 @@ class GroundingService:
             return 0.90
 
         return 0.10
-

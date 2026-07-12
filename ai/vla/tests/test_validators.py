@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from vla_system.services.vla_bridge_service import VLABridgeService
-from vla_system.utils.validators import SchemaValidationError, validate_resolve_request, validate_resolved_task
+from ai.vla.services.vla_bridge_service import VLABridgeService
+from ai.vla.utils.validators import SchemaValidationError, validate_resolve_request, validate_resolved_task
 
 
 class ValidatorTest(unittest.TestCase):

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import unittest
 
-from vla_system.services.phase_service import PhaseService
-from vla_system.utils.json_schema import RobotState, TaskType
+from ai.vla.services.phase_service import PhaseService
+from ai.vla.utils.json_schema import RobotState, TaskType
 
 
 class PhaseServiceTest(unittest.TestCase):

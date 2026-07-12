@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from vla_system.utils.json_schema import ResolvedTask
-from vla_system.utils.scene_encoder import load_task_schema
+from ai.vla.utils.json_schema import ResolvedTask
+from ai.vla.utils.scene_encoder import load_task_schema
 
 
 class SchemaValidationError(ValueError):

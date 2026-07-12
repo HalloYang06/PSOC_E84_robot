@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from vla_system.utils.json_schema import TaskDraft, TaskType
-from vla_system.utils.scene_encoder import alias_map, detect_canonical_term, load_task_schema
+from ai.vla.utils.json_schema import TaskDraft, TaskType
+from ai.vla.utils.scene_encoder import alias_map, detect_canonical_term, load_task_schema
 
 
 class TaskParserService:
