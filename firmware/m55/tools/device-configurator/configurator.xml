@@ -1,0 +1,12 @@
+<configurators>
+  <configurator id="device-configurator">
+    <display_name>Device Configurator 5.50</display_name>
+    <executable>device-configurator</executable>
+    <icon>device-configurator.png</icon>
+    <command_line_args>--design=$CONFIG_FILE</command_line_args>
+    <new_configuration_enabled>true</new_configuration_enabled>
+    <supported_file_extensions>
+      <supported_file_extension default="true">modus</supported_file_extension>
+    </supported_file_extensions>
+  </configurator>
+</configurators>

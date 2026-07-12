@@ -1,0 +1,82 @@
+lights on kitchen
+lights on bedroom
+lights on living room
+lights on at kitchen
+lights on at bedroom
+lights on at living room
+lights on at the kitchen
+lights on at the bedroom
+lights on at the living room
+lights on in the kitchen
+lights on in the bedroom
+lights on in the living room
+switch on lights kitchen
+switch on lights bedroom
+switch on lights living room
+switch on lights at kitchen
+switch on lights at bedroom
+switch on lights at living room
+switch on lights at the kitchen
+switch on lights at the bedroom
+switch on lights at the living room
+switch on lights in the kitchen
+switch on lights in the bedroom
+switch on lights in the living room
+turn on lights kitchen
+turn on lights bedroom
+turn on lights living room
+turn on lights at kitchen
+turn on lights at bedroom
+turn on lights at living room
+turn on lights at the kitchen
+turn on lights at the bedroom
+turn on lights at the living room
+turn on lights in the kitchen
+turn on lights in the bedroom
+turn on lights in the living room
+lights off kitchen
+lights off bedroom
+lights off living room
+lights off at kitchen
+lights off at bedroom
+lights off at living room
+lights off at the kitchen
+lights off at the bedroom
+lights off at the living room
+lights off in the kitchen
+lights off in the bedroom
+lights off in the living room
+switch off lights kitchen
+switch off lights bedroom
+switch off lights living room
+switch off lights at kitchen
+switch off lights at bedroom
+switch off lights at living room
+switch off lights at the kitchen
+switch off lights at the bedroom
+switch off lights at the living room
+switch off lights in the kitchen
+switch off lights in the bedroom
+switch off lights in the living room
+turn off lights kitchen
+turn off lights bedroom
+turn off lights living room
+turn off lights at kitchen
+turn off lights at bedroom
+turn off lights at living room
+turn off lights at the kitchen
+turn off lights at the bedroom
+turn off lights at the living room
+turn off lights in the kitchen
+turn off lights in the bedroom
+turn off lights in the living room
+Turn on all lights
+dim lights at level <numbers10> {}
+dim lights with level <numbers10> {}
+dim lights to level <numbers10> {}
+turn lights at level <numbers10> {}
+turn lights with level <numbers10> {}
+turn lights to level <numbers10> {}
+set lights at level <numbers10> {}
+set lights with level <numbers10> {}
+set lights to level <numbers10> {}

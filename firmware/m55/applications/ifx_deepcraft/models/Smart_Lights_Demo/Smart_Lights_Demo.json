@@ -1,0 +1,193 @@
+{
+    "projectName": "smart_lights_demo",
+    "settings": {
+        "dict": "English-US",
+        "op_cond_db": 30,
+        "arm_core_id": "U55",
+        "nlu_timeout_ms": 0,
+        "nlu_sensitivity": 0,
+        "wwd_sensitivity": 50,
+        "ww_false_fraction": 0.0005,
+        "nlu_pos_silence_ms": 300,
+        "nlu_pre_silence_ms": 0,
+        "ww_cmd_maxwwgap_ms": 2000,
+        "wwd_pos_silence_ms": 0,
+        "wwd_pre_silence_ms": 200,
+        "cmd_reject_fraction": 0.99,
+        "cmd_timeout_adjust_level": 0,
+        "sod_ww_noactivity_timeout_ms": 500
+    },
+    "wakewords": [
+        {
+            "interjections": [
+                "OK"
+            ],
+            "word": "Infineon",
+            "phoneme": []
+        }
+    ],
+    "intents": [
+        {
+            "name": "TurnOnLights",
+            "nodes": [
+                {
+                    "required": true,
+                    "value": {
+                        "type": "text",
+                        "phrases": [
+                            "lights on",
+                            "switch on lights",
+                            "turn on lights"
+                        ]
+                    }
+                },
+                {
+                    "required": false,
+                    "value": {
+                        "type": "text",
+                        "phrases": [
+                            "at",
+                            "at the",
+                            "in the"
+                        ]
+                    }
+                },
+                {
+                    "required": true,
+                    "value": {
+                        "type": "variable",
+                        "name": "LocationLightsOn"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "TurnOffLights",
+            "nodes": [
+                {
+                    "required": true,
+                    "value": {
+                        "type": "text",
+                        "phrases": [
+                            "lights off",
+                            "switch off lights",
+                            "turn off lights"
+                        ]
+                    }
+                },
+                {
+                    "required": false,
+                    "value": {
+                        "type": "text",
+                        "phrases": [
+                            "at",
+                            "at the",
+                            "in the"
+                        ]
+                    }
+                },
+                {
+                    "required": true,
+                    "value": {
+                        "type": "variable",
+                        "name": "LocationLightsOff"
+                    }
+                }
+            ]
+        },
+        {
+            "name": "TurnOnAllLights",
+            "nodes": [
+                {
+                    "required": true,
+                    "value": {
+                        "type": "text",
+                        "phrases": [
+                            "Turn on all lights"
+                        ]
+                    }
+                }
+            ]
+        },
+        {
+            "name": "ChangeLights",
+            "nodes": [
+                {
+                    "required": true,
+                    "value": {
+                        "type": "text",
+                        "phrases": [
+                            "dim",
+                            "turn",
+                            "set"
+                        ]
+                    }
+                },
+                {
+                    "required": true,
+                    "value": {
+                        "type": "text",
+                        "phrases": [
+                            "lights"
+                        ]
+                    }
+                },
+                {
+                    "required": true,
+                    "value": {
+                        "type": "text",
+                        "phrases": [
+                            "at level",
+                            "with level",
+                            "to level"
+                        ]
+                    }
+                },
+                {
+                    "required": true,
+                    "value": {
+                        "type": "variable",
+                        "name": "Intensity"
+                    }
+                }
+            ]
+        }
+    ],
+    "variables": [
+        {
+            "name": "LocationLightsOn",
+            "type": "text",
+            "phrases": [
+                "kitchen",
+                "bedroom",
+                "living room"
+            ],
+            "ranges": null,
+            "units": null
+        },
+        {
+            "name": "LocationLightsOff",
+            "type": "text",
+            "phrases": [
+                "kitchen",
+                "bedroom",
+                "living room"
+            ],
+            "ranges": null,
+            "units": null
+        },
+        {
+            "name": "Intensity",
+            "type": "integer",
+            "phrases": null,
+            "ranges": [
+                "10"
+            ],
+            "units": [
+                [
+                    ""
+                ]
+            ]
+        }
+    ]
+}
