@@ -4,9 +4,9 @@
 
 **Goal:** 将 M33、M55、C8T6、正式 ROS2、康复 App/平台和 VLA 的有效代码与主线历史迁入 `HalloYang06/PSOC_E84_robot` 的单一 `main`，并交付可导航、可验证的新 README。
 
-**Architecture:** 每个来源分支先在隔离副本中用 `git-filter-repo` 重写到目标子目录，再以不相关历史合并的方式汇入目标仓库。固件保持三个独立构建工程；ROS 只保留正式 workspace；`ai-` 迁入康复 App、平台及其依赖闭包，并删除当前树中的农场游戏内容。最终执行结构、历史、构建、安全边界和秘密扫描后，只推送 `main`。
+**Architecture:** 每个来源 ref 以审计确认的原始 SHA 作为 `ours` merge 的第二父提交，再用 `git read-tree --prefix` 将完整 tree 或选定子目录放入目标前缀；原始提交对象和 SHA 不变，当前 tree 按 monorepo 目录组织。固件保持三个独立构建工程；ROS 只导入正式 workspace；`ai-` 只导入康复 App、平台及其依赖闭包，并从集成提交的当前 tree 删除农场游戏等排除内容。迁移全过程只使用本地 worktree 分支，最终审计通过后仅推送 `main`。
 
-**Tech Stack:** Git、git-filter-repo、PowerShell、Python 3.12/pytest、RT-Thread/SCons、ROS 2 Jazzy/colcon、Node.js/Next.js、FastAPI、Capacitor/Gradle、GitHub Actions。
+**Tech Stack:** Git、PowerShell、Python 3.12/pytest、RT-Thread/SCons、ROS 2 Jazzy/colcon、Node.js/Next.js、FastAPI、Capacitor/Gradle、GitHub Actions。
 
 ---
 
@@ -18,7 +18,7 @@
 - `.gitattributes`：固定文本换行策略，并把固件二进制资源标成 binary。
 - `README.md`：完整项目入口。
 - `docs/migration/source-map.md`：人类可读来源与迁移结果。
-- `docs/migration/source-map.json`：机器可读来源、原提交和重写后提交。
+- `docs/migration/source-map.json`：机器可读来源、准确的原始提交 SHA 和集成 merge commit SHA。
 - `docs/architecture/system-overview.md`：产品分层与数据流。
 - `docs/protocols/can-protocol.md`：CAN 协议入口。
 - `docs/protocols/m33-m55-ipc.md`：双核 IPC 入口。
@@ -37,7 +37,7 @@
 - `platform/web/`、`platform/api/`、`platform/runner/`、`platform/shared/`、`platform/deploy/`
 - `ai/vla/`
 
-## Task 1: 建立迁移防护与工具依赖
+## Task 1: 建立迁移防护
 
 **Files:**
 - Create: `.gitignore`
@@ -54,18 +54,17 @@ rtk git log -1 --oneline
 rtk git ls-remote --heads origin
 ```
 
-Expected: 本地分支为 `main`，只有计划/设计文档改动；目标远端仍无分支。
+Expected: 当前位于仅供本地迁移执行的 `codex/monorepo-migration` worktree 分支，只有计划/设计文档改动；目标远端仍无分支，且整个迁移期间不创建或推送远端 history/migration 分支。
 
-- [ ] **Step 2: 安装并验证历史重写工具**
+- [ ] **Step 2: 验证 Git 具备精确历史接入所需命令**
 
 Run:
 
 ```powershell
-rtk python -m pip install "git-filter-repo==2.47.0"
-rtk python -m git_filter_repo --version
+rtk git version --build-options
 ```
 
-Expected: 输出 `git-filter-repo` 版本，命令退出码为 0。
+Expected: Git 版本和构建信息正常输出；迁移只依赖 Git 内置的 merge、read-tree、cat-file 和 merge-base，不安装额外历史工具。
 
 - [ ] **Step 3: 先写仓库卫生测试**
 
@@ -200,129 +199,91 @@ rtk git commit -m "chore: add monorepo migration guards"
 
 Expected: `2 passed`，提交成功。
 
-## Task 2: 带历史迁入 M33
+## Task 2: 以原始 SHA 历史迁入 M33
 
 **Files:**
 - Import: `firmware/m33/**`
 - Modify: `docs/migration/source-map.md`
 - Modify: `docs/migration/source-map.json`
 
-- [ ] **Step 1: 创建 M33 隔离副本并固定来源提交**
+- [ ] **Step 1: 获取 M33 ref 并固定准确来源提交**
 
 Run:
 
 ```powershell
-rtk git clone --single-branch --branch M33 https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m33
-rtk git -C F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m33 rev-parse HEAD
+rtk git fetch https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git refs/heads/M33
+rtk git rev-parse FETCH_HEAD
 ```
 
-Expected: HEAD 为执行时确认的正式 M33 基线；若不再是设计中的 `24bae363`，先审计新增提交并更新 source map，不能静默继续。
+Expected: `FETCH_HEAD` 为执行时确认的正式 M33 tip；若不再是完整基线 `24bae363c50a221dbbaf61c041dfa501a9e539b4`，先审计新增提交并更新 source map，不能静默继续。
 
-- [ ] **Step 2: 将完整 M33 历史重写到目标路径**
+- [ ] **Step 2: 以原始 M33 tip 作为第二父提交并写入目标前缀**
 
 Run:
 
 ```powershell
-rtk python -m git_filter_repo --source F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m33 --target F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m33-filtered --to-subdirectory-filter firmware/m33 --force
+rtk powershell -NoProfile -Command 'function Invoke-Git { & git @args; if($LASTEXITCODE){throw "git $args failed"} }; $url="https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git"; $ref="refs/heads/M33"; $baseline="24bae363c50a221dbbaf61c041dfa501a9e539b4"; Invoke-Git fetch $url $ref; $sourceSha=(git rev-parse FETCH_HEAD).Trim(); if($sourceSha -notmatch "^[0-9a-f]{40}$"){throw "Invalid source SHA: $sourceSha"}; if($sourceSha -ne $baseline -and $env:M33_SOURCE_SHA -ne $sourceSha){throw "Tip advanced to $sourceSha; audit it, set M33_SOURCE_SHA to that exact SHA, and rerun"}; Invoke-Git fetch $url $sourceSha; if((git rev-parse FETCH_HEAD).Trim() -ne $sourceSha){throw "Exact SHA fetch mismatch"}; try { Invoke-Git merge -s ours --allow-unrelated-histories --no-commit $sourceSha; Invoke-Git read-tree --prefix=firmware/m33/ -u $sourceSha; Invoke-Git commit -m "merge: import M33 firmware history"; Invoke-Git diff --exit-code "${sourceSha}^{tree}" "HEAD:firmware/m33"; Invoke-Git cat-file -e "${sourceSha}^{commit}"; Invoke-Git merge-base --is-ancestor $sourceSha HEAD; $second=(git rev-parse HEAD^2).Trim(); if($second -ne $sourceSha){throw "Second parent $second != source $sourceSha"}; Write-Output "source_commit=$sourceSha"; Write-Output "integration_commit=$((git rev-parse HEAD).Trim())" } catch { git merge --abort 2>$null; throw }'
 ```
 
-Expected: `m33-filtered` 的每个历史提交均位于 `firmware/m33/` 下，作者和提交说明保留。
+Expected: `firmware/m33/SConstruct` 和 `firmware/m33/applications/main.c` 存在；集成提交的第二父提交是准确的原始 M33 tip。
 
-- [ ] **Step 3: 把重写历史合入本地 main**
+Expected: 同一不可变 `$sourceSha` 完成精确抓取、merge、read-tree、tree 对比、对象检查、祖先检查和第二父提交断言；输出实际 `source_commit` 与 `integration_commit` 供 source map 使用。普通路径日志从集成提交开始是预期行为，旧路径历史通过该原始 SHA 或第二父历史导航。
 
-Run:
-
-```powershell
-rtk git remote add migration-m33 F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m33-filtered
-rtk git fetch migration-m33
-rtk git merge --allow-unrelated-histories --no-ff migration-m33/M33 -m "merge: import M33 firmware history"
-rtk git remote remove migration-m33
-```
-
-Expected: `firmware/m33/SConstruct` 和 `firmware/m33/applications/main.c` 存在，合并提交有 M33 重写历史作为父历史。
-
-- [ ] **Step 4: 校验内容与历史**
-
-Run:
-
-```powershell
-rtk powershell -NoProfile -Command "$source=(git -C 'F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m33' ls-tree -r HEAD | ForEach-Object { $_ }); $target=(git ls-tree -r HEAD:firmware/m33 | ForEach-Object { $_ }); if((Compare-Object $source $target).Count){exit 1}"
-rtk git log --follow --format="%an|%ad|%s" --date=short -- firmware/m33/applications/main.c
-```
-
-Expected: tree 对比退出码为 0；关键文件显示多条迁移前历史，而非只有一个导入提交。
-
-## Task 3: 带历史迁入 M55
+## Task 3: 以原始 SHA 历史迁入 M55
 
 **Files:**
 - Import: `firmware/m55/**`
 
-- [ ] **Step 1: 创建并核对 M55 隔离副本**
+- [ ] **Step 1: 获取并核对 M55 来源 tip**
 
 Run:
 
 ```powershell
-rtk git clone --single-branch --branch M55 https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m55
-rtk git -C F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m55 rev-parse HEAD
+rtk git fetch https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git refs/heads/M55
+rtk git rev-parse FETCH_HEAD
 ```
 
-Expected: HEAD 为正式 `M55` 基线；WEN 临时延迟分支不自动替代它。
+Expected: `FETCH_HEAD` 为完整基线 `7298c28e81b43fdb5b37e84408cfc62895eaea85`，或为经审计并更新 source map 后的新正式 tip；WEN 临时延迟分支不自动替代它。
 
-- [ ] **Step 2: 重写并合并 M55 历史**
+- [ ] **Step 2: 以原始 M55 tip 作为第二父提交并写入目标前缀**
 
 Run:
 
 ```powershell
-rtk python -m git_filter_repo --source F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m55 --target F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m55-filtered --to-subdirectory-filter firmware/m55 --force
-rtk git remote add migration-m55 F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m55-filtered
-rtk git fetch migration-m55
-rtk git merge --allow-unrelated-histories --no-ff migration-m55/M55 -m "merge: import M55 firmware history"
-rtk git remote remove migration-m55
+rtk powershell -NoProfile -Command 'function Invoke-Git { & git @args; if($LASTEXITCODE){throw "git $args failed"} }; $url="https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git"; $ref="refs/heads/M55"; $baseline="7298c28e81b43fdb5b37e84408cfc62895eaea85"; Invoke-Git fetch $url $ref; $sourceSha=(git rev-parse FETCH_HEAD).Trim(); if($sourceSha -notmatch "^[0-9a-f]{40}$"){throw "Invalid source SHA: $sourceSha"}; if($sourceSha -ne $baseline -and $env:M55_SOURCE_SHA -ne $sourceSha){throw "Tip advanced to $sourceSha; audit it, set M55_SOURCE_SHA to that exact SHA, and rerun"}; Invoke-Git fetch $url $sourceSha; if((git rev-parse FETCH_HEAD).Trim() -ne $sourceSha){throw "Exact SHA fetch mismatch"}; try { Invoke-Git merge -s ours --allow-unrelated-histories --no-commit $sourceSha; Invoke-Git read-tree --prefix=firmware/m55/ -u $sourceSha; Invoke-Git commit -m "merge: import M55 firmware history"; Invoke-Git diff --exit-code "${sourceSha}^{tree}" "HEAD:firmware/m55"; Invoke-Git cat-file -e "${sourceSha}^{commit}"; Invoke-Git merge-base --is-ancestor $sourceSha HEAD; $second=(git rev-parse HEAD^2).Trim(); if($second -ne $sourceSha){throw "Second parent $second != source $sourceSha"}; Write-Output "source_commit=$sourceSha"; Write-Output "integration_commit=$((git rev-parse HEAD).Trim())" } catch { git merge --abort 2>$null; throw }'
 ```
 
-Expected: `firmware/m55/SConstruct`、M55 applications 和完整父历史存在。
+Expected: `firmware/m55/SConstruct`、M55 applications 存在，集成提交的第二父提交是准确的原始 M55 tip。
 
-- [ ] **Step 3: 校验 M55 tree 与关键文件历史**
+Expected: 同一不可变 `$sourceSha` 完成导入和全部历史断言；tree 完全一致，第二父提交精确等于实际来源 SHA，并输出 source map 所需的两个完整 SHA。
 
-Run:
-
-```powershell
-rtk powershell -NoProfile -Command "$source=(git -C 'F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\m55' ls-tree -r HEAD); $target=(git ls-tree -r HEAD:firmware/m55); if((Compare-Object $source $target).Count){exit 1}"
-rtk git log --follow --oneline -- firmware/m55/applications/main.c
-```
-
-Expected: tree 完全一致，关键文件有连续历史。
-
-## Task 4: 带历史迁入 C8T6
+## Task 4: 以原始 SHA 历史迁入 C8T6
 
 **Files:**
 - Import: `firmware/c8t6/**`
 
-- [ ] **Step 1: 克隆、重写和合并 C8T6**
+- [ ] **Step 1: 获取 C8T6 ref 并确认实时 tip**
 
 Run:
 
 ```powershell
-rtk git clone --single-branch --branch C8T6 https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\c8t6
-rtk python -m git_filter_repo --source F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\c8t6 --target F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\c8t6-filtered --to-subdirectory-filter firmware/c8t6 --force
-rtk git remote add migration-c8t6 F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\c8t6-filtered
-rtk git fetch migration-c8t6
-rtk git merge --allow-unrelated-histories --no-ff migration-c8t6/C8T6 -m "merge: import C8T6 sensor firmware history"
-rtk git remote remove migration-c8t6
+rtk git fetch https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git refs/heads/C8T6
+rtk git rev-parse FETCH_HEAD
 ```
 
-Expected: C8T6 工程进入 `firmware/c8t6/`，历史为 `main` 的祖先。
+Expected: `FETCH_HEAD` 为完整基线 `28b79a09dd4813fb31cc776f402183a75ed0e153`，或为经审计并更新 source map 后的新正式 tip。
 
-- [ ] **Step 2: 校验 C8T6 内容和历史**
+- [ ] **Step 2: 以原始 C8T6 tip 作为第二父提交并写入目标前缀**
 
 Run:
 
 ```powershell
-rtk powershell -NoProfile -Command "$source=(git -C 'F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\c8t6' ls-tree -r HEAD); $target=(git ls-tree -r HEAD:firmware/c8t6); if((Compare-Object $source $target).Count){exit 1}"
-rtk git log --follow --oneline -- firmware/c8t6
+rtk powershell -NoProfile -Command 'function Invoke-Git { & git @args; if($LASTEXITCODE){throw "git $args failed"} }; $url="https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git"; $ref="refs/heads/C8T6"; $baseline="28b79a09dd4813fb31cc776f402183a75ed0e153"; Invoke-Git fetch $url $ref; $sourceSha=(git rev-parse FETCH_HEAD).Trim(); if($sourceSha -notmatch "^[0-9a-f]{40}$"){throw "Invalid source SHA: $sourceSha"}; if($sourceSha -ne $baseline -and $env:C8T6_SOURCE_SHA -ne $sourceSha){throw "Tip advanced to $sourceSha; audit it, set C8T6_SOURCE_SHA to that exact SHA, and rerun"}; Invoke-Git fetch $url $sourceSha; if((git rev-parse FETCH_HEAD).Trim() -ne $sourceSha){throw "Exact SHA fetch mismatch"}; try { Invoke-Git merge -s ours --allow-unrelated-histories --no-commit $sourceSha; Invoke-Git read-tree --prefix=firmware/c8t6/ -u $sourceSha; Invoke-Git commit -m "merge: import C8T6 sensor firmware history"; Invoke-Git diff --exit-code "${sourceSha}^{tree}" "HEAD:firmware/c8t6"; Invoke-Git cat-file -e "${sourceSha}^{commit}"; Invoke-Git merge-base --is-ancestor $sourceSha HEAD; $second=(git rev-parse HEAD^2).Trim(); if($second -ne $sourceSha){throw "Second parent $second != source $sourceSha"}; Write-Output "source_commit=$sourceSha"; Write-Output "integration_commit=$((git rev-parse HEAD).Trim())" } catch { git merge --abort 2>$null; throw }'
 ```
 
-Expected: tree 对比通过并能看到来源历史。
+Expected: C8T6 工程进入 `firmware/c8t6/`，集成提交的第二父提交是准确的原始 C8T6 tip。
+
+Expected: 同一不可变 `$sourceSha` 完成导入和全部历史断言；tree 对比通过，第二父提交精确等于实际来源 SHA，并输出 source map 所需的两个完整 SHA。
 
 ## Task 5: 带历史迁入正式 ROS2 workspace
 
@@ -331,31 +292,30 @@ Expected: tree 对比通过并能看到来源历史。
 - Create: `ros/rehab_arm_ws/src/rehab_arm_bringup/test/test_mainline_boundaries.py`
 - Create: `tools/bench-debug/legacy-5dof/README.md`
 
-- [ ] **Step 1: 只筛选正式 workspace 历史**
+- [ ] **Step 1: 获取正式 ROS feature ref 并确认实时 tip**
 
 Run:
 
 ```powershell
-rtk git clone --single-branch --branch feature/rehab-arm-ros2-architecture https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\ros
-rtk python -m git_filter_repo --source F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\ros --target F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\ros-filtered --path rehab_arm_ros2_ws/ --path-rename rehab_arm_ros2_ws/:ros/rehab_arm_ws/ --force
+rtk git fetch https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git refs/heads/feature/rehab-arm-ros2-architecture
+rtk git rev-parse FETCH_HEAD
 ```
 
-Expected: 旧根级 HTTP bridge、`ROS_VLA_WebSocket` 和 NanoPi 早期 workspace 不在过滤结果中。
+Expected: `FETCH_HEAD` 为完整基线 `69450f7165e608f99fc4b574beffa5ac50d2331f`，或为经审计并更新 source map 后的新正式 tip。
 
-- [ ] **Step 2: 合并正式 ROS 历史**
+- [ ] **Step 2: 以原始 feature tip 为第二父提交，只写入正式 workspace**
 
 Run:
 
 ```powershell
-rtk git remote add migration-ros F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\ros-filtered
-rtk git fetch migration-ros
-rtk git merge --allow-unrelated-histories --no-ff migration-ros/feature/rehab-arm-ros2-architecture -m "merge: import formal ROS2 workspace history"
-rtk git remote remove migration-ros
+rtk powershell -NoProfile -Command 'function Invoke-Git { & git @args; if($LASTEXITCODE){throw "git $args failed"} }; $url="https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git"; $ref="refs/heads/feature/rehab-arm-ros2-architecture"; $baseline="69450f7165e608f99fc4b574beffa5ac50d2331f"; Invoke-Git fetch $url $ref; $sourceSha=(git rev-parse FETCH_HEAD).Trim(); if($sourceSha -notmatch "^[0-9a-f]{40}$"){throw "Invalid source SHA: $sourceSha"}; if($sourceSha -ne $baseline -and $env:ROS_SOURCE_SHA -ne $sourceSha){throw "Tip advanced to $sourceSha; audit it, set ROS_SOURCE_SHA to that exact SHA, and rerun"}; Invoke-Git fetch $url $sourceSha; if((git rev-parse FETCH_HEAD).Trim() -ne $sourceSha){throw "Exact SHA fetch mismatch"}; try { Invoke-Git merge -s ours --allow-unrelated-histories --no-commit $sourceSha; Invoke-Git read-tree --prefix=ros/rehab_arm_ws/ -u "${sourceSha}:rehab_arm_ros2_ws"; Invoke-Git commit -m "merge: import formal ROS2 workspace history"; Invoke-Git diff --exit-code "${sourceSha}:rehab_arm_ros2_ws" "HEAD:ros/rehab_arm_ws"; Invoke-Git cat-file -e "${sourceSha}^{commit}"; Invoke-Git merge-base --is-ancestor $sourceSha HEAD; $second=(git rev-parse HEAD^2).Trim(); if($second -ne $sourceSha){throw "Second parent $second != source $sourceSha"}; Write-Output "source_commit=$sourceSha"; Write-Output "integration_commit=$((git rev-parse HEAD).Trim())" } catch { git merge --abort 2>$null; throw }'
 ```
 
-Expected: `ros/rehab_arm_ws/src/rehab_arm_psoc_bridge`、6DOF description 和 MuJoCo 包存在。
+Expected: `ros/rehab_arm_ws/src/rehab_arm_psoc_bridge`、6DOF description 和 MuJoCo 包存在；旧根级 HTTP bridge、`ROS_VLA_WebSocket` 和 NanoPi 早期 workspace 不在当前 tree。原始 feature tip 是集成提交的第二父提交，且其全部历史 SHA 保持不变。
 
-- [ ] **Step 3: 先写正式入口边界测试**
+Expected: 同一不可变 `$sourceSha` 完成正式 workspace 导入和全部历史断言；子树完全一致，第二父提交精确等于实际来源 SHA，并输出 source map 所需的两个完整 SHA。
+
+- [ ] **Step 4: 先写正式入口边界测试**
 
 Create `ros/rehab_arm_ws/src/rehab_arm_bringup/test/test_mainline_boundaries.py`:
 
@@ -385,7 +345,7 @@ def test_sim_data_collection_keeps_demo_disabled_by_default() -> None:
     assert "DeclareLaunchArgument('enable_demo_trajectory', default_value='false')" in text
 ```
 
-- [ ] **Step 4: 运行边界测试并补充隔离说明**
+- [ ] **Step 5: 运行边界测试并补充隔离说明**
 
 Run:
 
@@ -406,7 +366,7 @@ offline/demo publishers only. They must not be referenced by a real-device
 launch file or used as evidence of 6DOF hardware readiness.
 ```
 
-- [ ] **Step 5: 提交 ROS 边界守卫**
+- [ ] **Step 6: 提交 ROS 边界守卫**
 
 Run:
 
@@ -429,40 +389,36 @@ Expected: 提交成功。
 - Modify: `apps/mobile/scripts/sync-web-assets.mjs`
 - Modify: `platform/package.json`
 
-- [ ] **Step 1: 刷新 `ai-` 康复分支并固定基线**
+- [ ] **Step 1: 获取 `ai-` 康复分支并固定准确来源 SHA**
 
 Run:
 
 ```powershell
-rtk git clone --single-branch --branch app/rehab-arm-mobile-stitch https://github.com/wenjunyong666/ai-.git F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\rehab-platform
-rtk git -C F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\rehab-platform rev-parse HEAD
+rtk git fetch https://github.com/wenjunyong666/ai-.git refs/heads/app/rehab-arm-mobile-stitch
+rtk git rev-parse FETCH_HEAD
 ```
 
-Expected: HEAD 不早于审计基线 `f6c2c026`；新增提交先阅读后再固定 source map。
+Expected: `FETCH_HEAD` 为完整审计基线 `f6c2c026ce6acda074608aa3e3ada880d62c62d3`；若 ref 已前进，先阅读新增提交并更新 source map，不能静默继续。
 
-- [ ] **Step 2: 过滤并重命名 App/平台路径**
+- [ ] **Step 2: 以原始分支 tip 为第二父提交并写入选定子树**
 
 Run:
 
 ```powershell
-rtk python -m git_filter_repo --source F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\rehab-platform --target F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\rehab-platform-filtered --path apps/mobile/rehab-arm-android/ --path apps/web/ --path apps/api/ --path apps/runner/ --path packages/shared/ --path infra/ --path package.json --path package-lock.json --path-rename apps/mobile/rehab-arm-android/:apps/mobile/ --path-rename apps/web/:platform/web/ --path-rename apps/api/:platform/api/ --path-rename apps/runner/:platform/runner/ --path-rename packages/shared/:platform/shared/ --path-rename infra/:platform/deploy/ --path-rename package.json:platform/package.json --path-rename package-lock.json:platform/package-lock.json --force
-rtk python -m git_filter_repo --source F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\rehab-platform-filtered --target F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\rehab-platform-clean --path platform/web/public/harvest-moon-phaser3-game/ --path "platform/web/app/projects/[id]/2d-upgrade/" --path platform/web/lib/game/ --path-glob "platform/web/public/downloads/rehab-arm/*.apk" --invert-paths --force
+rtk powershell -NoProfile -Command 'function Invoke-Git { & git @args; if($LASTEXITCODE){throw "git $args failed"} }; function Assert-ImportedTree($sourceSpec,$targetPrefix) { $sourceTree=(git rev-parse $sourceSpec).Trim(); $targetTree=(git write-tree --prefix=$targetPrefix).Trim(); Invoke-Git diff --exit-code $sourceTree $targetTree }; $url="https://github.com/wenjunyong666/ai-.git"; $ref="refs/heads/app/rehab-arm-mobile-stitch"; $baseline="f6c2c026ce6acda074608aa3e3ada880d62c62d3"; Invoke-Git fetch $url $ref; $sourceSha=(git rev-parse FETCH_HEAD).Trim(); if($sourceSha -notmatch "^[0-9a-f]{40}$"){throw "Invalid source SHA: $sourceSha"}; if($sourceSha -ne $baseline -and $env:PLATFORM_SOURCE_SHA -ne $sourceSha){throw "Tip advanced to $sourceSha; audit it, set PLATFORM_SOURCE_SHA to that exact SHA, and rerun"}; Invoke-Git fetch $url $sourceSha; if((git rev-parse FETCH_HEAD).Trim() -ne $sourceSha){throw "Exact SHA fetch mismatch"}; try { Invoke-Git merge -s ours --allow-unrelated-histories --no-commit $sourceSha; Invoke-Git read-tree --prefix=apps/mobile/ -u "${sourceSha}:apps/mobile/rehab-arm-android"; Invoke-Git read-tree --prefix=platform/web/ -u "${sourceSha}:apps/web"; Invoke-Git read-tree --prefix=platform/api/ -u "${sourceSha}:apps/api"; Invoke-Git read-tree --prefix=platform/runner/ -u "${sourceSha}:apps/runner"; Invoke-Git read-tree --prefix=platform/shared/ -u "${sourceSha}:packages/shared"; Invoke-Git read-tree --prefix=platform/deploy/ -u "${sourceSha}:infra"; Assert-ImportedTree "${sourceSha}:apps/mobile/rehab-arm-android" "apps/mobile/"; Assert-ImportedTree "${sourceSha}:apps/web" "platform/web/"; Assert-ImportedTree "${sourceSha}:apps/api" "platform/api/"; Assert-ImportedTree "${sourceSha}:apps/runner" "platform/runner/"; Assert-ImportedTree "${sourceSha}:packages/shared" "platform/shared/"; Assert-ImportedTree "${sourceSha}:infra" "platform/deploy/"; Invoke-Git checkout $sourceSha -- package.json package-lock.json; Invoke-Git mv package.json platform/package.json; Invoke-Git mv package-lock.json platform/package-lock.json; Invoke-Git rm -r -f --ignore-unmatch -- platform/web/public/harvest-moon-phaser3-game ":(literal)platform/web/app/projects/[id]/2d-upgrade" platform/web/lib/game ":(glob)platform/web/public/downloads/rehab-arm/*.apk"; Invoke-Git commit -m "merge: import rehabilitation app and platform history"; Invoke-Git cat-file -e "${sourceSha}^{commit}"; Invoke-Git merge-base --is-ancestor $sourceSha HEAD; $second=(git rev-parse HEAD^2).Trim(); if($second -ne $sourceSha){throw "Second parent $second != source $sourceSha"}; Write-Output "source_commit=$sourceSha"; Write-Output "integration_commit=$((git rev-parse HEAD).Trim())" } catch { git merge --abort 2>$null; throw }'
 ```
 
-Expected: `rehab-platform-clean` 当前 tree 只包含 App、平台运行闭包和对应历史，不含 `docs/screenshots`、APK、Harvest Moon 静态游戏、2D upgrade 游戏页和 `lib/game`。
+Expected: App、Web、API、Runner、shared 和 deploy 位于目标目录；来源根 `package.json` 和 `package-lock.json` 经 index-safe `git checkout`/`git mv` 进入 `platform/`；集成提交的当前 tree 明确排除 APK、Harvest Moon 静态游戏、`2d-upgrade` 游戏页和 `lib/game`。未选中的 `docs/screenshots` 等来源路径不进入当前 tree。
 
-- [ ] **Step 3: 合并 App/平台历史**
+- [ ] **Step 3: 校验 App/平台排除项**
 
 Run:
 
 ```powershell
-rtk git remote add migration-platform F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\rehab-platform-clean
-rtk git fetch migration-platform
-rtk git merge --allow-unrelated-histories --no-ff migration-platform/app/rehab-arm-mobile-stitch -m "merge: import rehabilitation app and platform history"
-rtk git remote remove migration-platform
+rtk git ls-files "*.apk" "platform/web/public/harvest-moon-phaser3-game/**" ":(literal)platform/web/app/projects/[id]/2d-upgrade" "platform/web/lib/game/**"
 ```
 
-Expected: App、Web、API、Runner、shared 和 deploy 均位于目标目录。
+Expected: Step 2 已用同一不可变 `$sourceSha` 断言原始 `ai-` SHA 存在、是 `HEAD` 的祖先且精确等于 `HEAD^2`，并输出 source map 所需的两个 SHA；本步骤命令无输出。
 
 - [ ] **Step 4: 先验证旧同步路径会失败**
 
@@ -593,22 +549,19 @@ Expected: 提交不包含 `node_modules`、`.next`、APK 或数据库。
 - Import: `ai/vla/**`
 - Create: `ai/vla/README.md`
 
-- [ ] **Step 1: 过滤旧 `ai` 分支的 VLA 系统历史**
+- [ ] **Step 1: 获取原始 `ai` ref 并只写入 VLA 子树**
 
 Run:
 
 ```powershell
-rtk git clone --single-branch --branch ai https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\vla
-rtk python -m git_filter_repo --source F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\vla --target F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\vla-filtered --path vla_system/ --path-rename vla_system/:ai/vla/ --force
-rtk git remote add migration-vla F:\RT-ThreadStudio\workspace\PSOC_E84_robot-migration\vla-filtered
-rtk git fetch migration-vla
-rtk git merge --allow-unrelated-histories --no-ff migration-vla/ai -m "merge: import VLA prototype history"
-rtk git remote remove migration-vla
+rtk powershell -NoProfile -Command 'function Invoke-Git { & git @args; if($LASTEXITCODE){throw "git $args failed"} }; $url="https://github.com/ChillAmnesiac/Medical-Rehabilitation-Manipulator.git"; $ref="refs/heads/ai"; $baseline="517df8f37105f659f2fe3561b46540ced830c731"; Invoke-Git fetch $url $ref; $sourceSha=(git rev-parse FETCH_HEAD).Trim(); if($sourceSha -notmatch "^[0-9a-f]{40}$"){throw "Invalid source SHA: $sourceSha"}; if($sourceSha -ne $baseline -and $env:VLA_SOURCE_SHA -ne $sourceSha){throw "Tip advanced to $sourceSha; audit it, set VLA_SOURCE_SHA to that exact SHA, and rerun"}; Invoke-Git fetch $url $sourceSha; if((git rev-parse FETCH_HEAD).Trim() -ne $sourceSha){throw "Exact SHA fetch mismatch"}; try { Invoke-Git merge -s ours --allow-unrelated-histories --no-commit $sourceSha; Invoke-Git read-tree --prefix=ai/vla/ -u "${sourceSha}:vla_system"; Invoke-Git commit -m "merge: import VLA prototype history"; Invoke-Git diff --exit-code "${sourceSha}:vla_system" "HEAD:ai/vla"; Invoke-Git cat-file -e "${sourceSha}^{commit}"; Invoke-Git merge-base --is-ancestor $sourceSha HEAD; $second=(git rev-parse HEAD^2).Trim(); if($second -ne $sourceSha){throw "Second parent $second != source $sourceSha"}; Write-Output "source_commit=$sourceSha"; Write-Output "integration_commit=$((git rev-parse HEAD).Trim())" } catch { git merge --abort 2>$null; throw }'
 ```
 
-Expected: VLA schema、验证器和测试在 `ai/vla/`，没有电机/CAN 直控实现。
+Expected: 实时 tip 为审计 SHA `517df8f37105f659f2fe3561b46540ced830c731`，或为经审计并更新 source map 后的新正式 tip；VLA schema、验证器和测试在 `ai/vla/`，没有电机/CAN 直控实现，原始 `ai` tip 是集成提交的第二父提交。
 
-- [ ] **Step 2: 写权限说明并运行原有测试**
+Expected: 同一不可变 `$sourceSha` 完成 VLA 子树导入和全部历史断言；子树完全一致，第二父提交精确等于实际来源 SHA，并输出 source map 所需的两个完整 SHA。
+
+- [ ] **Step 3: 写权限说明并运行原有测试**
 
 Create `ai/vla/README.md`:
 
@@ -630,7 +583,7 @@ rtk rg -n -i "socketcan|cansend|motor current|torque command|m33 override" ai/vl
 
 Expected: 测试通过；搜索结果只能出现在禁止规则、测试或文档中，不能出现实际直控调用。
 
-- [ ] **Step 3: 提交 VLA 边界说明**
+- [ ] **Step 4: 提交 VLA 边界说明**
 
 Run:
 
@@ -650,7 +603,7 @@ Expected: 提交成功。
 
 - [ ] **Step 1: 写机器可读来源映射**
 
-Create `docs/migration/source-map.json` with the actual refreshed full hashes captured in Tasks 2–7:
+Create `docs/migration/source-map.json` with the actual refreshed full source hashes and the exact full integration commit hashes recorded in Tasks 2–7. Every component object must contain both `source_commit` and `integration_commit`; copy the real 40-character `git rev-parse HEAD` output for the latter, never an abbreviated hash or sample value. The fixed fields are:
 
 ```json
 {
@@ -668,7 +621,20 @@ Create `docs/migration/source-map.json` with the actual refreshed full hashes ca
 }
 ```
 
-If a refreshed official ref advanced, replace only that component's `source_commit` with the audited full hash and record the change in `source-map.md`.
+The abbreviated objects above deliberately list only audited baseline metadata; the operational source of truth is the exact `source_commit=<actual-live-sha>` emitted by each Task 2–7 import block. Before saving the file, replace every baseline `source_commit` with that task's actual audited value and add the emitted `integration_commit` beside it. Never retain an old baseline when an explicitly approved ref advanced. Record any advancement in `source-map.md`, and validate that every final object has both 40-character hashes before committing.
+
+Recover the exact integration hashes from their unique merge subjects if they were not copied during import:
+
+```powershell
+rtk git log --all -1 --format=%H --fixed-strings --grep="merge: import M33 firmware history"
+rtk git log --all -1 --format=%H --fixed-strings --grep="merge: import M55 firmware history"
+rtk git log --all -1 --format=%H --fixed-strings --grep="merge: import C8T6 sensor firmware history"
+rtk git log --all -1 --format=%H --fixed-strings --grep="merge: import formal ROS2 workspace history"
+rtk git log --all -1 --format=%H --fixed-strings --grep="merge: import rehabilitation app and platform history"
+rtk git log --all -1 --format=%H --fixed-strings --grep="merge: import VLA prototype history"
+```
+
+Expected: each command prints exactly one 40-character integration merge commit SHA; use those six exact values in the corresponding `integration_commit` fields.
 
 - [ ] **Step 2: 写历史回归测试**
 
@@ -687,23 +653,27 @@ def git(*args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
 
 
-def test_every_component_path_exists_and_has_history() -> None:
+def test_every_component_path_exists_and_exact_source_is_ancestor() -> None:
     data = json.loads((ROOT / "docs/migration/source-map.json").read_text("utf-8"))
     for component in data["components"]:
         for raw_path in component["target_path"].split(","):
             path = raw_path.strip()
             assert (ROOT / path).exists(), path
-            assert int(git("rev-list", "--count", "HEAD", "--", path)) > 1, path
-
-
-def test_target_remote_has_no_non_main_local_branch_plan() -> None:
-    branches = git("branch", "--format=%(refname:short)").splitlines()
-    assert branches == ["main"]
+        source = component["source_commit"]
+        integration = component["integration_commit"]
+        assert len(source) == 40
+        assert len(integration) == 40
+        git("cat-file", "-e", f"{source}^{{commit}}")
+        git("cat-file", "-e", f"{integration}^{{commit}}")
+        subprocess.check_call(
+            ["git", "merge-base", "--is-ancestor", source, "HEAD"], cwd=ROOT
+        )
+        assert git("rev-parse", f"{integration}^2") == source
 ```
 
 - [ ] **Step 3: 写人类可读来源说明并运行测试**
 
-Create `docs/migration/source-map.md` with a six-row table matching the JSON component list. Add an `Excluded material` section containing these exact classifications: temporary M33/M55 recovery branches require separate promotion; `NanoPi_ROSNode` direct CAN master is bench-only; old `APP` and its generated build tree are superseded; `ROS_VLA_WebSocket` is historical; farm-game and generated APK paths are excluded from the platform filter.
+Create `docs/migration/source-map.md` with a six-row table matching the JSON component list. Each row must show the exact source SHA and exact integration merge commit SHA. Explain that the source SHA is the integration commit's second parent, original hashes remain unchanged, and ordinary logs on new prefixed paths begin at the integration commit because older commits used source-root paths. Add an `Excluded material` section containing these exact classifications: temporary M33/M55 recovery branches require separate promotion; `NanoPi_ROSNode` direct CAN master is bench-only; old `APP` and its generated build tree are superseded; `ROS_VLA_WebSocket` is historical; farm-game and generated APK paths are excluded from the integrated platform tree.
 
 Run:
 
@@ -711,7 +681,7 @@ Run:
 rtk python -m pytest tools/test/test_history_provenance.py -v
 ```
 
-Expected: 所有目标路径有多条历史，且本地最终分支列表只有 `main`。
+Expected: 所有目标路径存在；每个准确来源 SHA 都是 `HEAD` 的祖先，并且等于所记录集成提交的第二父提交。测试不要求 `git log --follow` 跨越前缀变化，也不限制迁移 worktree 中仍存在的本地临时分支。
 
 - [ ] **Step 4: 提交来源映射**
 
@@ -993,7 +963,7 @@ rtk git log --graph --decorate --oneline -n 40
 rtk python -m pytest tools/test/test_history_provenance.py -v
 ```
 
-Expected: 本地只有 `main`；工作树干净；组件历史通过 merge 节点汇入 `main`；来源测试通过。
+Expected: 当前分支为本地迁移 worktree 分支 `codex/monorepo-migration`，工作树干净；每个组件的准确原始 SHA 通过 merge 节点汇入当前历史；来源测试通过。此时不要求本地只有 `main`，因为临时 worktree 分支尚未收尾。
 
 - [ ] **Step 2: 扫描秘密、大文件和禁止产物**
 
@@ -1007,26 +977,26 @@ rtk python -m pytest tools/test/test_repository_layout.py -v
 
 Expected: 无真实密钥；没有超过 20 MiB 的非预期 blob；无 APK、数据库、缓存或构建目录被跟踪。
 
-- [ ] **Step 3: 确认远端仍为空且只推送 main**
+- [ ] **Step 3: 快进本地 main 并移除临时 worktree/分支**
+
+从原始仓库 checkout（不是即将删除的迁移 worktree）运行：
+
+```powershell
+rtk powershell -NoProfile -Command '$repo="F:\RT-ThreadStudio\workspace\PSOC_E84_robot"; $worktree="F:\RT-ThreadStudio\workspace\.worktrees\PSOC_E84_robot\monorepo-migration"; $branch="codex/monorepo-migration"; $current=(git -C $repo branch --show-current).Trim(); if($current -ne "main"){throw "Original checkout must be on main, got $current"}; $dirty=@(git -C $repo status --porcelain); if($dirty.Count){throw "Original main index/worktree is not clean: $dirty"}; $migrationTip=(git -C $repo rev-parse $branch).Trim(); if($migrationTip -notmatch "^[0-9a-f]{40}$"){throw "Invalid migration tip: $migrationTip"}; git -C $repo merge --ff-only $migrationTip; if($LASTEXITCODE){exit $LASTEXITCODE}; $mainTip=(git -C $repo rev-parse main).Trim(); if($mainTip -ne $migrationTip){throw "main $mainTip != saved migration tip $migrationTip"}; git -C $repo worktree remove $worktree; if($LASTEXITCODE){exit $LASTEXITCODE}; git -C $repo branch -d $branch; if($LASTEXITCODE){exit $LASTEXITCODE}; if((git -C $repo branch --show-current).Trim() -ne "main"){throw "Original checkout left main"}; $finalDirty=@(git -C $repo status --porcelain); if($finalDirty.Count){throw "Final main index/worktree is not clean: $finalDirty"}; Write-Output "main=$mainTip"'
+```
+
+Expected: 删除任何资源前先明确断言原始 checkout 位于 `main` 且 index/worktree（包括未跟踪文件）干净，并保存迁移 tip；`main` 仅以 `--ff-only` 快进，且精确等于该已保存 tip 后，才移除临时 worktree 和本地分支。最终仍位于干净的 `main`。
+
+- [ ] **Step 4: 确认远端仍为空并只推送 main**
 
 Run:
 
 ```powershell
-rtk git ls-remote --heads origin
-rtk git push -u origin main
+rtk git -C F:\RT-ThreadStudio\workspace\PSOC_E84_robot ls-remote --heads origin
+rtk git -C F:\RT-ThreadStudio\workspace\PSOC_E84_robot push -u origin main
+rtk powershell -NoProfile -Command '$heads=@(git -C "F:\RT-ThreadStudio\workspace\PSOC_E84_robot" ls-remote --heads origin | ForEach-Object { ($_ -split "`t")[1] }); if($heads.Count -ne 1 -or $heads[0] -ne "refs/heads/main"){throw "Unexpected remote heads: $heads"}'
+rtk git -C F:\RT-ThreadStudio\workspace\PSOC_E84_robot fetch origin main
+rtk git -C F:\RT-ThreadStudio\workspace\PSOC_E84_robot diff --exit-code main origin/main
 ```
 
-Expected: 推送前无远端 heads；推送后只有 `refs/heads/main`。
-
-- [ ] **Step 4: 远端回读验证**
-
-Run:
-
-```powershell
-rtk git ls-remote --symref origin HEAD
-rtk git ls-remote --heads origin
-rtk git fetch origin main
-rtk git diff --exit-code main origin/main
-```
-
-Expected: `origin/main` 与本地 `main` 完全一致，远端没有迁移或 history 分支。
+Expected: 推送前目标远端无 heads；只推送本地 `main`，绝不推送 `codex/monorepo-migration` 或任何 history/migration ref。推送后远端 heads 的精确集合为 `refs/heads/main`，且 `origin/main` 与本地 `main` 完全一致。
