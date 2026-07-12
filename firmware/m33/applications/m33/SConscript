@@ -1,0 +1,32 @@
+from building import *
+import os
+
+cwd = GetCurrentDir()
+root = os.path.abspath(os.path.join(cwd, '..', '..'))
+src = Glob('*.c') + Glob('*.cpp')
+excluded = {
+    'voice_manager.c',
+    'voice_trigger.c',
+    'wake_word_tflite.cpp',
+    'wake_word_microfrontend.c',
+    'wake_word_fft.cpp',
+    'wake_word_fft_util.cpp',
+    'wake_word_kiss_fft_int16.cpp',
+}
+src = [item for item in src if os.path.basename(str(item)) not in excluded]
+CPPPATH = [
+    cwd,
+    os.path.join(root, 'applications', 'common'),
+    os.path.join(root, 'vendor_btstack', 'btstack', 'wiced_include'),
+    os.path.join(root, 'vendor_btstack', 'btstack_integration', 'COMPONENT_HCI-UART', 'include'),
+    os.path.join(root, 'vendor_btstack', 'btstack_integration', 'COMPONENT_HCI-UART', 'common'),
+    os.path.join(root, 'vendor_btstack', 'abstraction_rtos', 'include'),
+]
+
+LIBPATH = [
+    os.path.join(root, 'vendor_btstack', 'lib', 'COMPONENT_CM33', 'COMPONENT_SOFTFP', 'TOOLCHAIN_GCC_ARM'),
+]
+LIBS = ['libbtstack.a']
+
+group = DefineGroup('AppM33', src, depend=[''], CPPPATH=CPPPATH, LIBS=LIBS, LIBPATH=LIBPATH)
+Return('group')

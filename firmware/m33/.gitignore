@@ -1,0 +1,143 @@
+# Python
+*.pyc
+
+# Build outputs
+*.map
+*.elf
+*.hex
+*.axf
+*.bin
+*.out
+*.uimg
+*.a
+*.lib
+*.so
+*.dll
+
+# Object files
+*.o
+*.obj
+*.d
+*.i
+*.dep
+
+# Debug files
+*.pdb
+*.idb
+*.ilk
+
+# Backup files
+*.old
+*.bak
+*~
+
+# Build directories
+build/
+Debug/
+Release/
+Output/
+Listings/
+Objects/
+
+# RT-Thread Studio
+.config
+cconfig.h
+rtconfig.h.bak
+rtconfig_preinc.h
+.sconsign.dblite
+*.dblite
+
+# Eclipse (RT-Thread Studio based on Eclipse)
+.metadata/
+.project.bak
+*.launch
+*.pydevproject
+.autotools
+.classpath
+.factorypath
+.buildpath
+.target
+.tern-project
+.texlipse
+.springBeans
+.recommenders/
+RemoteSystemsTempFiles/
+
+# Infineon/Cypress
+DebugConfig/
+RTE/
+settings/
+*.uvguix*
+*.uvopt
+*.uvoptx
+*.uvproj
+*.uvprojx
+JLinkLog.txt
+JLinkSettings.ini
+
+# Documentation
+documentation/html/
+doxygen_warnings.txt
+
+# Tags
+GPATH
+GRTAGS
+GTAGS
+tags
+.tags
+.tags_sorted_by_file
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+artifacts/
+data/sensor_capture/*.csv
+
+# SCons
+.sconsign.dblite
+.sconf_temp/
+.config 3
+.config 4
+.config 5
+
+# Specific exclusions
+Midea-X1
+
+# Keep specific files (use ! to negate ignore)
+!proj_cm33_s_signed.hex
+!.project
+!.cproject
+!.settings/
+!.settings/**
+!makefile.targets
+!rtconfig_preinc.h
+!rtconfig.h
+!SConstruct
+!SConscript
+
+# local tool binaries
+tools/device-configurator/*.exe
+tools/edgeprotecttools/bin/*.exe
+tools/merge-hex/*.exe
+tools/merge-hex/*.dll
+tools/merge-hex/platforms/*.dll
+tools/merge-hex/styles/*.dll
+tools/merge-hex/iconengines/*.dll
+tools/merge-hex/imageformats/*.dll
+tools/merge-hex/networkinformation/*.dll
+tools/merge-hex/tls/*.dll
+tools/merge-hex/generic/*.dll
+
+# Git
+*.orig
+*.rej
+/makefile.targets

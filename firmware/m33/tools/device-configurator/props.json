@@ -1,0 +1,88 @@
+{
+    "core": {
+        "id": "9009a3a8-dde8-44a4-858d-480772f85490",
+        "name": "device-configurator",
+        "version": "5.50.0.3824",
+        "schema-version": "1"
+    },
+    "opt": {
+        "tool": {
+            "make-vars": {
+                "device-configurator_BASE": "$$TOOL_DIR:relative$$"
+            }
+        },
+        "programs": [
+            {
+                "id": "45159e28-aab0-4fee-af1e-08dcb3a8c4fd",
+                "short-name": "device-configurator",
+                "exe": "device-configurator",
+                "icon": "device-configurator.png",
+                "display-name": "Device Configurator 5.50",
+                "priority-extensions": [
+                    ".modus"
+                ],
+                "extensions": [
+                    ".modus"
+                ],
+                "open-file": "--design $$FINDFILE:.*\\.modus\\$:bsp_project:full$$ $$MPN_LIST_OPT$$",
+                "new-file": "--design $$BSP_DIR$$/config/design.modus $$MPN_LIST_OPT$$",
+                "make-vars": {
+                    "device-configurator_EXE": "$$TOOLPATH:device-configurator:relative$$"
+                },
+                "type": "bsp",
+                "app-make-targets": [
+                    "config",
+                    "device-configurator"
+                ],
+                "prj-make-targets": [
+                    "config",
+                    "device-configurator"
+                ],
+                "compat": {
+                    "open": {
+                        "EXT": "modus",
+                        "FILE": "$$FINDFILE:.*\\.modus\\$:bsp_project:full$$",
+                        "TOOL": "$$TOOLPATH:device-configurator:absolute$$",
+                        "TOOL_FLAGS": "--design $$FINDFILE:.*\\.modus\\$:bsp_project:full$$ $$DEVICE_SUPPORT_LIB_OPT$$ --check-mcu=$$DEVICE$$ --check-coprocessors=$$ADDITIONAL_DEVICES:,$$",
+                        "TOOL_NEWCFG_FLAGS": "--design $$PROJECT_DIR$$/design.modus $$DEVICE_SUPPORT_LIB_OPT$$"
+                    }
+                }
+            },
+            {
+                "id": "d41295bf-65a5-4a7a-a9ef-202f13ac7757",
+                "short-name": "device-configurator-cli",
+                "exe": "device-configurator-cli",
+                "display-name": "device-configurator-cli",
+                "extensions": [
+                    ".modus"
+                ],
+                "open-file": "--build $$FINDFILE:.*\\.modus\\$:bsp_project:full$$",
+                "make-vars": {
+                    "device-configurator-cli_EXE": "$$TOOLPATH:device-configurator-cli:relative$$"
+                },
+                "type": "bsp",
+                "code-gen": [
+                    {
+                        "name": "device-configurator",
+                        "sources": [
+                            "$$FINDFILE:.*\\.modus\\$:bsp_project:absolute$$"
+                        ],
+                        "outputs": [
+                            "$$FINDDIR:.*\\.modus\\$:bsp_project:absolute:error$$/GeneratedSource/cycfg.timestamp"
+                        ],
+                        "args": "--build $$FINDFILE:.*\\.modus\\$:bsp_project:absolute$$ --readonly",
+                        "passes": [
+                            "default"
+                        ]
+                    }
+                ],
+                "compat": {
+                    "open": {
+                        "TOOL": "$$TOOLPATH:device-configurator-cli:absolute$$",
+                        "TOOL_FLAGS": "--build $$FINDFILE:.*\\.modus\\$:bsp_project:full$$ --check-mcu=$$DEVICE$$ --check-coprocessors=$$ADDITIONAL_DEVICES:,$$ --readonly"
+                    }
+                }
+            }
+        ]
+    }
+}
