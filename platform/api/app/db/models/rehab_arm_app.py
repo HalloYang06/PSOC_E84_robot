@@ -1,0 +1,296 @@
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from ..base import Base
+
+
+class RehabAppUserProfile(Base):
+    __tablename__ = "rehab_app_user_profiles"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    role: Mapped[str] = mapped_column(String(32), nullable=False, default="patient", index=True)
+    affected_side: Mapped[str] = mapped_column(String(32), nullable=False, default="")
+    rehab_stage: Mapped[str] = mapped_column(String(80), nullable=False, default="")
+    medical_constraints: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    pain_baseline: Mapped[float | None] = mapped_column(Float, nullable=True)
+    phone_number: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    phone_verified_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class RehabAppPhoneVerification(Base):
+    __tablename__ = "rehab_app_phone_verifications"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    phone: Mapped[str] = mapped_column(String(40), nullable=False, default="")
+    phone_number: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    debug_code: Mapped[str] = mapped_column(String(12), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(40), nullable=False, default="bind_account")
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending", index=True)
+    expires_at: Mapped[object] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    confirmed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppDeviceBinding(Base):
+    __tablename__ = "rehab_app_device_bindings"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    m33_device_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    ble_name: Mapped[str] = mapped_column(String(160), nullable=False, default="")
+    firmware_version: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    trust_status: Mapped[str] = mapped_column(String(40), nullable=False, default="unverified", index=True)
+    platform_project_id: Mapped[str] = mapped_column(String(36), nullable=False, default="", index=True)
+    bound_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    last_seen_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    syncs: Mapped[list["RehabAppTrainingPlanSync"]] = relationship(back_populates="device")
+
+
+class RehabAppTrainingPlan(Base):
+    __tablename__ = "rehab_app_training_plans"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    source: Mapped[str] = mapped_column(String(40), nullable=False, default="manual", index=True)
+    goal: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    target_joints: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    movement_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    sets: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    reps: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    duration_sec: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    target_angle_range: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    speed_level: Mapped[str] = mapped_column(String(40), nullable=False, default="slow")
+    assist_level: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    emg_policy: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    safety_constraints: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="draft", index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    syncs: Mapped[list["RehabAppTrainingPlanSync"]] = relationship(back_populates="plan")
+
+
+class RehabAppTrainingPlanSync(Base):
+    __tablename__ = "rehab_app_training_plan_syncs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    plan_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_plans.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_device_bindings.id"), nullable=False, index=True)
+    plan_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    sync_status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending", index=True)
+    m33_reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    synced_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    plan: Mapped[RehabAppTrainingPlan] = relationship(back_populates="syncs")
+    device: Mapped[RehabAppDeviceBinding] = relationship(back_populates="syncs")
+
+
+class RehabAppBleMessage(Base):
+    __tablename__ = "rehab_app_ble_messages"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_device_bindings.id"), nullable=False, index=True)
+    message_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    related_plan_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", index=True)
+    related_session_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    ack_status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending", index=True)
+    ack_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    acked_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RehabAppTrainingSession(Base):
+    __tablename__ = "rehab_app_training_sessions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    plan_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_plans.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_device_bindings.id"), nullable=False, index=True)
+    started_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    ended_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="started", index=True)
+    completion_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    interruption_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    avg_assist_level: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    max_assist_level: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    m33_reject_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    pain_after: Mapped[float | None] = mapped_column(Float, nullable=True)
+    user_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class RehabAppPreflightCheck(Base):
+    __tablename__ = "rehab_app_preflight_checks"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    plan_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_plans.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_device_bindings.id"), nullable=False, index=True)
+    sync_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_plan_syncs.id"), nullable=False, index=True)
+    plan_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="passed", index=True)
+    checked_by_role: Mapped[str] = mapped_column(String(40), nullable=False, default="patient", index=True)
+    checklist: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    pain_before: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppSessionSafetyEvent(Base):
+    __tablename__ = "rehab_app_session_safety_events"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_sessions.id"), nullable=False, index=True)
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String(40), nullable=False, default="info", index=True)
+    source: Mapped[str] = mapped_column(String(40), nullable=False, default="patient", index=True)
+    pain_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppTrainingReport(Base):
+    __tablename__ = "rehab_app_training_reports"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_sessions.id"), nullable=False, unique=True, index=True)
+    plan_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_plans.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_device_bindings.id"), nullable=False, index=True)
+    summary: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    emg_overview: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    intent_overview: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    safety_overview: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    recommendations: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class RehabAppTrainingReportReview(Base):
+    __tablename__ = "rehab_app_training_report_reviews"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    report_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_reports.id"), nullable=False, index=True)
+    reviewer_role: Mapped[str] = mapped_column(String(40), nullable=False, default="patient", index=True)
+    review_status: Mapped[str] = mapped_column(String(40), nullable=False, default="needs_review", index=True)
+    reviewer_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    next_step: Mapped[str] = mapped_column(String(80), nullable=False, default="continue_current_plan", index=True)
+    request_new_plan: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    follow_up_payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppPlanConstraintReview(Base):
+    __tablename__ = "rehab_app_plan_constraint_reviews"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    plan_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_plans.id"), nullable=False, index=True)
+    plan_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1, index=True)
+    reviewer_role: Mapped[str] = mapped_column(String(40), nullable=False, default="therapist", index=True)
+    review_status: Mapped[str] = mapped_column(String(40), nullable=False, default="approved", index=True)
+    reviewed_constraints: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    review_note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppEmgSummary(Base):
+    __tablename__ = "rehab_app_emg_summaries"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_sessions.id"), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(40), nullable=False)
+    muscle_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    rms_avg: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    peak: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    activation_avg: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    fatigue_index: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    contact_quality: Mapped[str] = mapped_column(String(40), nullable=False, default="unknown")
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppIntentInferenceSummary(Base):
+    __tablename__ = "rehab_app_intent_inference_summaries"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    session_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_training_sessions.id"), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(40), nullable=False, default="m55")
+    predicted_action: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    topk: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    stability_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppAiTrainingDraft(Base):
+    __tablename__ = "rehab_app_ai_training_drafts"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    input_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    context_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    generated_plan: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    risk_notes: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    accepted_plan_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", index=True)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppDiagnosticUpload(Base):
+    __tablename__ = "rehab_app_diagnostic_uploads"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    device_id: Mapped[str] = mapped_column(String(64), ForeignKey("rehab_app_device_bindings.id"), nullable=False, index=True)
+    snapshot_type: Mapped[str] = mapped_column(String(80), nullable=False, default="diagnostic_snapshot", index=True)
+    firmware_version: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    battery_level: Mapped[float | None] = mapped_column(Float, nullable=True)
+    m33_state: Mapped[str] = mapped_column(String(80), nullable=False, default="unknown", index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class RehabAppOfflineQueueItem(Base):
+    __tablename__ = "rehab_app_offline_queue_items"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    client_item_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    operation_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    resource_type: Mapped[str] = mapped_column(String(80), nullable=False, default="", index=True)
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    replay_status: Mapped[str] = mapped_column(String(40), nullable=False, default="queued", index=True)
+    replay_result: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    replayed_at: Mapped[object | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class RehabAppPlatformSyncRun(Base):
+    __tablename__ = "rehab_app_platform_sync_runs"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
+    resource_types: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="completed", index=True)
+    summary: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[object] = mapped_column(DateTime(timezone=True), server_default=func.now())

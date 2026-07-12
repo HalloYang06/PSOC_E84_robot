@@ -1,0 +1,351 @@
+.shell {
+  --bg: #031018;
+  --panel: rgba(7, 25, 34, 0.86);
+  --panel-strong: rgba(9, 35, 47, 0.94);
+  --line: rgba(108, 226, 238, 0.18);
+  --line-strong: rgba(117, 247, 221, 0.38);
+  --text: #ecffff;
+  --muted: rgba(205, 232, 238, 0.68);
+  --accent: #75f7dd;
+  --warn: #ffd166;
+  --danger: #ff7a7a;
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 10px;
+  overflow: hidden;
+  padding: 12px;
+  color: var(--text);
+  background:
+    linear-gradient(90deg, rgba(117, 247, 221, 0.055) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(117, 247, 221, 0.04) 1px, transparent 1px),
+    radial-gradient(circle at 14% 0%, rgba(90, 215, 255, 0.18), transparent 34%),
+    var(--bg);
+  background-size: 34px 34px, 34px 34px, auto, auto;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.shell a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.topNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 36px;
+  align-items: center;
+}
+
+.topNav a,
+.toolbarActions a {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(117, 247, 221, 0.07);
+  color: rgba(236, 255, 255, 0.86);
+  font-size: 12px;
+  font-weight: 900;
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.topNav a:hover,
+.toolbarActions a:hover,
+.focusCard:hover,
+.decisionItem:hover,
+.nextRows a:hover,
+.drawerBody a:hover {
+  transform: translateY(-1px);
+  border-color: var(--line-strong);
+  background: rgba(117, 247, 221, 0.13);
+}
+
+.header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(380px, 0.82fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.header > div,
+.statusStrip article,
+.railHead,
+.toolbar,
+.decisionList,
+.rightRail details,
+.bottomDock,
+.focusCard,
+.drawerBody article,
+.drawerBody a,
+.nextRows a {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(10, 36, 48, 0.9), rgba(5, 18, 28, 0.86));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.header > div {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+}
+
+.header span,
+.railHead span,
+.toolbar span,
+.drawerBody span,
+.logHeader span,
+.focusCard span,
+.decisionItem span,
+.nextRows span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.18;
+  letter-spacing: 0;
+}
+
+.header p,
+.focusCard p,
+.decisionItem p,
+.drawerBody p,
+.nextRows p,
+.emptyState p,
+.emptyText {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.statusStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.statusStrip article {
+  min-height: 68px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 9px;
+}
+
+.statusStrip strong {
+  font-size: 20px;
+}
+
+.statusStrip small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.layout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 320px;
+  gap: 10px;
+  overflow: hidden;
+}
+
+.leftRail,
+.centerPane,
+.rightRail {
+  min-height: 0;
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.leftRail,
+.rightRail,
+.decisionList {
+  overflow: auto;
+}
+
+.railHead,
+.toolbar,
+.logHeader {
+  min-height: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+}
+
+.railHead strong,
+.logHeader strong,
+.rightRail summary strong {
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.focusCard {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-left: 3px solid rgba(117, 247, 221, 0.38);
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.focusCard strong {
+  color: var(--text);
+  font-size: 22px;
+}
+
+.toolbar strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 18px;
+}
+
+.toolbarActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.decisionList {
+  min-height: 0;
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.decisionItem,
+.emptyState {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: center;
+  padding: 11px;
+  border: 1px solid rgba(117, 247, 221, 0.14);
+  border-radius: 8px;
+  background: rgba(4, 16, 24, 0.72);
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease;
+}
+
+.emptyState {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.decisionItem p {
+  grid-column: 2;
+}
+
+.decisionItem strong,
+.emptyState strong,
+.drawerBody strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.decisionItem[data-tone="danger"] {
+  border-left: 3px solid var(--danger);
+}
+
+.decisionItem[data-tone="warning"] {
+  border-left: 3px solid var(--warn);
+}
+
+.decisionItem[data-tone="review"] {
+  border-left: 3px solid var(--accent);
+}
+
+.rightRail details {
+  overflow: hidden;
+}
+
+.rightRail summary {
+  min-height: 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.rightRail summary::-webkit-details-marker {
+  display: none;
+}
+
+.drawerBody {
+  display: grid;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.drawerBody article,
+.drawerBody a {
+  display: grid;
+  gap: 5px;
+  padding: 10px;
+}
+
+.bottomDock {
+  min-height: 92px;
+  max-height: 132px;
+  overflow: hidden;
+}
+
+.nextRows {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.nextRows a {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+}
+
+@media (max-width: 1120px) {
+  .shell {
+    overflow: auto;
+  }
+
+  .header,
+  .layout {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .statusStrip,
+  .nextRows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    padding: 10px;
+  }
+
+  .statusStrip,
+  .nextRows,
+  .decisionItem,
+  .emptyState {
+    grid-template-columns: 1fr;
+  }
+
+  .decisionItem p {
+    grid-column: auto;
+  }
+}

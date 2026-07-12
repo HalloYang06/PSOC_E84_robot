@@ -1,0 +1,2008 @@
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import {
+  发起前端C小游戏协作,
+  插入前端C小游戏需求,
+  归档公司层焦点条目,
+} from "../../../actions";
+import {
+  getCurrentAuthState,
+  getCollaborationMessagesState,
+  getProjectComputerNodesState,
+  getProjectKnowledgeDocumentsState,
+  getProjectSkillsState,
+  getProjectState,
+  getProjectWorkstationsState,
+  getRequirementsState,
+  getTasksDataScopedState,
+  getUsageData,
+} from "../../../../lib/server-data";
+import { isNpcSeatRecord, platformProviderIdFromSeat } from "../../../../lib/platform-provider";
+import { runnerStateLabel, summarizeRunnerDispatchState } from "../../../../lib/runner-status";
+import { OfficeNetwork, type OfficeNetworkEdge, type OfficeNetworkNode } from "./office-network";
+import styles from "./company.module.css";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+type AnyRecord = Record<string, any>;
+type OfficeEdge = {
+  id: string;
+  fromId: string;
+  toId: string;
+  count: number;
+  label: string;
+  needStatus: string;
+  taskStatus: string;
+  receiptStatus: string;
+  activityTime: number;
+  kind: "collaboration" | "relationship";
+  needId?: string;
+  taskId?: string;
+  dispatchId?: string;
+  summary: string;
+  dispatchStatus: string;
+  taskCount: number;
+  receiptCount: number;
+  latestReceipt: string;
+  activityLabel: string;
+  nextAction: string;
+  detailTitle: string;
+  detailOutput: string;
+  latestTaskTitle: string;
+  knowledgeClosureCount: number;
+  skillClosureCount: number;
+  closureActivityLabel: string;
+  runtimePackageLabel: string;
+  runtimePackageActivityLabel: string;
+  chainItems: Array<{
+    id: string;
+    title: string;
+    taskStatus: string;
+    receiptStatus: string;
+    activityLabel: string;
+    latestReceipt: string;
+  }>;
+  workbenchHref?: string;
+  knowledgeHref?: string;
+  skillHref?: string;
+};
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function text(value: unknown, fallback = "") {
+  const next = String(value ?? "").trim();
+  return next || fallback;
+}
+
+function record(value: unknown): AnyRecord {
+  return value && typeof value === "object" ? (value as AnyRecord) : {};
+}
+
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    const next = text(value, "");
+    if (next) return next;
+  }
+  return "";
+}
+
+function numberValue(value: unknown) {
+  const next = Number(value ?? 0);
+  return Number.isFinite(next) ? next : 0;
+}
+
+function formatTokenCount(value: number) {
+  return new Intl.NumberFormat("zh-CN").format(Math.max(0, Math.round(value)));
+}
+
+function sameLocalDay(value: unknown, now = new Date()) {
+  const date = value ? new Date(String(value)) : null;
+  if (!date || Number.isNaN(date.getTime())) return false;
+  return date.getFullYear() === now.getFullYear()
+    && date.getMonth() === now.getMonth()
+    && date.getDate() === now.getDate();
+}
+
+function deriveThreadKind(providerId: string, threadId: string) {
+  const raw = `${providerId} ${threadId}`.toLowerCase();
+  if (raw.includes("claude")) return "Claude Code";
+  if (raw.includes("codex")) return "Codex";
+  return providerId || "thread";
+}
+
+function publicThreadState(value: unknown, automationEnabled = false) {
+  const raw = text(value, "").toLowerCase();
+  if (/online|ready|ok|watcher ready|connected|active/.test(raw)) return "线程已绑定";
+  if (/stale|timeout|delay/.test(raw)) return "可能延迟";
+  if (/offline|lost|failed|error/.test(raw)) return "需重连";
+  return automationEnabled ? "已绑定，待电脑可投递" : "待接入";
+}
+
+function publicComputerDispatchState(node: AnyRecord | undefined) {
+  return runnerStateLabel(node);
+}
+
+function looksInternalIdentifier(value: string) {
+  const raw = text(value, "");
+  return /^platform-npc-\d+$/i.test(raw)
+    || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)
+    || /^agent-[0-9a-f-]+$/i.test(raw);
+}
+
+function summarizeStructuredEvent(value: unknown, eventType: string) {
+  const raw = text(value, "");
+  if (!raw) return "";
+  if (/^\s*[{[]/.test(raw) || /"kind"\s*:/.test(raw) || /"expected_reply"\s*:/.test(raw)) {
+    if (/serial\.usb\.scan|serial_ports|usb_devices/i.test(raw)) {
+      return "执行电脑正在扫描串口和 USB 设备；扫描结果会进入设备数据工作台的真实设备下拉。";
+    }
+    if (/codex\.desktop\.dispatch|desktop_delivery/i.test(raw)) {
+      return "平台已登记桌面后台接收请求；等待目标桌面线程确认可见后同步结果。";
+    }
+    if (/runner_result|agent_result|final/i.test(raw)) {
+      return "执行结果已回到平台记录；可从对应工作台查看证据。";
+    }
+    return `${eventType}已进入项目记录；详细证据在对应工作台查看。`;
+  }
+  if (/scanned real device interfaces and synced them back to the platform/i.test(raw)) {
+    const node = raw.match(/(?:Runner|执行电脑|Execution computer)\s+([A-Za-z0-9._-]+)/i)?.[1];
+    return node
+      ? `执行电脑 ${node} 已完成真实设备扫描，并把结果同步到设备数据工作台。`
+      : "执行电脑已完成真实设备扫描，并把结果同步到设备数据工作台。";
+  }
+  return "";
+}
+
+function userFacingEventText(value: unknown, fallback = "") {
+  const structured = summarizeStructuredEvent(value, "组织事件");
+  if (structured) return structured;
+  const next = text(value, "")
+    .replace(
+      /\bRunner\s+([A-Za-z0-9._-]+)\s+received this dispatch on the execution computer, but Codex Desktop has not confirmed that the bound thread visibly received it\.[^\n]*/gi,
+      "执行电脑 $1 已收到派单，但桌面后台还没有确认接收；请保持桌面版在线后重新同步。",
+    )
+    .replace(/平台等待桌面收口/gi, "平台继续等待桌面结果")
+    .replace(/待收口/gi, "等结果")
+    .replace(/自动重试桌面同步/gi, "自动重试桌面提醒")
+    .replace(/已处于 in_progress 超过/gi, "已持续处理中超过")
+    .replace(/已处于 acked 超过/gi, "已停留在已接单状态超过")
+    .replace(/仍未拿到 final/gi, "仍未收到最终结果")
+    .replace(/等待桌面 final 回执/gi, "等待桌面最终结果")
+    .replace(/回写最小回执/gi, "同步已收到提醒")
+    .replace(/最小回执/gi, "已收到提醒")
+    .replace(/Runner 收件箱/gi, "执行记录")
+    .replace(/抢占式引导/gi, "桌面提醒")
+    .replace(/\bRunner\s+已收到云端派单，正在回写最小回执。/gi, "执行电脑已收到云端派单，正在等待桌面确认。")
+    .replace(/\bRunner\s+已完成云端派单闭环验收：/gi, "执行电脑已完成派单验收：")
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+Runner\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+received platform dispatch:?/gi, "执行电脑 $1 已收到平台派单：")
+    .replace(/执行电脑\s+([A-Za-z0-9._-]+)\s+执行电脑\s+received this dispatch on the execution computer,?\s*but\s+桌面线程\s+has not confirmed that the\s+绑定线程\s+visibly received it\.?/gi, "执行电脑 $1 已收到派单，正在等待桌面线程确认可见。")
+    .replace(/received this dispatch on the execution computer,?\s*but\s+桌面线程\s+has not confirmed that the\s+绑定线程\s+visibly received it\.?/gi, "已收到派单，正在等待桌面线程确认可见。")
+    .replace(/received platform dispatch:?/gi, "已收到平台派单：")
+    .replace(/\bRunner\s+([A-Za-z0-9._-]+)\s+runner\s+scanned real device interfaces and synced them back to the platform\.?/gi, "执行电脑 $1 已完成真实设备扫描，并把结果同步到设备数据工作台。")
+    .replace(/执行电脑\s+([A-Za-z0-9._-]+)\s+执行电脑\s+scanned real device interfaces and synced them back to the platform\.?/gi, "执行电脑 $1 已完成真实设备扫描，并把结果同步到设备数据工作台。")
+    .replace(/\bExecution computer\s+([A-Za-z0-9._-]+)\s+scanned real device interfaces and synced them back to the platform\.?/gi, "执行电脑 $1 已完成真实设备扫描，并把结果同步到设备数据工作台。")
+    .replace(/The computer connection is reachable;?\s*/gi, "电脑连接可用；")
+    .replace(/Codex Desktop UI 投递/gi, "桌面后台可接收")
+    .replace(/Codex Desktop UI delivery failed:?/gi, "桌面线程暂未确认收到：")
+    .replace(/已把这条派单送进绑定桌面线程；完整处理过程在桌面版继续。平台正在等待桌面线程写出最终回复。/gi, "执行电脑已登记桌面后台接收请求；待桌面线程确认可见后继续同步最终结果。")
+    .replace(/Codex Desktop/gi, "桌面线程")
+    .replace(/bound thread/gi, "绑定线程")
+    .replace(/alias_display_non_authoritative/gi, "历史标识展示规则")
+    .replace(/historical[_\s-]*alias(?:[_\s-]*non[_\s-]*authoritative)?/gi, "历史标识")
+    .replace(/current\s+alias/gi, "当前标识")
+    .replace(/source_thread/gi, "协作记录")
+    .replace(/canonical_workstation_id/gi, "协作记录")
+    .replace(/requested_workstation_id/gi, "协作记录")
+    .replace(/authoritative_([a-z]+_)?seat_id/gi, "协作记录")
+    .replace(/authoritative_target_seat_id/gi, "协作记录")
+    .replace(/session JSONL/gi, "同步记录")
+    .replace(/local path/gi, "当前电脑记录")
+    .replace(/\badapter\b/gi, "同步")
+    .replace(/\bbridge\b/gi, "同步")
+    .replace(/\brunner\b/gi, "执行电脑")
+    .replace(/\bcodex app-server\b/gi, "后台线程")
+    .replace(/\bcodex desktop ui\b/gi, "桌面线程")
+    .replace(/执行电脑\s+([A-Za-z0-9._-]+)\s+执行电脑\s+received this dispatch on the execution computer,?\s*but\s+桌面线程\s+has not confirmed that the\s+绑定线程\s+visibly received it\.?\s*Keep this item pending and retry desktop sync\.?/gi, "执行电脑 $1 已收到派单，正在等待桌面线程确认可见。")
+    .replace(/received this dispatch on the execution computer,?\s*but\s+桌面线程\s+has not confirmed that the\s+绑定线程\s+visibly received it\.?\s*Keep this item pending and retry desktop sync\.?/gi, "已收到派单，正在等待桌面线程确认可见。")
+    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, "关联记录")
+    .replace(/[A-Za-z]:[\\/][^\s"'`<>),\]]+/g, "当前电脑工作副本")
+    .replace(/\.codex[\\/][^\s"'`<>),\]]+/gi, "线程记录")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (!next || looksInternalIdentifier(next)) return fallback;
+  if (/^(关联记录|协作记录|同步记录)$/.test(next)) return fallback;
+  return next;
+}
+
+function publicStatusLabel(value: unknown) {
+  const raw = text(value, "").toLowerCase();
+  if (/completed|done|success|resolved/.test(raw)) return "已完成";
+  if (/acked|accepted/.test(raw)) return "已接单";
+  if (/delivered/.test(raw)) return "已送达";
+  if (/queued/.test(raw)) return "已排队";
+  if (/waiting_closeout|closeout/.test(raw)) return "等结果";
+  if (/running|progress|active|pending/.test(raw)) return "处理中";
+  if (/failed|error|blocked|rejected/.test(raw)) return "异常待处理";
+  return text(value, "已记录");
+}
+
+function publicNeedStatusLabel(value: unknown) {
+  const raw = text(value, "").toLowerCase();
+  if (/satisfied|completed|done|closed|resolved/.test(raw)) return "已满足";
+  if (/routed|queued|ready/.test(raw)) return "已路由";
+  if (/in_progress|running|active|processing/.test(raw)) return "处理中";
+  if (/review|approval|pending_human/.test(raw)) return "待确认";
+  if (/blocked|failed|rejected/.test(raw)) return "受阻";
+  if (/cancelled|archived/.test(raw)) return "已收起";
+  if (/draft/.test(raw)) return "草稿";
+  return "等待协作";
+}
+
+function publicTaskStatusLabel(value: unknown) {
+  const raw = text(value, "").toLowerCase();
+  if (/done|completed|closed|resolved/.test(raw)) return "已完成";
+  if (/running|active|in_progress|processing/.test(raw)) return "处理中";
+  if (/reviewing|waiting_user|waiting_npc/.test(raw)) return "等确认";
+  if (/queued|ready|acked|accepted/.test(raw)) return "已承接";
+  if (/blocked|failed|rejected/.test(raw)) return "受阻";
+  if (/cancelled|archived/.test(raw)) return "已收起";
+  return "待承接";
+}
+
+function canArchiveFocusQueueItem(kind: "needs" | "tasks", status: unknown) {
+  const raw = text(status, "").toLowerCase();
+  if (kind === "needs") return /satisfied|completed|done|closed|resolved/.test(raw);
+  return /done|completed|closed|resolved/.test(raw);
+}
+
+function isHiddenFocusQueueItem(status: unknown) {
+  return /archived|cancelled|canceled/.test(text(status, "").toLowerCase());
+}
+
+function publicReceiptLabel(messages: AnyRecord[]) {
+  if (messages.some((message) => /completed|done|delivered|final|resolved/i.test(text(message.status, "") + " " + text(message.message_type ?? message.messageType, "")))) {
+    return "已有最终回执";
+  }
+  if (messages.some((message) => /ack|progress|running|queued|delivered|waiting/i.test(text(message.status, "") + " " + text(message.message_type ?? message.messageType, "")))) {
+    return "已有过程回执";
+  }
+  return "等待回执";
+}
+
+function latestActivityTime(...values: unknown[]) {
+  let latest = 0;
+  for (const value of values) {
+    const raw = text(value, "");
+    if (!raw) continue;
+    const time = new Date(raw).getTime();
+    if (Number.isFinite(time)) latest = Math.max(latest, time);
+  }
+  return latest;
+}
+
+function shortPublicText(value: unknown, fallback: string, maxLength = 92) {
+  const next = userFacingEventText(value, fallback).replace(/\s+/g, " ").trim();
+  if (next.length <= maxLength) return next;
+  return `${next.slice(0, maxLength - 1)}…`;
+}
+
+function compactActivityLabel(value: number) {
+  if (!value) return "等待开始";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "等待开始";
+  return date.toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function collaborationNextAction(needStatus: string, taskStatus: string, receiptStatus: string) {
+  if (/确认|审核|review/i.test(needStatus)) return "先处理确认";
+  if (/阻塞|失败|拒绝|blocked|failed|rejected/i.test(`${needStatus} ${taskStatus} ${receiptStatus}`)) return "先处理阻塞";
+  if (/等待回执/.test(receiptStatus)) return "等待承接回执";
+  if (/最终|完成|满足/.test(`${needStatus} ${taskStatus} ${receiptStatus}`)) return "沉淀知识/Skill";
+  if (/待生成|待投递|等待/.test(taskStatus)) return "推进到承接任务";
+  return "查看协作详情";
+}
+
+function collaborationClosureNextAction(edge: {
+  knowledgeClosureCount: number;
+  skillClosureCount: number;
+  needStatus: string;
+  taskStatus: string;
+  receiptStatus: string;
+}) {
+  if (edge.knowledgeClosureCount || edge.skillClosureCount) return "索引沉淀 / 刷新上岗包";
+  return collaborationNextAction(edge.needStatus, edge.taskStatus, edge.receiptStatus);
+}
+
+function closureMetadata(value: AnyRecord) {
+  return {
+    ...record(value.metadata),
+    ...record(value.extra_data ?? value.extraData),
+  };
+}
+
+function closureMatches(value: AnyRecord, ids: { needId?: string; taskId?: string; dispatchId?: string }) {
+  const meta = closureMetadata(value);
+  if (text(meta.closure_source, "") !== "company_collaboration") return false;
+  return Boolean(
+    (ids.needId && text(meta.closure_need_id, "") === ids.needId)
+      || (ids.taskId && text(meta.closure_task_id, "") === ids.taskId)
+      || (ids.dispatchId && text(meta.closure_dispatch_id, "") === ids.dispatchId),
+  );
+}
+
+function closureActivityTime(value: AnyRecord) {
+  const meta = closureMetadata(value);
+  return latestActivityTime(
+    meta.indexed_at,
+    meta.indexedAt,
+    value.updated_at,
+    value.updatedAt,
+    value.created_at,
+    value.createdAt,
+  );
+}
+
+function runtimePackageSnapshotLabel(value: unknown) {
+  const snapshot = record(value);
+  return firstText(
+    snapshot.changed_skill_label,
+    snapshot.changedSkillLabel,
+    snapshot.changed_skill_id,
+    snapshot.changedSkillId,
+    snapshot.summary,
+    "待刷新",
+  );
+}
+
+function runtimePackageActivityLabel(value: unknown) {
+  const snapshot = record(value);
+  const time = latestActivityTime(
+    snapshot.generated_at,
+    snapshot.generatedAt,
+    snapshot.updated_at,
+    snapshot.updatedAt,
+    snapshot.activated_at,
+    snapshot.activatedAt,
+  );
+  return time ? compactActivityLabel(time) : "等待刷新";
+}
+
+function reviewPolicyLabel(value: unknown) {
+  const raw = text(value, "inherit").toLowerCase();
+  if (/strict|always|manual|required/.test(raw)) return "高风险确认";
+  if (/trusted|auto|bypass|allow/.test(raw)) return "直接派发边界";
+  return "继承工位规则";
+}
+
+function orgEventTypeLabel(value: unknown) {
+  const raw = text(value, "").toLowerCase();
+  if (/agent_result|runner_result|final|reply|receipt|closeout|minimal/.test(raw)) return "回执";
+  if (/agent_command|runner_command|dispatch|delivery/.test(raw)) return "派单事件";
+  if (/review|approval|human_review/.test(raw)) return "确认事件";
+  if (/requirement|need/.test(raw)) return "协作需求";
+  if (/progress|ack|running|queued|waiting|retry|desktop/.test(raw)) return "进度";
+  if (/blocked|failed|error|exception/.test(raw)) return "异常";
+  return "组织事件";
+}
+
+function messageMeta(value: AnyRecord) {
+  return {
+    ...record(value.extra_data ?? value.extraData),
+    ...record(value.metadata),
+  };
+}
+
+function nestedRunnerResult(value: AnyRecord) {
+  const meta = messageMeta(value);
+  return {
+    ...record(meta.runner_result ?? meta.runnerResult),
+    ...record(meta),
+  };
+}
+
+function desktopSyncTone(value: string) {
+  const raw = value.toLowerCase();
+  if (/已完成|已回复|已进入/.test(raw)) return "ready";
+  if (/处理中|已接单|等待结果/.test(raw)) return "running";
+  if (/等待|待接收|未确认/.test(raw)) return "waiting";
+  if (/异常|失败|需/.test(raw)) return "blocked";
+  return "idle";
+}
+
+function desktopEvidenceRank(value: AnyRecord) {
+  const meta = messageMeta(value);
+  const runner = nestedRunnerResult(value);
+  const status = text(value.status, "").toLowerCase();
+  const type = text(value.message_type ?? value.messageType, "").toLowerCase();
+  const hasThreadUrl = Boolean(firstText(runner.desktop_thread_url, meta.desktop_thread_url));
+  const isTimeoutRepair = meta.timeout_repair === true || record(meta.blocked_taxonomy).exception_kind === "desktop_final_sync_lag";
+  if (/completed|done|resolved/.test(status) && /agent_result|runner_result/.test(type)) return 100;
+  if (runner.desktop_delivery_confirmed === true || meta.desktop_delivery_confirmed === true) return 90;
+  if (hasThreadUrl && /progress|ack|runner/.test(type)) return 80;
+  if (/completed|done|resolved/.test(status)) return 70;
+  if (/in_progress|acked|running|active/.test(status)) return 55;
+  if (isTimeoutRepair) return 25;
+  if (/blocked|failed|error/.test(status)) return 15;
+  return 40;
+}
+
+function desktopSyncSummaryForSeat(seat: { id: string; name: string; threadId: string }, events: AnyRecord[]) {
+  const related = events
+    .filter((event) => {
+      const meta = messageMeta(event);
+      const runner = nestedRunnerResult(event);
+      const haystack = [
+        event.title,
+        event.body,
+        event.recipient_id,
+        event.recipientId,
+        event.workstation_id,
+        event.workstationId,
+        meta.workstation_id,
+        meta.workstationId,
+        meta.recipient_id,
+        meta.recipientId,
+        meta.thread_id,
+        meta.threadId,
+        meta.desktop_thread_url,
+        meta.authoritative_seat_id,
+        meta.authoritativeSeatId,
+        meta.authoritative_seat_ref,
+        meta.target_seat_id,
+        record(meta.delegation_context).target_seat_id,
+        runner.workstation_id,
+        runner.thread_id,
+        runner.desktop_thread_url,
+      ].map((item) => text(item, "")).join(" ");
+      return haystack.includes(seat.id) || Boolean(seat.threadId && haystack.includes(seat.threadId));
+    })
+    .sort((left, right) => {
+      const rankDiff = desktopEvidenceRank(right) - desktopEvidenceRank(left);
+      if (rankDiff) return rankDiff;
+      return text(right.created_at ?? right.createdAt, "").localeCompare(text(left.created_at ?? left.createdAt, ""));
+    });
+  const latest = related[0];
+  const runner = latest ? nestedRunnerResult(latest) : {};
+  const meta = latest ? messageMeta(latest) : {};
+  const status = text(latest?.status, "");
+  const type = text(latest?.message_type ?? latest?.messageType, "");
+  const desktopThreadUrl = firstText(runner.desktop_thread_url, meta.desktop_thread_url, seat.threadId ? `codex://threads/${seat.threadId}` : "");
+  const confirmed = runner.desktop_delivery_confirmed === true || meta.desktop_delivery_confirmed === true;
+  const pending = runner.desktop_delivery_pending === true || meta.desktop_delivery_pending === true;
+  const method = firstText(runner.desktop_delivery_method, meta.desktop_delivery_method);
+  const description = latest ? publicEventDescription(latest) : "";
+  let label = "暂无桌面证据";
+  if (/blocked|failed|error/i.test(status)) {
+    label = "同步异常待处理";
+  } else if (/agent_result|runner_result|final|completed|done/i.test(`${type} ${status}`)) {
+    label = "桌面线程已有结果";
+  } else if (confirmed) {
+    label = "已进入桌面线程";
+  } else if (pending || /awaiting_desktop_pickup/i.test(`${status} ${description}`)) {
+    label = "等待桌面线程接收";
+  } else if (/awaiting_desktop_reply|in_progress|acked|running|active/i.test(`${status} ${description}`)) {
+    label = "桌面处理中";
+  } else if (method === "codex_desktop_automation") {
+    label = "已登记后台接收";
+  } else if (related.length) {
+    label = publicStatusLabel(status);
+  }
+  return {
+    label,
+    tone: desktopSyncTone(label),
+    detail: description || (related.length ? publicEventTitle(latest) : "还没有看到这位 NPC 的桌面线程接收证据。"),
+    eventCount: related.length,
+    desktopThreadUrl,
+  };
+}
+
+function isPendingHumanReview(value: AnyRecord) {
+  const type = text(value.message_type ?? value.messageType, "").toLowerCase();
+  const status = text(value.status, "").toLowerCase();
+  return type === "human_review_request" && ["pending_human_review", "pending", "open"].includes(status);
+}
+
+function reviewSourceLabel(value: AnyRecord) {
+  const meta = messageMeta(value);
+  if (text(meta.schema, "") === "skill_forge_review_v1") return "能力工坊待确认";
+  return "待人工确认";
+}
+
+function publicEventTitle(event: AnyRecord) {
+  const eventType = orgEventTypeLabel(event.message_type ?? event.body);
+  if (isPendingHumanReview(event)) {
+    return userFacingEventText(event.title, "协作请求待人工确认");
+  }
+  return userFacingEventText(event.title, `${eventType}已进入项目记录`);
+}
+
+function publicEventDescription(event: AnyRecord) {
+  if (isPendingHumanReview(event)) return "需要项目负责人或人工确认后再继续。";
+  const eventType = orgEventTypeLabel(event.message_type ?? event.body);
+  const structured = summarizeStructuredEvent(event.body, eventType);
+  if (structured) return structured;
+  return userFacingEventText(event.body, `${eventType} · 组织事件已进入项目记录。`);
+}
+
+function knowledgeLabel(seat: { knowledgeSummary: string; workstationKnowledgePath: string }) {
+  if (seat.knowledgeSummary) return seat.knowledgeSummary;
+  if (seat.workstationKnowledgePath) return "工位知识库已配置";
+  return "待绑定知识库";
+}
+
+function safeProjectReturnPath(projectId: string, value: unknown) {
+  const raw = text(value, "");
+  if (!raw.startsWith(`/projects/${projectId}/`)) return "";
+  if (/^\/\//.test(raw) || raw.includes("\\") || raw.includes("://")) return "";
+  return raw;
+}
+
+function labelProjectReturnPath(value: string) {
+  if (value.includes("/2d-upgrade")) return "← 返回主页面";
+  if (value.includes("/datasets")) return "← 返回设备数据工作台";
+  if (value.includes("/ai-lab")) return "← 返回设备数据工作台";
+  if (value.includes("/robotics")) return "← 返回设备数据工作台";
+  if (value.includes("/observability")) return "← 返回公司层";
+  if (value.includes("/skill-forge")) return "← 返回能力工坊";
+  if (value.includes("/workbench")) return "← 返回 NPC 工作台";
+  if (value.includes("/company")) return "← 返回公司层";
+  return "← 返回来源";
+}
+
+function companyFocusReview(value: unknown, queue: unknown) {
+  if (text(value, "") !== "skill-forge-index") return null;
+  const rawQueue = text(queue, "").toLowerCase();
+  if (rawQueue === "tasks") {
+    return {
+      queue: "tasks",
+      eyebrow: "能力工坊索引验收",
+      title: "正在查看刚索引的任务回执",
+      detail: "重点抽查承接任务、回执状态和归档材料。这里只查看、验收、归档，不会自动派单。",
+    };
+  }
+  return {
+    queue: "needs",
+    eyebrow: "能力工坊索引验收",
+    title: "正在查看刚索引的需求流转",
+    detail: "重点抽查协作需求是否进入流转、是否需要确认、是否已有承接任务。这里只查看、验收、归档，不会自动派单。",
+  };
+}
+
+function safeForgeTab(value: unknown) {
+  const raw = text(value, "");
+  return raw === "skills" || raw === "knowledge" || raw === "git" ? raw : "knowledge";
+}
+
+function safeForgeResources(value: unknown) {
+  const raw = text(value, "").trim();
+  if (!raw || raw.length > 320) return "";
+  if (/[\r\n\t\\]|:\/\/|[?&#]/.test(raw)) return "";
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => /^(seat|station):[\p{L}\p{N} ._:-]+$/u.test(item))
+    .slice(0, 4)
+    .join(",");
+}
+
+function companyFocusHref(projectId: string, queue: string, itemIndex?: number, context?: { resources?: string; tab?: string }) {
+  const query = new URLSearchParams({
+    focus: "skill-forge-index",
+    queue,
+  });
+  if (typeof itemIndex === "number" && Number.isFinite(itemIndex)) query.set("item", String(Math.max(0, itemIndex)));
+  if (context?.resources) query.set("resources", context.resources);
+  if (context?.tab) query.set("tab", context.tab);
+  return `/projects/${projectId}/company?${query.toString()}`;
+}
+
+function skillForgeFocusReturnHref(projectId: string, selfPath: string, queue: string, context?: { resources?: string; tab?: string }) {
+  const query = new URLSearchParams({
+    tab: context?.tab || "knowledge",
+    from: "company",
+    focus: "skill-forge-index",
+    queue,
+    return_to: selfPath,
+  });
+  if (context?.resources) query.set("resources", context.resources);
+  return `/projects/${projectId}/skill-forge?${query.toString()}`;
+}
+
+function statusTone(label: string) {
+  if (/可投递|在线|已完成|已送达/.test(label)) return "healthy";
+  if (/延迟|待审核|待人工确认|高风险确认|待处理|等待|未知/.test(label)) return "review";
+  if (/离线|需重连|阻塞|失败/.test(label)) return "blocked";
+  return "idle";
+}
+
+function chainTone(label: string) {
+  if (/已满足|已完成|最终回执/.test(label)) return "healthy";
+  if (/受阻|失败|异常|打回/.test(label)) return "blocked";
+  if (/待确认|等待|草稿|过程/.test(label)) return "review";
+  return "idle";
+}
+
+function summarizeSeatDispatchState(input: {
+  providerId: string;
+  computerNodeId: string;
+  threadId: string;
+  nodeState: AnyRecord | undefined;
+}) {
+  if (!input.providerId) {
+    return {
+      state: "状态未知，先检查接入",
+      canQueue: false,
+      shortLabel: "待选择执行通道",
+      detail: "先给这个 NPC 选择执行通道，再接入持续接单。",
+    };
+  }
+  if (!input.computerNodeId) {
+    return {
+      state: "状态未知，先检查接入",
+      canQueue: false,
+      shortLabel: "待绑定电脑",
+      detail: "先绑定目标电脑，平台才能把任务落到固定设备。",
+    };
+  }
+  if (!input.threadId) {
+    return {
+      state: "状态未知，先检查接入",
+      canQueue: false,
+      shortLabel: "待绑定线程",
+      detail: "先扫描并绑定桌面线程，避免任务落空或串到别的终端。",
+    };
+  }
+  return summarizeRunnerDispatchState(input.nodeState);
+}
+
+export default async function CompanyPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { embed?: string; return_to?: string; from?: string; team_notice?: string; team_error?: string; focus?: string; queue?: string; item?: string; resources?: string; tab?: string };
+}) {
+  const auth = await getCurrentAuthState();
+  if (!auth.data?.user) {
+    const query = new URLSearchParams();
+    if (searchParams?.return_to) query.set("return_to", searchParams.return_to);
+    if (searchParams?.from) query.set("from", searchParams.from);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    redirect(`/login?returnTo=${encodeURIComponent(`/projects/${params.id}/company${suffix}`)}`);
+  }
+
+  const projectState = await getProjectState(params.id);
+  const project = projectState.data;
+  if (!project) {
+    return (
+      <main style={{ padding: 32, color: "#eaffff" }}>
+        <p>项目不存在或无权限。</p>
+        <Link href="/projects" style={{ color: "#93fbff" }}>← 返回项目列表</Link>
+      </main>
+    );
+  }
+
+  const [
+    computerNodesState,
+    projectWorkstationsState,
+    collaborationMessagesState,
+    requirementsState,
+    tasksState,
+    knowledgeDocumentsState,
+    projectSkillsState,
+    usageData,
+  ] = await Promise.all([
+    getProjectComputerNodesState(params.id),
+    getProjectWorkstationsState(params.id),
+    getCollaborationMessagesState({ projectId: params.id }),
+    getRequirementsState({ projectIds: [params.id] }),
+    getTasksDataScopedState({ projectIds: [params.id] }),
+    getProjectKnowledgeDocumentsState(params.id),
+    getProjectSkillsState(params.id),
+    getUsageData(),
+  ]);
+  const liveNodes = asArray<AnyRecord>(computerNodesState.data);
+  const projectWorkstations = asArray<AnyRecord>(projectWorkstationsState.data);
+
+  const config = (project.collaboration_config ?? {}) as AnyRecord;
+  const rawWorkstations = asArray<AnyRecord>(
+    config.thread_workstations ?? config.threadWorkstations ?? config.workstations,
+  );
+  const seatRecords = rawWorkstations.filter((item) => isNpcSeatRecord(item));
+  const configNodes = asArray<AnyRecord>(config.computer_nodes ?? config.nodes);
+  const workstationProfiles = (config.workstation_profiles && typeof config.workstation_profiles === "object")
+    ? (config.workstation_profiles as AnyRecord)
+    : {};
+
+  const nodeMap = new Map<string, string>();
+  const nodeStateMap = new Map<string, AnyRecord>();
+  for (const node of [...configNodes, ...liveNodes]) {
+    const id = text(node?.id ?? node?.node_id, "");
+    if (!id) continue;
+    const name = text(node?.name ?? node?.label ?? node?.hostname ?? id, id);
+    nodeMap.set(id, name);
+    nodeStateMap.set(id, node);
+  }
+
+  const workstationNameById = new Map<string, string>();
+  const leadByWorkstation = new Map<string, string>();
+  for (const ws of projectWorkstations) {
+    const wsId = text(ws?.id, "");
+    if (!wsId) continue;
+    workstationNameById.set(wsId, text(ws?.name, wsId));
+    const lead = text(ws?.lead_seat_id ?? ws?.leadSeatId, "");
+    if (lead) leadByWorkstation.set(wsId, lead);
+  }
+
+  const leadByNode = new Map<string, string>();
+  const inheritedSkillsByNode = new Map<string, string[]>();
+  const knowledgePathByNode = new Map<string, string>();
+  for (const [nodeId, profile] of Object.entries(workstationProfiles)) {
+    if (profile && typeof profile === "object") {
+      const p = profile as AnyRecord;
+      const lead = text(p.lead_seat_id ?? p.leadSeatId, "");
+      if (lead) leadByNode.set(String(nodeId), lead);
+      const inh = asArray<string>(p.skill_inheritance ?? p.skillInheritance)
+        .map((s) => String(s).trim())
+        .filter(Boolean);
+      if (inh.length) inheritedSkillsByNode.set(String(nodeId), inh);
+      const kp = text(p.knowledge_path ?? p.knowledgePath, "");
+      if (kp) knowledgePathByNode.set(String(nodeId), kp);
+    }
+  }
+
+  const allSeats = seatRecords.map((seat, index) => {
+    const id = text(seat.id ?? seat.config_id ?? seat.row_id, `seat-${index}`);
+    const name = text(seat.name ?? seat.title, `NPC ${index + 1}`);
+    const workstationId = text(seat.workstation_id ?? seat.workstationId, "");
+    const computerNodeId = text(seat.computer_node_id ?? seat.computerNodeId, "");
+    const providerId = platformProviderIdFromSeat(seat) || text(seat.provider_id ?? seat.providerId, "");
+    const providerLabel = text(seat.provider_label ?? seat.providerLabel ?? providerId, providerId);
+    const responsibility = text(seat.responsibility ?? seat.body, "待分配职责");
+    const skillLoadout = asArray<string>(seat.skill_loadout ?? seat.skillLoadout).map((s) => String(s)).filter(Boolean);
+    const inheritedSkills = computerNodeId ? (inheritedSkillsByNode.get(computerNodeId) ?? []) : [];
+    const workstationKnowledgePath = computerNodeId
+      ? (knowledgePathByNode.get(computerNodeId) ?? `docs/workstations/${computerNodeId}.md`)
+      : "";
+    const knowledgeSummary = text(seat.knowledge_summary ?? seat.knowledgeSummary, "");
+    const model = text(seat.model, "");
+    const permissionLevel = text(seat.permission_level ?? seat.permissionLevel, "");
+    const meta = record(seat.metadata);
+    const extra = record(seat.extra_data ?? seat.extraData);
+    const automationEnabled = Boolean(
+      seat.automation_enabled
+      ?? seat.automationEnabled
+      ?? meta.automation_enabled
+      ?? meta.automationEnabled
+      ?? extra.automation_enabled
+      ?? extra.automationEnabled
+      ?? false,
+    );
+    const adapter = record(meta.adapter ?? extra.adapter);
+    const threadId = firstText(
+      seat.target_thread_id,
+      seat.targetThreadId,
+      seat.session_id,
+      seat.sessionId,
+      seat.thread_id,
+      seat.threadId,
+      seat.source_workstation_id,
+      seat.sourceWorkstationId,
+      meta.target_thread_id,
+      meta.targetThreadId,
+      meta.session_id,
+      meta.sessionId,
+      meta.claude_session_id,
+      meta.codex_thread_id,
+      meta.thread_id,
+      meta.threadId,
+      meta.source_thread_id,
+      meta.bound_thread_id,
+      meta.source_workstation_id,
+      extra.target_thread_id,
+      extra.session_id,
+      extra.thread_id,
+      extra.source_thread_id,
+      extra.bound_thread_id,
+      extra.source_workstation_id,
+    );
+    const threadKind = firstText(seat.thread_kind, seat.threadKind, meta.thread_kind, meta.threadKind, adapter.kind, deriveThreadKind(providerId, threadId));
+    const threadHealth = firstText(
+      seat.bridge_health_label,
+      seat.bridgeHealthLabel,
+      seat.thread_health,
+      seat.threadHealth,
+      meta.bridge_health_label,
+      meta.bridgeHealthLabel,
+      meta.thread_health,
+      meta.threadHealth,
+      adapter.health,
+      adapter.status,
+      automationEnabled ? "watcher ready" : "待接入",
+    );
+    const nodeState = computerNodeId ? nodeStateMap.get(computerNodeId) : undefined;
+    const seatDispatch = summarizeSeatDispatchState({
+      providerId,
+      computerNodeId,
+      threadId,
+      nodeState,
+    });
+    const dispatchState = seatDispatch.state;
+    const gitUserName = text(meta.git_user_name ?? meta.gitUserName, name);
+    const gitUserEmail = text(
+      meta.git_user_email ?? meta.gitUserEmail,
+      `bot+${id}@noreply.invalid`,
+    );
+    const reviewPolicy = text(meta.review_policy ?? meta.reviewPolicy, "inherit");
+    const leadSeatId = workstationId
+      ? (leadByWorkstation.get(workstationId) ?? "")
+      : (computerNodeId ? (leadByNode.get(computerNodeId) ?? "") : "");
+    const isLead = !!leadSeatId && leadSeatId === id;
+    return {
+      id,
+      name,
+      workstationId,
+      workstationName: workstationId ? (workstationNameById.get(workstationId) ?? workstationId) : "",
+      computerNodeId,
+      computerNodeName: computerNodeId ? nodeMap.get(computerNodeId) ?? computerNodeId : "",
+      providerId,
+      providerLabel,
+      threadId,
+      threadKind,
+      threadHealth: publicThreadState(threadHealth, automationEnabled),
+      dispatchState,
+      dispatchCanQueue: seatDispatch.canQueue,
+      dispatchShortLabel: seatDispatch.shortLabel,
+      dispatchDetail: seatDispatch.detail,
+      codexLaunchPrompt: text(meta.codex_launch_prompt ?? meta.codexLaunchPrompt, ""),
+      metadata: meta,
+      responsibility,
+      skillLoadout,
+      inheritedSkills,
+      workstationKnowledgePath,
+      knowledgeSummary,
+      automationEnabled,
+      model,
+      permissionLevel,
+      gitUserName,
+      gitUserEmail,
+      reviewPolicy,
+      leadSeatId,
+      isLead,
+    };
+  });
+
+  const seatsByWorkstation = new Map<string, typeof allSeats>();
+  for (const seat of allSeats) {
+    const key = seat.workstationId || "unassigned";
+    seatsByWorkstation.set(key, [...(seatsByWorkstation.get(key) ?? []), seat]);
+  }
+  const workstationRows = [
+    ...projectWorkstations.map((ws, index) => {
+      const id = text(ws.id, `workstation-${index + 1}`);
+      const seats = seatsByWorkstation.get(id) ?? [];
+      const leadId = text(ws.lead_seat_id ?? ws.leadSeatId, "");
+      const lead = allSeats.find((seat) => seat.id === leadId);
+      return {
+        id,
+        name: text(ws.name, `工位 ${index + 1}`),
+        description: text(ws.description ?? ws.summary, "负责一类长期工作，不绑定具体电脑。"),
+        seats,
+        leadName: lead?.name ?? "待指定",
+      };
+    }),
+    ...(seatsByWorkstation.get("unassigned")?.length
+      ? [{
+          id: "unassigned",
+          name: "未归属员工",
+          description: "这些 NPC 还需要分配到逻辑工位，之后才能稳定继承职责、知识库和确认规则。",
+          seats: seatsByWorkstation.get("unassigned") ?? [],
+          leadName: "待指定",
+        }]
+      : []),
+  ];
+  const threadReadyCount = allSeats.filter((seat) => seat.dispatchState === "可投递").length;
+  const queueOnlySeatCount = allSeats.filter(
+    (seat) =>
+      seat.threadId
+      && seat.dispatchCanQueue
+      && ["最近在线，可能延迟", "他人操作中"].includes(seat.dispatchState),
+  ).length;
+  const recoveryDispatchCount = allSeats.filter(
+    (seat) => seat.dispatchState === "等待电脑恢复" || seat.dispatchState === "离线，需重连",
+  ).length;
+  const offlineDispatchCount = allSeats.filter((seat) => seat.dispatchState === "离线，需重连").length;
+  const staleDispatchCount = allSeats.filter((seat) => seat.dispatchState === "等待电脑恢复").length;
+  const occupiedDispatchCount = allSeats.filter((seat) => seat.dispatchState === "他人操作中").length;
+  const missingProviderCount = allSeats.filter((seat) => seat.dispatchShortLabel === "待选择执行通道").length;
+  const missingThreadCount = allSeats.filter((seat) => seat.dispatchShortLabel === "待绑定线程").length;
+  const missingComputerCount = allSeats.filter((seat) => seat.dispatchShortLabel === "待绑定电脑").length;
+  const unknownDispatchCount = allSeats.filter(
+    (seat) =>
+      seat.dispatchState === "状态未知，先检查接入"
+      && !["待选择执行通道", "待绑定线程", "待绑定电脑"].includes(seat.dispatchShortLabel),
+  ).length;
+  const strictReviewCount = allSeats.filter((seat) => reviewPolicyLabel(seat.reviewPolicy) === "高风险确认").length;
+  const skillAssignedCount = allSeats.filter((seat) => seat.skillLoadout.length || seat.inheritedSkills.length).length;
+  const knowledgeAssignedCount = allSeats.filter((seat) => seat.knowledgeSummary || seat.workstationKnowledgePath).length;
+  const nodeDispatchCounts = [...nodeStateMap.values()].reduce(
+    (summary, node) => {
+      const dispatch = summarizeRunnerDispatchState(node);
+      if (dispatch.canDispatch) {
+        summary.ready += 1;
+      } else if (dispatch.tone === "stale" || dispatch.tone === "offline") {
+        summary.reconnect += 1;
+      } else if (dispatch.canQueue) {
+        summary.queueable += 1;
+      } else {
+        summary.unknown += 1;
+      }
+      return summary;
+    },
+    { ready: 0, queueable: 0, reconnect: 0, unknown: 0 },
+  );
+  const readyNodeCount = nodeDispatchCounts.ready;
+
+  const returnToPath = safeProjectReturnPath(params.id, searchParams?.return_to);
+  const focusReview = companyFocusReview(searchParams?.focus, searchParams?.queue);
+  const focusReturnContext = {
+    resources: safeForgeResources(searchParams?.resources),
+    tab: safeForgeTab(searchParams?.tab),
+  };
+
+  const projectId = String(project.id ?? params.id);
+  const allOrgEvents = asArray<AnyRecord>(collaborationMessagesState.data);
+  const allNeeds = asArray<AnyRecord>(requirementsState.data);
+  const allTasks = asArray<AnyRecord>(tasksState.data);
+  const allKnowledgeDocuments = asArray<AnyRecord>(knowledgeDocumentsState.data);
+  const allProjectSkills = asArray<AnyRecord>(projectSkillsState.data);
+  const pendingHumanReviews = allOrgEvents.filter(isPendingHumanReview);
+  const recentOrgEvents = allOrgEvents.slice(0, 6);
+  const frontC7Seat = allSeats.find((seat) =>
+    seat.name.replace(/\s+/g, "").includes("前端C7号")
+      || seat.threadId.includes("019e8121-ee19-77d2-b391-200ffbc6dad5"),
+  ) ?? null;
+  const frontC8Seat = allSeats.find((seat) =>
+    seat.name.replace(/\s+/g, "").includes("前端C8号")
+      || seat.threadId.includes("019e8122-6868-7222-9a71-c2eab2483dd7"),
+  ) ?? null;
+  const gameCollabEvents = allOrgEvents.filter((event) => {
+    const meta = messageMeta(event);
+    return text(meta.source, "") === "front_c_game_collab" || text(meta.game_collab_run_id, "");
+  });
+  const gameCollabRunId = text(messageMeta(gameCollabEvents[0] ?? {}).game_collab_run_id, "");
+  const gameCollabMode = text(
+    record(frontC7Seat?.metadata).game_collab_autonomy_mode
+      ?? record(frontC8Seat?.metadata).game_collab_autonomy_mode,
+    "checkpoint",
+  );
+  const gameCollabModeLabel = gameCollabMode === "full" ? "完全自主" : gameCollabMode === "supervised" ? "监督模式" : "检查点模式";
+  const gameCollabReady = Boolean(frontC7Seat && frontC8Seat);
+  const gameCollabActiveCount = gameCollabEvents.filter((event) => /queued|running|active|pending|acked|delivered|waiting/i.test(text(event.status, ""))).length;
+  const frontC7Desktop = frontC7Seat
+    ? desktopSyncSummaryForSeat(frontC7Seat, allOrgEvents)
+    : { label: "等待绑定", tone: "idle", detail: "还没有找到前端 C 7号席位。", eventCount: 0, desktopThreadUrl: "" };
+  const frontC8Desktop = frontC8Seat
+    ? desktopSyncSummaryForSeat(frontC8Seat, allOrgEvents)
+    : { label: "等待绑定", tone: "idle", detail: "还没有找到前端 C 8号席位。", eventCount: 0, desktopThreadUrl: "" };
+  const gameDesktopLine = [frontC7Desktop, frontC8Desktop]
+    .map((item, index) => `${index === 0 ? "7号" : "8号"}：${item.label}`)
+    .join(" · ");
+  const seatNameById = new Map<string, string>();
+  for (const seat of allSeats) {
+    seatNameById.set(seat.id, seat.name);
+    if (seat.threadId) seatNameById.set(seat.threadId, seat.name);
+    if (seat.computerNodeId) seatNameById.set(seat.computerNodeId, seat.name);
+  }
+  const messagesByRequirement = new Map<string, AnyRecord[]>();
+  const messagesByTask = new Map<string, AnyRecord[]>();
+  const messagesByDispatch = new Map<string, AnyRecord[]>();
+  for (const message of allOrgEvents) {
+    const meta = messageMeta(message);
+    const requirementId = text(
+      message.requirement_id
+        ?? message.requirementId
+        ?? meta.requirement_id
+        ?? meta.requirementId,
+      "",
+    );
+    const taskId = text(message.task_id ?? message.taskId ?? meta.task_id ?? meta.taskId, "");
+    const dispatchId = text(message.dispatch_id ?? message.dispatchId ?? meta.dispatch_id ?? meta.dispatchId, "");
+    if (requirementId) messagesByRequirement.set(requirementId, [...(messagesByRequirement.get(requirementId) ?? []), message]);
+    if (taskId) messagesByTask.set(taskId, [...(messagesByTask.get(taskId) ?? []), message]);
+    if (dispatchId) messagesByDispatch.set(dispatchId, [...(messagesByDispatch.get(dispatchId) ?? []), message]);
+  }
+  const tasksByNeed = new Map<string, AnyRecord[]>();
+  for (const task of allTasks) {
+    const sourceNeedId = text(
+      task.source_need_id
+        ?? task.sourceNeedId
+        ?? task.requirement_id
+        ?? task.requirementId,
+      "",
+    );
+    if (sourceNeedId) tasksByNeed.set(sourceNeedId, [...(tasksByNeed.get(sourceNeedId) ?? []), task]);
+  }
+  const collaborationChains = allNeeds.map((need, index) => {
+    const needId = text(need.id ?? need.requirement_id ?? need.requirementId, `need-${index}`);
+    const linkedTasks = [
+      ...asArray<AnyRecord>(tasksByNeed.get(needId)),
+      ...allTasks.filter((task) => text(task.id ?? task.task_id, "") === text(need.task_id ?? need.taskId, "")),
+    ].filter((task, taskIndex, array) => {
+      const taskId = text(task.id ?? task.task_id, `task-${taskIndex}`);
+      return array.findIndex((candidate) => text(candidate.id ?? candidate.task_id, "") === taskId) === taskIndex;
+    });
+    const primaryTask = linkedTasks[0] ?? null;
+    const dispatch = primaryTask ? record(primaryTask.latest_dispatch ?? primaryTask.latestDispatch) : {};
+    const dispatchId = text(dispatch.id ?? dispatch.dispatch_id ?? dispatch.dispatchId, "");
+    const taskId = primaryTask ? text(primaryTask.id ?? primaryTask.task_id, "") : "";
+    const receiptMessages = [
+      ...asArray<AnyRecord>(messagesByRequirement.get(needId)),
+      ...(taskId ? asArray<AnyRecord>(messagesByTask.get(taskId)) : []),
+      ...(dispatchId ? asArray<AnyRecord>(messagesByDispatch.get(dispatchId)) : []),
+    ].filter((message, messageIndex, array) => array.findIndex((candidate) => text(candidate.id, "") === text(message.id, "")) === messageIndex);
+    const requesterId = text(need.from_agent ?? need.fromAgent ?? need.created_by_id ?? need.createdById, "");
+    const targetId = text(
+      need.target_seat_id
+        ?? need.targetSeatId
+        ?? need.to_agent
+        ?? need.toAgent
+        ?? primaryTask?.assignee_seat_id
+        ?? primaryTask?.assigneeSeatId
+        ?? primaryTask?.assignee_agent_id
+        ?? primaryTask?.assigneeAgentId,
+      "",
+    );
+    const requesterName = seatNameById.get(requesterId) ?? (requesterId ? "发起 NPC" : "项目成员");
+    const targetName = seatNameById.get(targetId) ?? (targetId ? "承接 NPC" : "待推荐");
+    const needStatus = publicNeedStatusLabel(need.status);
+    const taskStatus = primaryTask ? publicTaskStatusLabel(primaryTask.status) : "待生成任务";
+    const dispatchStatus = dispatchId ? publicStatusLabel(dispatch.status ?? primaryTask?.status) : "待投递";
+    const receiptStatus = publicReceiptLabel(receiptMessages);
+    const closureIds = { needId, taskId, dispatchId };
+    const knowledgeClosureItems = allKnowledgeDocuments.filter((item) => closureMatches(item, closureIds));
+    const skillClosureItems = allProjectSkills.filter((item) => closureMatches(item, closureIds));
+    const closureLatestTime = Math.max(
+      0,
+      ...knowledgeClosureItems.map(closureActivityTime),
+      ...skillClosureItems.map(closureActivityTime),
+    );
+    const knowledgeClosureCount = knowledgeClosureItems.length;
+    const skillClosureCount = skillClosureItems.length;
+    const latestReceiptMessage = receiptMessages
+      .slice()
+      .sort((left, right) => text(right.created_at ?? right.createdAt, "").localeCompare(text(left.created_at ?? left.createdAt, "")))[0];
+    const activityTime = latestActivityTime(
+      need.last_activity_at,
+      need.lastActivityAt,
+      need.updated_at,
+      need.updatedAt,
+      need.created_at,
+      need.createdAt,
+      primaryTask?.updated_at,
+      primaryTask?.updatedAt,
+      primaryTask?.created_at,
+      primaryTask?.createdAt,
+      ...receiptMessages.map((message) => message.created_at ?? message.createdAt),
+    );
+    return {
+      id: needId,
+      title: shortPublicText(need.title, `协作需求 ${index + 1}`, 54),
+      detailTitle: shortPublicText(need.title ?? need.name ?? need.summary, `协作需求 ${index + 1}`, 72),
+      summary: shortPublicText(
+        need.context_summary ?? need.contextSummary ?? need.expected_output ?? need.expectedOutput,
+        "这条需求会在路由后进入承接 NPC 的任务队列。",
+        108,
+      ),
+      detailOutput: shortPublicText(
+        need.expected_output
+          ?? need.expectedOutput
+          ?? need.acceptance_criteria
+          ?? need.acceptanceCriteria
+          ?? primaryTask?.expected_output
+          ?? primaryTask?.expectedOutput,
+        "等待发起方补齐期望产出；承接 NPC 应在任务回执里说明交付物。",
+        96,
+      ),
+      latestTaskTitle: primaryTask
+        ? shortPublicText(primaryTask.title ?? primaryTask.name ?? primaryTask.summary, "承接任务已生成", 64)
+        : "还没有生成承接任务",
+      requesterName,
+      targetName,
+      requesterId,
+      targetId,
+      needRawStatus: text(need.status, ""),
+      taskRawStatus: primaryTask ? text(primaryTask.status, "") : "",
+      needStatus,
+      taskStatus,
+      dispatchStatus,
+      receiptStatus,
+      taskId,
+      dispatchId,
+      taskCount: linkedTasks.length,
+      receiptCount: receiptMessages.length,
+      latestReceipt: latestReceiptMessage
+        ? shortPublicText(
+          latestReceiptMessage.title ?? latestReceiptMessage.body,
+          orgEventTypeLabel(latestReceiptMessage.message_type ?? latestReceiptMessage.messageType),
+          72,
+        )
+        : "还没有协作者回执",
+      activityTime,
+      activityLabel: compactActivityLabel(activityTime),
+      nextAction: collaborationClosureNextAction({ knowledgeClosureCount, skillClosureCount, needStatus, taskStatus, receiptStatus }),
+      knowledgeClosureCount,
+      skillClosureCount,
+      closureActivityLabel: closureLatestTime ? compactActivityLabel(closureLatestTime) : "尚未沉淀",
+    };
+  }).sort((left, right) => right.activityTime - left.activityTime);
+  const visibleChains = collaborationChains.slice(0, 4);
+  const seatAliases = new Map<string, Set<string>>();
+  for (const seat of allSeats) {
+    seatAliases.set(
+      seat.id,
+      new Set(
+        [
+          seat.id,
+          seat.threadId,
+          seat.computerNodeId,
+          seat.name,
+          text(record(seat.metadata).config_id, ""),
+          text(record(seat.metadata).seat_id, ""),
+          text(record(seat.metadata).source_workstation_id, ""),
+        ].filter(Boolean),
+      ),
+    );
+  }
+  const seatMatches = (seat: typeof allSeats[number], value: unknown) => {
+    const raw = text(value, "");
+    if (!raw) return false;
+    return seatAliases.get(seat.id)?.has(raw) ?? false;
+  };
+  const canonicalSeatId = (value: unknown) => {
+    const raw = text(value, "");
+    if (!raw) return "";
+    for (const seat of allSeats) {
+      if (seatAliases.get(seat.id)?.has(raw)) return seat.id;
+    }
+    return "";
+  };
+  const officeColumnCount = Math.max(2, Math.ceil(Math.sqrt(Math.max(allSeats.length, 1) * 1.25)));
+  const officeRowCount = Math.max(1, Math.ceil(Math.max(allSeats.length, 1) / officeColumnCount));
+  const officeNodes = allSeats.map((seat, index) => {
+    const column = index % officeColumnCount;
+    const row = Math.floor(index / officeColumnCount);
+    const x = 10 + ((column + 0.5) * 80) / officeColumnCount + (row % 2 ? 3 : -2);
+    const y = 12 + ((row + 0.5) * 74) / officeRowCount + (column % 2 ? 4 : -3);
+    const outgoingCount = allNeeds.filter((need) => seatMatches(seat, need.from_agent ?? need.fromAgent ?? need.created_by_id ?? need.createdById)).length;
+    const incomingCount = allNeeds.filter((need) =>
+      seatMatches(
+        seat,
+        need.target_seat_id
+          ?? need.targetSeatId
+          ?? need.to_agent
+          ?? need.toAgent,
+      ),
+    ).length;
+    const taskCount = allTasks.filter((task) =>
+      seatMatches(
+        seat,
+        task.assignee_seat_id
+          ?? task.assigneeSeatId
+          ?? task.assignee_agent_id
+          ?? task.assigneeAgentId
+          ?? task.assignee,
+      ),
+    ).length;
+    return {
+      id: seat.id,
+      seat,
+      x: Math.max(8, Math.min(92, x)),
+      y: Math.max(10, Math.min(88, y)),
+      outgoingCount,
+      incomingCount,
+      taskCount,
+      tone: statusTone(seat.dispatchState),
+    };
+  });
+  const officeNodeById = new Map(officeNodes.map((node) => [node.id, node]));
+  const officeEdgeMap = new Map<string, OfficeEdge>();
+  for (const chain of collaborationChains) {
+    const fromId = canonicalSeatId(chain.requesterId);
+    const toId = canonicalSeatId(chain.targetId);
+    if (!fromId || !toId || fromId === toId) continue;
+    const key = `${fromId}->${toId}`;
+    const existing = officeEdgeMap.get(key);
+    if (!existing) {
+      officeEdgeMap.set(key, {
+        id: key,
+        fromId,
+        toId,
+        count: 1,
+        label: chain.title,
+        needStatus: chain.needStatus,
+        taskStatus: chain.taskStatus,
+        receiptStatus: chain.receiptStatus,
+        activityTime: chain.activityTime,
+        kind: "collaboration",
+        needId: chain.id,
+        taskId: chain.taskId,
+        dispatchId: chain.dispatchId,
+        summary: chain.summary,
+        dispatchStatus: chain.dispatchStatus,
+        taskCount: chain.taskCount,
+        receiptCount: chain.receiptCount,
+        latestReceipt: chain.latestReceipt,
+        activityLabel: chain.activityLabel,
+        nextAction: chain.nextAction,
+        detailTitle: chain.detailTitle,
+        detailOutput: chain.detailOutput,
+        latestTaskTitle: chain.latestTaskTitle,
+        knowledgeClosureCount: chain.knowledgeClosureCount,
+        skillClosureCount: chain.skillClosureCount,
+        closureActivityLabel: chain.closureActivityLabel,
+        runtimePackageLabel: "待刷新",
+        runtimePackageActivityLabel: "等待刷新",
+        chainItems: [{
+          id: chain.id,
+          title: chain.title,
+          taskStatus: chain.taskStatus,
+          receiptStatus: chain.receiptStatus,
+          activityLabel: chain.activityLabel,
+          latestReceipt: chain.latestReceipt,
+        }],
+      });
+    } else {
+      existing.count += 1;
+      existing.chainItems = [
+        {
+          id: chain.id,
+          title: chain.title,
+          taskStatus: chain.taskStatus,
+          receiptStatus: chain.receiptStatus,
+          activityLabel: chain.activityLabel,
+          latestReceipt: chain.latestReceipt,
+        },
+        ...existing.chainItems.filter((item) => item.id !== chain.id),
+      ]
+        .sort((left, right) => {
+          const leftChain = collaborationChains.find((item) => item.id === left.id);
+          const rightChain = collaborationChains.find((item) => item.id === right.id);
+          return (rightChain?.activityTime ?? 0) - (leftChain?.activityTime ?? 0);
+        })
+        .slice(0, 5);
+      if (chain.activityTime > existing.activityTime) {
+        existing.label = chain.title;
+        existing.needStatus = chain.needStatus;
+        existing.taskStatus = chain.taskStatus;
+        existing.receiptStatus = chain.receiptStatus;
+        existing.activityTime = chain.activityTime;
+        existing.needId = chain.id;
+        existing.taskId = chain.taskId;
+        existing.dispatchId = chain.dispatchId;
+        existing.summary = chain.summary;
+        existing.dispatchStatus = chain.dispatchStatus;
+        existing.taskCount = chain.taskCount;
+        existing.receiptCount = chain.receiptCount;
+        existing.latestReceipt = chain.latestReceipt;
+        existing.activityLabel = chain.activityLabel;
+        existing.nextAction = chain.nextAction;
+        existing.detailTitle = chain.detailTitle;
+        existing.detailOutput = chain.detailOutput;
+        existing.latestTaskTitle = chain.latestTaskTitle;
+        existing.knowledgeClosureCount = chain.knowledgeClosureCount;
+        existing.skillClosureCount = chain.skillClosureCount;
+        existing.closureActivityLabel = chain.closureActivityLabel;
+      }
+    }
+  }
+  const explicitOfficeEdges = [...officeEdgeMap.values()]
+    .filter((edge) => officeNodeById.has(edge.fromId) && officeNodeById.has(edge.toId))
+    .sort((left, right) => right.activityTime - left.activityTime);
+  const existingOfficeEdgeIds = new Set(explicitOfficeEdges.map((edge) => edge.id));
+  const officeRelationshipEdges: OfficeEdge[] = [];
+  const seatsByOfficeWorkstation = new Map<string, typeof allSeats>();
+  for (const seat of allSeats) {
+    const key = seat.workstationId || "unassigned";
+    seatsByOfficeWorkstation.set(key, [...(seatsByOfficeWorkstation.get(key) ?? []), seat]);
+  }
+  for (const peers of seatsByOfficeWorkstation.values()) {
+    for (let index = 0; index < peers.length - 1; index += 1) {
+      const from = peers[index];
+      const to = peers[index + 1];
+      const id = `${from.id}->${to.id}`;
+      if (existingOfficeEdgeIds.has(id)) continue;
+      officeRelationshipEdges.push({
+        id,
+        fromId: from.id,
+        toId: to.id,
+        count: 1,
+        label: "同工位",
+        needStatus: "等待协作",
+        taskStatus: "同工位",
+        receiptStatus: "等待回执",
+        activityTime: 0,
+        kind: "relationship",
+        summary: "同工位 NPC 可以互相创建结构化需求；真实协作产生后会替换这条组织关系线。",
+        dispatchStatus: "待投递",
+        taskCount: 0,
+        receiptCount: 0,
+        latestReceipt: "还没有协作回执",
+        activityLabel: "等待协作",
+        nextAction: "发起结构化 Need",
+        detailTitle: "同工位协作关系",
+        detailOutput: "真实 Need/Task 产生后，这里会展示期望产出和承接任务。",
+        latestTaskTitle: "还没有生成承接任务",
+        knowledgeClosureCount: 0,
+        skillClosureCount: 0,
+        closureActivityLabel: "尚未沉淀",
+        runtimePackageLabel: "待刷新",
+        runtimePackageActivityLabel: "等待刷新",
+        chainItems: [{
+          id,
+          title: "同工位协作关系",
+          taskStatus: "同工位",
+          receiptStatus: "等待回执",
+          activityLabel: "等待协作",
+          latestReceipt: "还没有协作回执",
+        }],
+      });
+    }
+  }
+  for (const seat of allSeats) {
+    if (!seat.leadSeatId || seat.leadSeatId === seat.id) continue;
+    const id = `${seat.leadSeatId}->${seat.id}`;
+    if (existingOfficeEdgeIds.has(id)) continue;
+    if (!officeNodeById.has(seat.leadSeatId) || !officeNodeById.has(seat.id)) continue;
+    officeRelationshipEdges.push({
+      id,
+      fromId: seat.leadSeatId,
+      toId: seat.id,
+      count: 1,
+      label: "负责人",
+      needStatus: "等待协作",
+      taskStatus: "负责人",
+      receiptStatus: "等待回执",
+      activityTime: 0,
+      kind: "relationship",
+      summary: "负责人关系用于跨工位转交和审核；真实 Need/Task 产生后会显示具体协作链路。",
+      dispatchStatus: "待投递",
+      taskCount: 0,
+      receiptCount: 0,
+      latestReceipt: "还没有协作回执",
+      activityLabel: "等待协作",
+      nextAction: "发起结构化 Need",
+      detailTitle: "负责人协作关系",
+      detailOutput: "真实 Need/Task 产生后，这里会展示期望产出和承接任务。",
+      latestTaskTitle: "还没有生成承接任务",
+      knowledgeClosureCount: 0,
+      skillClosureCount: 0,
+      closureActivityLabel: "尚未沉淀",
+      runtimePackageLabel: "待刷新",
+      runtimePackageActivityLabel: "等待刷新",
+      chainItems: [{
+        id,
+        title: "负责人协作关系",
+        taskStatus: "负责人",
+        receiptStatus: "等待回执",
+        activityLabel: "等待协作",
+        latestReceipt: "还没有协作回执",
+      }],
+    });
+  }
+  const officeEdges = [...explicitOfficeEdges, ...officeRelationshipEdges.slice(0, Math.max(0, 14 - explicitOfficeEdges.length))];
+  const selfPath = `/projects/${projectId}/company`;
+  const officeEdgeHref = (edge: OfficeEdge) => {
+    const query = new URLSearchParams({
+      return_to: selfPath,
+      from: "company",
+      seats: `${edge.fromId},${edge.toId}`,
+      focus: "collaboration",
+      collaboration_label: edge.label,
+    });
+    if (edge.kind === "collaboration") query.set("view", "collaboration-detail");
+    if (edge.kind === "relationship") query.set("view", "office-relationship");
+    if (edge.needId) query.set("need_id", edge.needId);
+    if (edge.taskId) query.set("task_id", edge.taskId);
+    if (edge.dispatchId) query.set("dispatch_id", edge.dispatchId);
+    return `/projects/${projectId}/workbench?${query.toString()}`;
+  };
+  const officeForgeHref = (edge: OfficeEdge, panel: "knowledge" | "skills") => {
+    const query = new URLSearchParams({
+      resources: `seat:${edge.toId}`,
+      return_to: selfPath,
+      from: "company",
+      seed_title: edge.detailTitle,
+      seed_summary: edge.summary,
+      seed_output: edge.detailOutput,
+      seed_receipt: edge.latestReceipt,
+    });
+    if (edge.needId) query.set("need_id", edge.needId);
+    if (edge.taskId) query.set("task_id", edge.taskId);
+    if (edge.dispatchId) query.set("dispatch_id", edge.dispatchId);
+    if (panel === "knowledge") query.set("tab", "knowledge");
+    if (panel === "skills") query.set("tab", "skills");
+    return `/projects/${projectId}/skill-forge?${query.toString()}`;
+  };
+  const officeNetworkNodes: OfficeNetworkNode[] = officeNodes.map((node) => ({
+    id: node.id,
+    name: node.seat.name,
+    x: node.x,
+    y: node.y,
+    outgoingCount: node.outgoingCount,
+    incomingCount: node.incomingCount,
+    taskCount: node.taskCount,
+    tone: node.tone,
+    href: `/projects/${projectId}/workbench?seat=${encodeURIComponent(node.id)}&return_to=${encodeURIComponent(selfPath)}&from=company`,
+  }));
+  const officeNetworkEdges: OfficeNetworkEdge[] = officeEdges.map((edge) => {
+    const targetSnapshot = record(officeNodeById.get(edge.toId)?.seat.metadata).skill_forge_snapshot;
+    return {
+      id: edge.id,
+      fromId: edge.fromId,
+      toId: edge.toId,
+      needId: edge.needId,
+      taskId: edge.taskId,
+      dispatchId: edge.dispatchId,
+      fromName: officeNodeById.get(edge.fromId)?.seat.name ?? "发起 NPC",
+      toName: officeNodeById.get(edge.toId)?.seat.name ?? "承接 NPC",
+      count: edge.count,
+      label: edge.label,
+      needStatus: edge.needStatus,
+      taskStatus: edge.taskStatus,
+      receiptStatus: edge.receiptStatus,
+      summary: edge.summary,
+      dispatchStatus: edge.dispatchStatus,
+      taskCount: edge.taskCount,
+      receiptCount: edge.receiptCount,
+      latestReceipt: edge.latestReceipt,
+      activityLabel: edge.activityLabel,
+      nextAction: edge.nextAction,
+      detailTitle: edge.detailTitle,
+      detailOutput: edge.detailOutput,
+      latestTaskTitle: edge.latestTaskTitle,
+      knowledgeClosureCount: edge.knowledgeClosureCount,
+      skillClosureCount: edge.skillClosureCount,
+      closureActivityLabel: edge.closureActivityLabel,
+      runtimePackageLabel: runtimePackageSnapshotLabel(targetSnapshot),
+      runtimePackageActivityLabel: runtimePackageActivityLabel(targetSnapshot),
+      chainItems: edge.chainItems,
+      needTone: chainTone(edge.needStatus),
+      taskTone: chainTone(edge.taskStatus),
+      receiptTone: chainTone(edge.receiptStatus),
+      kind: edge.kind,
+      href: officeEdgeHref(edge),
+      workbenchHref: officeEdgeHref(edge),
+      knowledgeHref: officeForgeHref(edge, "knowledge"),
+      skillHref: officeForgeHref(edge, "skills"),
+    };
+  });
+  const seatRelationCards = allSeats.map((seat) => {
+    const sameDepartmentPeers = allSeats.filter(
+      (peer) => peer.id !== seat.id && peer.workstationId && peer.workstationId === seat.workstationId,
+    );
+    const leadPeer = allSeats.find((peer) => peer.id !== seat.id && peer.id === seat.leadSeatId) ?? null;
+    const outgoingNeeds = allNeeds.filter((need) => seatMatches(seat, need.from_agent ?? need.fromAgent ?? need.created_by_id ?? need.createdById));
+    const incomingNeeds = allNeeds.filter((need) =>
+      seatMatches(
+        seat,
+        need.target_seat_id
+          ?? need.targetSeatId
+          ?? need.to_agent
+          ?? need.toAgent,
+      ),
+    );
+    const assignedTasks = allTasks.filter((task) =>
+      seatMatches(
+        seat,
+        task.assignee_seat_id
+          ?? task.assigneeSeatId
+          ?? task.assignee_agent_id
+          ?? task.assigneeAgentId
+          ?? task.assignee,
+      ),
+    );
+    const relationNames = new Set<string>();
+    if (leadPeer) relationNames.add(leadPeer.name);
+    for (const peer of sameDepartmentPeers) relationNames.add(peer.name);
+    for (const need of [...outgoingNeeds, ...incomingNeeds]) {
+      const targetId = text(
+        need.target_seat_id
+          ?? need.targetSeatId
+          ?? need.to_agent
+          ?? need.toAgent
+          ?? need.from_agent
+          ?? need.fromAgent,
+        "",
+      );
+      const name = seatNameById.get(targetId);
+      if (name && name !== seat.name) relationNames.add(name);
+    }
+    const relatedNames = [...relationNames].slice(0, 5);
+    const relationScore = relatedNames.length + outgoingNeeds.length + incomingNeeds.length + assignedTasks.length;
+    const tone = seat.dispatchState === "可投递"
+      ? "healthy"
+      : /等待|未知|延迟|排队/.test(seat.dispatchState)
+        ? "review"
+        : /离线|重连|失败|阻塞/.test(seat.dispatchState)
+          ? "blocked"
+          : "idle";
+    return {
+      seat,
+      relatedNames,
+      outgoingCount: outgoingNeeds.length,
+      incomingCount: incomingNeeds.length,
+      taskCount: assignedTasks.length,
+      relationScore,
+      tone,
+    };
+  }).sort((left, right) => right.relationScore - left.relationScore || left.seat.name.localeCompare(right.seat.name, "zh-CN"));
+  const openNeedCount = allNeeds.filter((need) => !/satisfied|completed|done|closed|resolved|archived|cancelled/i.test(text(need.status, ""))).length;
+  const activeTaskCount = allTasks.filter((task) => /queued|ready|running|active|in_progress|reviewing|waiting/i.test(text(task.status, ""))).length;
+  const waitingReceiptCount = collaborationChains.filter((chain) => chain.receiptStatus === "等待回执").length;
+  const projectUsage = asArray<AnyRecord>(usageData).filter((item) => text(item.project_id ?? item.projectId, "") === projectId);
+  const todayUsage = projectUsage.filter((item) => sameLocalDay(item.created_at ?? item.createdAt));
+  const usageSource = todayUsage.length ? todayUsage : projectUsage;
+  const tokenInputToday = usageSource.reduce((sum, item) => sum + numberValue(item.input_tokens ?? item.inputTokens), 0);
+  const tokenOutputToday = usageSource.reduce((sum, item) => sum + numberValue(item.output_tokens ?? item.outputTokens), 0);
+  const tokenCachedToday = usageSource.reduce((sum, item) => sum + numberValue(item.cached_tokens ?? item.cachedTokens), 0);
+  const tokenTotalToday = tokenInputToday + tokenOutputToday;
+  const tokenBudget = allSeats.reduce((sum, seat) => {
+    const raw = record(seat.metadata).max_tokens_per_task ?? record(seat.metadata).maxTokensPerTask;
+    return sum + numberValue(raw);
+  }, 0) || 1000000;
+  const runningEventCount = allOrgEvents.filter((event) => /running|progress|active|pending|queued|acked|delivered/i.test(text(event.status, ""))).length;
+  const completedEventCount = allOrgEvents.filter((event) => /completed|done|success|resolved/i.test(text(event.status, ""))).length;
+  const taskDetailItems = (pendingHumanReviews.length ? pendingHumanReviews : recentOrgEvents).slice(0, 5);
+  const activeTaskPreviewSource = allTasks
+    .filter((task) => /queued|ready|running|active|in_progress|reviewing|waiting|acked|accepted/i.test(text(task.status, "")))
+    .sort((left, right) => latestActivityTime(right.updated_at, right.updatedAt, right.created_at, right.createdAt) - latestActivityTime(left.updated_at, left.updatedAt, left.created_at, left.createdAt));
+  const taskPreviewSource = (activeTaskPreviewSource.length ? activeTaskPreviewSource : allTasks)
+    .filter((task) => !isHiddenFocusQueueItem(task.status))
+    .slice(0, 3)
+    .map((task, index) => {
+      const taskId = text(task.id ?? task.task_id ?? task.taskId, `task-preview-${index}`);
+      const assigneeId = text(
+        task.assignee_seat_id
+          ?? task.assigneeSeatId
+          ?? task.assignee_agent_id
+          ?? task.assigneeAgentId
+          ?? task.assignee,
+        "",
+      );
+      const href = `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company${assigneeId ? `&seat_id=${encodeURIComponent(assigneeId)}` : ""}`;
+      return {
+        id: taskId,
+        title: shortPublicText(task.title ?? task.name ?? task.summary, `承接任务 ${index + 1}`, 48),
+        meta: `${publicTaskStatusLabel(task.status)} · ${seatNameById.get(assigneeId) ?? "待确认承接方"}`,
+        detail: shortPublicText(task.description ?? task.context_summary ?? task.summary, "查看承接进度、回执状态和归档材料。", 92),
+        evidence: [
+          `状态：${publicTaskStatusLabel(task.status)}`,
+          `承接方：${seatNameById.get(assigneeId) ?? "待确认承接方"}`,
+          "验收：查看回执、交付说明和归档材料",
+        ],
+        workbenchHref: href,
+        archiveKind: "tasks" as const,
+        archiveId: taskId,
+        canArchive: canArchiveFocusQueueItem("tasks", task.status),
+      };
+    });
+  const needPreviewSource = collaborationChains
+    .filter((chain) => !isHiddenFocusQueueItem(chain.needRawStatus))
+    .sort((left, right) => right.activityTime - left.activityTime)
+    .slice(0, 3)
+    .map((chain, index) => ({
+      id: text(chain.id, `need-preview-${index}`),
+      title: chain.detailTitle,
+      meta: `${chain.needStatus} · ${chain.nextAction}`,
+      detail: chain.summary,
+      evidence: [
+        `需求：${chain.needStatus}`,
+        `任务：${chain.taskStatus}`,
+        `回执：${chain.receiptStatus}`,
+      ],
+      workbenchHref: `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company${chain.targetId || chain.requesterId ? `&seat_id=${encodeURIComponent(chain.targetId || chain.requesterId)}` : ""}`,
+      archiveKind: "needs" as const,
+      archiveId: text(chain.id, `need-preview-${index}`),
+      canArchive: canArchiveFocusQueueItem("needs", chain.needRawStatus),
+    }));
+  const focusReviewItems = focusReview?.queue === "tasks" ? taskPreviewSource : needPreviewSource;
+  const selectedFocusItemIndex = Math.max(0, Math.min(focusReviewItems.length - 1, Number.parseInt(text(searchParams?.item, "-1"), 10)));
+  const selectedFocusItem = Number.isFinite(selectedFocusItemIndex) && selectedFocusItemIndex >= 0 ? focusReviewItems[selectedFocusItemIndex] : null;
+  const decisionItems = Array.from(new Set([
+    pendingHumanReviews.length ? `${pendingHumanReviews.length} 条待人工确认` : "",
+    queueOnlySeatCount ? `${queueOnlySeatCount} 名 NPC 当前只能先排队` : "",
+    staleDispatchCount ? `${staleDispatchCount} 名 NPC 正等待执行电脑恢复` : "",
+    offlineDispatchCount ? `${offlineDispatchCount} 名 NPC 需要重连执行电脑` : "",
+    occupiedDispatchCount ? `${occupiedDispatchCount} 名 NPC 当前由他人占用，只能先排队` : "",
+    missingProviderCount ? `${missingProviderCount} 名 NPC 还没选择执行通道` : "",
+    missingThreadCount ? `${missingThreadCount} 名 NPC 还没绑定桌面线程` : "",
+    missingComputerCount ? `${missingComputerCount} 名 NPC 还没绑定目标电脑` : "",
+    unknownDispatchCount ? `${unknownDispatchCount} 名 NPC 的执行状态仍需检查接入` : "",
+    nodeStateMap.size
+      ? `真实电脑：可投递 ${nodeDispatchCounts.ready} · 仅排队 ${nodeDispatchCounts.queueable} · 需重连 ${nodeDispatchCounts.reconnect} · 待检查 ${nodeDispatchCounts.unknown}`
+      : "",
+    strictReviewCount ? `${strictReviewCount} 名 NPC 启用高风险确认` : "",
+    openNeedCount ? `${openNeedCount} 条协作需求仍在流转` : "",
+    activeTaskCount ? `${activeTaskCount} 条承接任务正在推进` : "",
+    waitingReceiptCount ? `${waitingReceiptCount} 条协作链路等待回执` : "",
+    skillAssignedCount < allSeats.length ? `${Math.max(allSeats.length - skillAssignedCount, 0)} 名 NPC 待补 Skill` : "",
+    knowledgeAssignedCount < allSeats.length ? `${Math.max(allSeats.length - knowledgeAssignedCount, 0)} 名 NPC 待补知识库` : "",
+    recentOrgEvents.length ? `${recentOrgEvents.length} 条最近回执需要抽查` : "",
+  ].filter(Boolean))).slice(0, 5);
+
+  return (
+    <main className={styles.shell} data-embedded={searchParams?.embed === "drawer" ? "1" : undefined}>
+      <nav className={styles.topNav} aria-label="公司层导航">
+        <span className={styles.navCrumb}>项目公司 / 公司层</span>
+        <Link href={`/projects/${projectId}`}>回到主页面</Link>
+        <Link href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}>进入 NPC 工作台</Link>
+        <Link href={`/projects/${projectId}/skill-forge?return_to=${encodeURIComponent(selfPath)}&from=company`}>管理能力工坊</Link>
+        {returnToPath ? <Link href={returnToPath}>{labelProjectReturnPath(returnToPath)}</Link> : null}
+      </nav>
+      {text(searchParams?.team_notice, "") ? (
+        <div className={styles.surfaceNotice} role="status">{shortPublicText(searchParams?.team_notice, "操作已完成", 120)}</div>
+      ) : null}
+      {text(searchParams?.team_error, "") ? (
+        <div className={styles.surfaceError} role="alert">{shortPublicText(searchParams?.team_error, "操作失败，请稍后再试", 120)}</div>
+      ) : null}
+      {focusReview ? (
+        <section className={styles.focusReview} aria-label="当前验收焦点">
+          <div>
+            <span>{focusReview.eyebrow}</span>
+            <strong>{focusReview.title}</strong>
+            <p>{focusReview.detail}</p>
+            <div className={styles.focusReviewItems} aria-label="本次先看条目">
+              {focusReviewItems.length ? focusReviewItems.map((item, index) => (
+                <Link
+                  key={item.id}
+                  href={companyFocusHref(projectId, focusReview.queue, index, focusReturnContext)}
+                  data-active={selectedFocusItem?.id === item.id ? "1" : undefined}
+                >
+                  <strong>{item.title}</strong>
+                  <span>{item.meta}</span>
+                  <small>{item.detail}</small>
+                </Link>
+              )) : (
+                <p>当前没有可验收条目；可以回到能力工坊继续索引 NPC 沉淀，或等待新的协作回执进入公司层。</p>
+              )}
+            </div>
+            {selectedFocusItem ? (
+              <aside className={styles.focusEvidence} aria-label="验收详情">
+                <span>验收详情</span>
+                <strong>{selectedFocusItem.title}</strong>
+                <p>{selectedFocusItem.detail}</p>
+                <div>
+                  {selectedFocusItem.evidence.map((line) => <small key={line}>{line}</small>)}
+                </div>
+                <nav className={styles.focusEvidenceActions} aria-label="验收后动作">
+                  <Link href={selectedFocusItem.workbenchHref}>打开相关 NPC 工作台</Link>
+                  <Link href={skillForgeFocusReturnHref(projectId, selfPath, focusReview.queue, focusReturnContext)}>继续查看索引结果</Link>
+                  {selectedFocusItem.canArchive ? (
+                    <form action={归档公司层焦点条目.bind(null, projectId, selectedFocusItem.archiveKind, selectedFocusItem.archiveId)}>
+                      <input type="hidden" name="return_to" value={companyFocusHref(projectId, focusReview.queue, selectedFocusItemIndex, focusReturnContext)} />
+                      <button type="submit">归档当前条目</button>
+                    </form>
+                  ) : (
+                    <small>完成后可归档，当前只查看验收线索</small>
+                  )}
+                </nav>
+              </aside>
+            ) : focusReviewItems.length ? (
+              <p className={styles.focusHint}>点击上方任一条目，可在公司层先看状态、回执和归档线索；不会触发派单。</p>
+            ) : null}
+          </div>
+          <Link href={skillForgeFocusReturnHref(projectId, selfPath, focusReview.queue, focusReturnContext)}>继续查看索引结果</Link>
+        </section>
+      ) : null}
+
+      <header className={styles.header}>
+        <div>
+          <span>公司层 / 运行态势图</span>
+          <h1>{text(project.name, "AI 合作平台")} 公司沙盘</h1>
+          <p>先看阻塞、再看部门、最后进入对应工作台处理；这里不展开长表格，只保留组织运行的关键线索。</p>
+        </div>
+        <section className={styles.statusStrip} aria-label="组织状态">
+          <article><span>工位</span><strong>{workstationRows.length}</strong><small>逻辑部门</small></article>
+          <article><span>NPC</span><strong>{allSeats.length}</strong><small>员工席位</small></article>
+          <article><span>可投递</span><strong>{threadReadyCount}/{allSeats.length || 0}</strong><small>电脑 {readyNodeCount}/{nodeStateMap.size || 0}</small></article>
+          <article><span>仅排队</span><strong>{queueOnlySeatCount}</strong><small>电脑 {nodeDispatchCounts.queueable}</small></article>
+          <article><span>需重连</span><strong>{recoveryDispatchCount}</strong><small>电脑 {nodeDispatchCounts.reconnect}</small></article>
+          <article><span>待检查</span><strong>{unknownDispatchCount}</strong><small>电脑 {nodeDispatchCounts.unknown}</small></article>
+        </section>
+      </header>
+
+      <section className={styles.layout}>
+        <section className={styles.centerPane} aria-label="公司运行状态一览图">
+          <div className={styles.decisionBand}>
+            <div>
+              <span>今天先看</span>
+              <strong>{decisionItems[0] ?? "公司运行平稳"}</strong>
+            </div>
+            <div className={styles.decisionChips}>
+              {(decisionItems.length > 1 ? decisionItems.slice(1) : ["暂无需重连", "无待处理提醒", "电脑状态正常"]).map((item, index) => (
+                <span key={`${item}-${index}`}>{item}</span>
+              ))}
+            </div>
+          </div>
+
+          <section className={styles.gameCollabPanel} aria-label="小游戏双 NPC 协作试运行">
+            <header>
+              <div>
+                <span>小游戏协作台</span>
+                <strong>7号做玩法，8号做联调，用户随时改方向</strong>
+              </div>
+              <div className={styles.gameCollabStatus} data-ready={gameCollabReady ? "1" : undefined}>
+                {gameCollabReady ? "双 NPC 已就绪" : "等待 7/8 号绑定"}
+              </div>
+            </header>
+
+            <div className={styles.gameCollabMap} aria-label="7号和8号协作可视化">
+              <Link
+                href={frontC7Seat ? `/projects/${projectId}/workbench?seat_id=${encodeURIComponent(frontC7Seat.id)}&return_to=${encodeURIComponent(selfPath)}&from=company` : `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}
+                className={styles.gameNpc}
+                data-state={frontC7Seat?.dispatchState === "可投递" ? "ready" : frontC7Seat ? "queue" : "missing"}
+              >
+                <b>7</b>
+                <strong>{frontC7Seat?.name ?? "前端 C 7号"}</strong>
+                <small>{frontC7Seat ? `${frontC7Seat.dispatchState} · 玩法/UI` : "未找到席位"}</small>
+                <em data-tone={frontC7Desktop.tone}>{frontC7Desktop.label}</em>
+              </Link>
+              <div className={styles.gameCollabLane} aria-hidden="true">
+                <i data-tone="plan" />
+                <i data-tone="build" />
+                <i data-tone="review" />
+                <span>方案 → 原型 → 联调 → 插入修改</span>
+              </div>
+              <Link
+                href={frontC8Seat ? `/projects/${projectId}/workbench?seat_id=${encodeURIComponent(frontC8Seat.id)}&return_to=${encodeURIComponent(selfPath)}&from=company` : `/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}
+                className={styles.gameNpc}
+                data-state={frontC8Seat?.dispatchState === "可投递" ? "ready" : frontC8Seat ? "queue" : "missing"}
+              >
+                <b>8</b>
+                <strong>{frontC8Seat?.name ?? "前端 C 8号"}</strong>
+                <small>{frontC8Seat ? `${frontC8Seat.dispatchState} · 测试/集成` : "未找到席位"}</small>
+                <em data-tone={frontC8Desktop.tone}>{frontC8Desktop.label}</em>
+              </Link>
+            </div>
+
+            <div className={styles.desktopSyncStrip} aria-label="Codex Desktop 同步状态">
+              <strong>桌面同步</strong>
+              <span>{gameDesktopLine}</span>
+              <div>
+                {frontC7Desktop.desktopThreadUrl ? <a href={frontC7Desktop.desktopThreadUrl}>打开 7号线程</a> : <span>7号待绑定</span>}
+                {frontC8Desktop.desktopThreadUrl ? <a href={frontC8Desktop.desktopThreadUrl}>打开 8号线程</a> : <span>8号待绑定</span>}
+              </div>
+            </div>
+
+            <div className={styles.desktopEvidenceGrid} aria-label="桌面接收证据">
+              <article data-tone={frontC7Desktop.tone}>
+                <span>7号桌面证据</span>
+                <strong>{frontC7Desktop.label}</strong>
+                <p>{frontC7Desktop.detail}</p>
+              </article>
+              <article data-tone={frontC8Desktop.tone}>
+                <span>8号桌面证据</span>
+                <strong>{frontC8Desktop.label}</strong>
+                <p>{frontC8Desktop.detail}</p>
+              </article>
+            </div>
+
+            <div className={styles.gameCollabBody}>
+              <form action={发起前端C小游戏协作.bind(null, projectId)} className={styles.gameCollabForm}>
+                <input type="hidden" name="return_to" value={selfPath} />
+                <label>
+                  <span>小游戏目标</span>
+                  <textarea
+                    name="brief"
+                    defaultValue="做一个可玩 2D 小游戏：玩家移动、收集星星、避开障碍，先做 MVP，再根据用户插入需求调整方向。"
+                  />
+                </label>
+                <div className={styles.autonomyChoices} aria-label="NPC 自主级别">
+                  <label>
+                    <input type="radio" name="autonomy_mode" value="supervised" defaultChecked={gameCollabMode === "supervised"} />
+                    <span>监督模式</span>
+                    <small>每阶段等你确认</small>
+                  </label>
+                  <label>
+                    <input type="radio" name="autonomy_mode" value="checkpoint" defaultChecked={!["supervised", "full"].includes(gameCollabMode)} />
+                    <span>检查点模式</span>
+                    <small>可做 MVP，风险前停</small>
+                  </label>
+                  <label>
+                    <input type="radio" name="autonomy_mode" value="full" defaultChecked={gameCollabMode === "full"} />
+                    <span>完全自主</span>
+                    <small>持续跑，危险动作人审</small>
+                  </label>
+                </div>
+                <button type="submit" disabled={!gameCollabReady}>
+                  {gameCollabReady ? "启动 7/8 协作" : "先绑定 7/8 号"}
+                </button>
+              </form>
+
+              <form action={插入前端C小游戏需求.bind(null, projectId)} className={styles.gameInjectForm}>
+                <input type="hidden" name="return_to" value={selfPath} />
+                <input type="hidden" name="game_collab_run_id" value={gameCollabRunId} />
+                <input type="hidden" name="autonomy_mode" value={gameCollabMode} />
+                <label>
+                  <span>插入新需求</span>
+                  <input name="brief" placeholder="例如：改成限时收集、加一个 boss、移动端也要顺手" />
+                </label>
+                <button type="submit" disabled={!gameCollabReady}>插入到两位 NPC</button>
+                <p>
+                  当前：{gameCollabModeLabel} · 进行中 {gameCollabActiveCount} 条 · 完全自主会持续消耗队列和 token，破坏性操作仍会停下等你确认。
+                </p>
+              </form>
+            </div>
+          </section>
+
+          <section className={styles.officeNetwork} aria-label="NPC 办公网">
+            <header>
+              <div>
+                <span>NPC 办公网</span>
+                <strong>一张图看谁在和谁协作</strong>
+              </div>
+              <div className={styles.networkLegend}>
+                <span data-tone="review">需求</span>
+                <span data-tone="healthy">承接/完成</span>
+                <span data-tone="blocked">阻塞</span>
+                <span>点击线看详情</span>
+              </div>
+            </header>
+            <OfficeNetwork projectId={projectId} nodes={officeNetworkNodes} edges={officeNetworkEdges} />
+          </section>
+
+          <div className={styles.sandbox}>
+            <div className={styles.flowLayer} aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </div>
+            {workstationRows.map((ws, index) => {
+              const wsReady = ws.seats.filter((seat) => seat.dispatchState === "可投递").length;
+              const wsQueueable = ws.seats.filter(
+                (seat) =>
+                  seat.threadId
+                  && seat.dispatchCanQueue
+                  && ["最近在线，可能延迟", "他人操作中"].includes(seat.dispatchState),
+              ).length;
+              const wsAttention = ws.seats.filter(
+                (seat) =>
+                  seat.dispatchState === "等待电脑恢复"
+                  || seat.dispatchState === "离线，需重连"
+                  || seat.dispatchState === "状态未知，先检查接入",
+              ).length;
+              const tone = wsAttention ? "blocked" : wsReady ? "healthy" : "idle";
+              return (
+                <article key={ws.id} className={styles.departmentZone} data-tone={tone} data-active={index === 0 ? "1" : undefined}>
+                  <header>
+                    <div>
+                      <span>部门区域</span>
+                      <strong>{ws.name}</strong>
+                      <small>负责人：{ws.leadName}</small>
+                    </div>
+                    <dl>
+                      <div><dt>可投递</dt><dd>{wsReady}</dd></div>
+                      <div><dt>仅排队</dt><dd>{wsQueueable}</dd></div>
+                      <div><dt>待处理</dt><dd>{wsAttention}</dd></div>
+                    </dl>
+                  </header>
+
+                  <div className={styles.seatGrid}>
+                    {ws.seats.length ? ws.seats.map((seat) => (
+                      <Link
+                        key={seat.id}
+                        href={`/projects/${projectId}/workbench?seat_id=${encodeURIComponent(seat.id)}&return_to=${encodeURIComponent(selfPath)}&from=company`}
+                        className={styles.seatNode}
+                        data-tone={statusTone(seat.dispatchState)}
+                        title={`打开 ${seat.name} 的 NPC 工作台：${seat.dispatchDetail}`}
+                      >
+                        <span className={styles.avatar}>{seat.name.slice(0, 2).toUpperCase()}</span>
+                        <strong>{seat.name}</strong>
+                        <small>{seat.dispatchShortLabel} · {seat.threadHealth}</small>
+                        <em>{seat.dispatchState}</em>
+                      </Link>
+                    )) : (
+                      <div className={styles.emptySeat}>
+                        <strong>待分配 NPC</strong>
+                        <p>先在主页面创建 NPC，再回公司层分配部门和职责。</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={styles.deviceDock}>
+                    {(ws.seats.length ? ws.seats : []).filter((seat) => seat.computerNodeName).slice(0, 4).map((seat) => (
+                      <span key={`${ws.id}-${seat.id}-node`} data-tone={statusTone(seat.dispatchState)}>
+                        {seat.computerNodeName}
+                      </span>
+                    ))}
+                    {!ws.seats.some((seat) => seat.computerNodeName) ? <span data-tone="idle">待绑定电脑</span> : null}
+                  </div>
+                </article>
+              );
+            })}
+            {!allSeats.length ? (
+              <article className={styles.emptyRow}>
+                <strong>还没有 NPC 员工</strong>
+                <p>先在主页面创建 NPC、扫描线程并绑定，再回公司层分配职责和确认规则。</p>
+              </article>
+            ) : null}
+          </div>
+        </section>
+
+        <aside className={styles.sidePane} aria-label="公司经营明细">
+          <section className={styles.tokenPanel}>
+            <header>
+              <strong>今日 Token</strong>
+              <small>{todayUsage.length ? "来自真实用量记录" : projectUsage.length ? "最近记录" : "等待用量回写"}</small>
+            </header>
+            <div className={styles.tokenGrid}>
+              <article>
+                <span>今日消耗</span>
+                <strong>{formatTokenCount(tokenTotalToday)}</strong>
+                <small>/ {formatTokenCount(tokenBudget)}</small>
+                <i style={{ width: `${Math.min(100, tokenBudget ? (tokenTotalToday / tokenBudget) * 100 : 0)}%` }} />
+              </article>
+              <article>
+                <span>缓存节省</span>
+                <strong>{formatTokenCount(tokenCachedToday)}</strong>
+                <small>{tokenCachedToday ? "已复用上下文" : "统计中"}</small>
+                <i style={{ width: `${Math.min(100, tokenTotalToday ? (tokenCachedToday / Math.max(tokenTotalToday, 1)) * 100 : 0)}%` }} />
+              </article>
+            </div>
+          </section>
+
+          <section className={styles.detailPanel}>
+            <header>
+              <span>协作明细</span>
+              <strong>最近记录</strong>
+            </header>
+            <div className={styles.miniStats}>
+              <article><strong>{runningEventCount}</strong><span>进行中</span></article>
+              <article><strong>{completedEventCount}</strong><span>已完成</span></article>
+              <article><strong>{allOrgEvents.length}</strong><span>总计</span></article>
+            </div>
+            <div className={styles.taskList}>
+              {taskDetailItems.map((event, index) => (
+                <Link
+                  key={text(event.id, `company-detail-${index}`)}
+                  href={`/projects/${projectId}/workbench?return_to=${encodeURIComponent(selfPath)}&from=company`}
+                  className={styles.taskItem}
+                >
+                  <strong>{publicEventTitle(event)}</strong>
+                  <span>{publicEventDescription(event)}</span>
+                  <small>{publicStatusLabel(event.status)} ›</small>
+                </Link>
+              ))}
+              {!taskDetailItems.length ? <p className={styles.emptyText}>还没有协作明细。</p> : null}
+            </div>
+          </section>
+        </aside>
+
+      </section>
+
+      <section className={styles.bottomDock} aria-label="组织变更日志">
+        <div className={styles.logHeader}>
+          <span>组织变更 / 协作事件</span>
+          <strong>{recentOrgEvents.length ? `${recentOrgEvents.length} 条` : "等待事件"}</strong>
+        </div>
+        <div className={styles.logRows}>
+          {(pendingHumanReviews.length ? pendingHumanReviews.slice(0, 6) : recentOrgEvents).map((event, index) => (
+            <article key={text(event.id, `event-${index}`)}>
+              <span>{isPendingHumanReview(event) ? reviewSourceLabel(event) : publicStatusLabel(event.status)}</span>
+              <strong>{publicEventTitle(event)}</strong>
+              <p>{publicEventDescription(event)}</p>
+            </article>
+          ))}
+          {!pendingHumanReviews.length && !recentOrgEvents.length ? (
+            <p className={styles.emptyText}>还没有组织变更事件。创建工位、绑定能力或调整确认规则后会在这里显示摘要。</p>
+          ) : null}
+        </div>
+      </section>
+    </main>
+  );
+}

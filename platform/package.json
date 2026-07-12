@@ -1,0 +1,20 @@
+{
+  "name": "ai-collab-platform",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "lint:web": "npm --workspace apps/web run lint"
+  },
+  "dependencies": {
+    "graceful-fs": "^4.2.11"
+  },
+  "devDependencies": {
+    "playwright": "^1.59.1"
+  }
+}

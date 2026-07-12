@@ -1,0 +1,445 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { 索引Npc沉淀 } from "../../../actions";
+import styles from "./company.module.css";
+
+export type OfficeNetworkNode = {
+  id: string;
+  name: string;
+  x: number;
+  y: number;
+  outgoingCount: number;
+  incomingCount: number;
+  taskCount: number;
+  tone: string;
+  href: string;
+};
+
+export type OfficeNetworkEdge = {
+  id: string;
+  fromId: string;
+  toId: string;
+  needId?: string;
+  taskId?: string;
+  dispatchId?: string;
+  fromName: string;
+  toName: string;
+  count: number;
+  label: string;
+  summary: string;
+  needStatus: string;
+  taskStatus: string;
+  dispatchStatus: string;
+  receiptStatus: string;
+  taskCount: number;
+  receiptCount: number;
+  latestReceipt: string;
+  activityLabel: string;
+  nextAction: string;
+  detailTitle: string;
+  detailOutput: string;
+  latestTaskTitle: string;
+  knowledgeClosureCount: number;
+  skillClosureCount: number;
+  closureActivityLabel: string;
+  runtimePackageLabel: string;
+  runtimePackageActivityLabel: string;
+  chainItems: Array<{
+    id: string;
+    title: string;
+    taskStatus: string;
+    receiptStatus: string;
+    activityLabel: string;
+    latestReceipt: string;
+  }>;
+  needTone: string;
+  taskTone: string;
+  receiptTone: string;
+  kind: "collaboration" | "relationship";
+  href: string;
+  workbenchHref: string;
+  knowledgeHref: string;
+  skillHref: string;
+};
+
+type OfficeNetworkProps = {
+  projectId: string;
+  nodes: OfficeNetworkNode[];
+  edges: OfficeNetworkEdge[];
+};
+
+type Point = { x: number; y: number };
+type NetworkFilter = "all" | "collaboration" | "relationship" | "blocked";
+
+function clampPoint(point: Point): Point {
+  return {
+    x: Math.max(7, Math.min(93, point.x)),
+    y: Math.max(9, Math.min(91, point.y)),
+  };
+}
+
+export function OfficeNetwork({ projectId, nodes, edges }: OfficeNetworkProps) {
+  const storageKey = `company-office-network:${projectId}:v2`;
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const dragStartRef = useRef<{ id: string; pointerId: number; moved: boolean } | null>(null);
+  const [positions, setPositions] = useState<Record<string, Point>>({});
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<NetworkFilter>("all");
+
+  useEffect(() => {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(storageKey) || "{}") as Record<string, Point>;
+      const next: Record<string, Point> = {};
+      for (const node of nodes) {
+        const saved = parsed[node.id];
+        if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) next[node.id] = clampPoint(saved);
+      }
+      setPositions(next);
+    } catch {
+      setPositions({});
+    }
+  }, [nodes, storageKey]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(storageKey, JSON.stringify(positions));
+    } catch {
+      // Drag positions are only a local view preference.
+    }
+  }, [positions, storageKey]);
+
+  const nodeById = useMemo(() => {
+    const map = new Map<string, OfficeNetworkNode & Point>();
+    for (const node of nodes) {
+      const position = positions[node.id] ?? { x: node.x, y: node.y };
+      map.set(node.id, { ...node, ...clampPoint(position) });
+    }
+    return map;
+  }, [nodes, positions]);
+
+  const positionedNodes = useMemo(() => nodes.map((node) => nodeById.get(node.id)).filter(Boolean) as Array<OfficeNetworkNode & Point>, [nodeById, nodes]);
+  const normalizedQuery = query.trim().toLowerCase();
+  const displayEdges = useMemo(() => {
+    const priority = (edge: OfficeNetworkEdge) => {
+      if (edge.needTone === "blocked" || edge.taskTone === "blocked" || edge.receiptTone === "blocked") return 3;
+      if (edge.kind === "collaboration") return 2;
+      return 1;
+    };
+    return [...edges].sort((left, right) => priority(left) - priority(right));
+  }, [edges]);
+  const filteredEdges = useMemo(() => {
+    return displayEdges.filter((edge) => {
+      const matchesQuery = !normalizedQuery
+        || edge.label.toLowerCase().includes(normalizedQuery)
+        || edge.fromName.toLowerCase().includes(normalizedQuery)
+        || edge.toName.toLowerCase().includes(normalizedQuery)
+        || edge.summary.toLowerCase().includes(normalizedQuery)
+        || edge.latestReceipt.toLowerCase().includes(normalizedQuery);
+      if (!matchesQuery) return false;
+      if (filter === "collaboration") return edge.kind === "collaboration";
+      if (filter === "relationship") return edge.kind === "relationship";
+      if (filter === "blocked") return edge.needTone === "blocked" || edge.taskTone === "blocked" || edge.receiptTone === "blocked";
+      return true;
+    });
+  }, [displayEdges, filter, normalizedQuery]);
+  const visibleNodeIds = useMemo(() => {
+    if (!normalizedQuery && filter === "all") return new Set(nodes.map((node) => node.id));
+    const ids = new Set<string>();
+    for (const edge of filteredEdges) {
+      ids.add(edge.fromId);
+      ids.add(edge.toId);
+    }
+    for (const node of nodes) {
+      if (
+        normalizedQuery
+        && (
+          node.name.toLowerCase().includes(normalizedQuery)
+          || `${node.outgoingCount}/${node.incomingCount}/${node.taskCount}`.includes(normalizedQuery)
+        )
+      ) {
+        ids.add(node.id);
+      }
+    }
+    return ids;
+  }, [filter, filteredEdges, nodes, normalizedQuery]);
+  const selectedEdge = useMemo(
+    () => edges.find((edge) => edge.id === selectedEdgeId) ?? null,
+    [edges, selectedEdgeId],
+  );
+  const selectedEdgeLabel = selectedEdge
+    ? selectedEdge.kind === "relationship"
+      ? `${selectedEdge.label}关系`
+      : `${selectedEdge.count > 1 ? `${selectedEdge.count}条 ` : ""}${selectedEdge.label}`
+    : "";
+  const realEdgeCount = edges.filter((edge) => edge.kind === "collaboration").length;
+  const relationshipEdgeCount = edges.filter((edge) => edge.kind === "relationship").length;
+  const blockedEdgeCount = edges.filter((edge) => edge.needTone === "blocked" || edge.taskTone === "blocked" || edge.receiptTone === "blocked").length;
+
+  function moveNode(id: string, clientX: number, clientY: number) {
+    const rect = mapRef.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    const next = clampPoint({
+      x: ((clientX - rect.left) / rect.width) * 100,
+      y: ((clientY - rect.top) / rect.height) * 100,
+    });
+    setPositions((current) => ({ ...current, [id]: next }));
+  }
+
+  function resetLayout() {
+    setPositions({});
+  }
+
+  return (
+    <div className={styles.officeMap} ref={mapRef}>
+      <div className={styles.officeNetworkStats} aria-label="NPC 办公网统计">
+        <span>真实协作 {realEdgeCount}</span>
+        <span>组织关系 {relationshipEdgeCount}</span>
+        <span data-alert={blockedEdgeCount ? "1" : undefined}>阻塞 {blockedEdgeCount}</span>
+        <span>当前显示 {filteredEdges.length}</span>
+      </div>
+      <div className={styles.officeToolbar} aria-label="NPC 办公网工具">
+        <label className={styles.officeSearch}>
+          <span>搜索</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="NPC 或协作" />
+        </label>
+        <div className={styles.officeFilterGroup} aria-label="协作线筛选">
+          {[
+            ["all", "全部"],
+            ["collaboration", "真实"],
+            ["relationship", "关系"],
+            ["blocked", "阻塞"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              data-active={filter === key ? "1" : undefined}
+              onClick={() => setFilter(key as NetworkFilter)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <button type="button" className={styles.officeResetBtn} onClick={resetLayout}>
+          重排
+        </button>
+      </div>
+      <svg className={styles.officeSvg} viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="NPC 协作网络线">
+        {filteredEdges.map((edge, index) => {
+          const from = nodeById.get(edge.fromId);
+          const to = nodeById.get(edge.toId);
+          if (!from || !to) return null;
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          const p1x = from.x + dx * 0.16;
+          const p1y = from.y + dy * 0.16;
+          const p2x = from.x + dx * 0.42;
+          const p2y = from.y + dy * 0.42;
+          const p3x = from.x + dx * 0.68;
+          const p3y = from.y + dy * 0.68;
+          const p4x = from.x + dx * 0.86;
+          const p4y = from.y + dy * 0.86;
+          const distance = Math.max(Math.hypot(dx, dy), 1);
+          const normalX = -dy / distance;
+          const normalY = dx / distance;
+          const labelOffset = [-4.2, 0, 4.2, -7, 7][index % 5];
+          const labelX = from.x + dx * 0.5 + normalX * labelOffset;
+          const labelY = from.y + dy * 0.5 + normalY * labelOffset;
+          const width = edge.kind === "relationship" ? 1.15 : Math.min(3.1, 1.35 + edge.count * 0.32);
+          const edgeLabel = edge.kind === "relationship" ? `${edge.label}关系` : `${edge.count > 1 ? `${edge.count}条 ` : ""}${edge.label}`;
+          const openEdge = () => setSelectedEdgeId(edge.id);
+          return (
+            <g
+              key={edge.id}
+              className={styles.networkEdgeLink}
+              data-kind={edge.kind}
+              data-selected={selectedEdgeId === edge.id ? "1" : undefined}
+              role="button"
+              tabIndex={0}
+              aria-label={`${from.name} 到 ${to.name}: ${edgeLabel}`}
+              onClick={(event) => {
+                event.preventDefault();
+                setSelectedEdgeId(edge.id);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSelectedEdgeId(edge.id);
+                }
+              }}
+            >
+              <title>{`${from.name} → ${to.name}：${edgeLabel}`}</title>
+              <line x1={p1x} y1={p1y} x2={p2x} y2={p2y} className={styles.networkEdgeHit} onClick={openEdge} />
+              <line x1={p2x} y1={p2y} x2={p3x} y2={p3y} className={styles.networkEdgeHit} onClick={openEdge} />
+              <line x1={p3x} y1={p3y} x2={p4x} y2={p4y} className={styles.networkEdgeHit} onClick={openEdge} />
+              <line x1={p1x} y1={p1y} x2={p2x} y2={p2y} className={styles.networkEdge} data-tone={edge.needTone} strokeWidth={width} onClick={openEdge} />
+              <line x1={p2x} y1={p2y} x2={p3x} y2={p3y} className={styles.networkEdge} data-tone={edge.taskTone} strokeWidth={width} onClick={openEdge} />
+              <line x1={p3x} y1={p3y} x2={p4x} y2={p4y} className={styles.networkEdge} data-tone={edge.receiptTone} strokeWidth={width} onClick={openEdge} />
+              <text x={labelX} y={labelY} className={styles.networkEdgeLabel} onClick={openEdge}>
+                {edgeLabel}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+      <div className={styles.officeEdgeTapLayer} aria-hidden="true">
+        {filteredEdges.map((edge) => {
+          const from = nodeById.get(edge.fromId);
+          const to = nodeById.get(edge.toId);
+          if (!from || !to) return null;
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          const distance = Math.max(Math.hypot(dx, dy), 1);
+          const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+          const edgeLabel = edge.kind === "relationship" ? `${edge.label}关系` : `${edge.count > 1 ? `${edge.count}条 ` : ""}${edge.label}`;
+          return (
+            <button
+              key={edge.id}
+              type="button"
+              className={styles.officeEdgeTapTarget}
+              data-edge-id={edge.id}
+              data-selected={selectedEdgeId === edge.id ? "1" : undefined}
+              aria-label={`${from.name} 到 ${to.name}: ${edgeLabel}`}
+              onClick={() => setSelectedEdgeId(edge.id)}
+              style={{
+                left: `${from.x + dx * 0.5}%`,
+                top: `${from.y + dy * 0.5}%`,
+                width: `${Math.max(10, distance * 0.72)}%`,
+                transform: `translate(-50%, -50%) rotate(${angle}deg)`,
+              }}
+            />
+          );
+        })}
+      </div>
+      <div className={styles.officeNodeLayer}>
+        {positionedNodes.map((node) => (
+          <Link
+            key={node.id}
+            href={node.href}
+            className={styles.officeNode}
+            data-tone={node.tone}
+            data-dragging={draggingId === node.id ? "1" : undefined}
+            data-dimmed={!visibleNodeIds.has(node.id) ? "1" : undefined}
+            style={{ left: `${node.x}%`, top: `${node.y}%` }}
+            draggable={false}
+            onClick={(event) => {
+              if (dragStartRef.current?.id === node.id && dragStartRef.current.moved) event.preventDefault();
+            }}
+            onPointerDown={(event) => {
+              dragStartRef.current = { id: node.id, pointerId: event.pointerId, moved: false };
+              setDraggingId(node.id);
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              const drag = dragStartRef.current;
+              if (!drag || drag.id !== node.id || drag.pointerId !== event.pointerId) return;
+              drag.moved = true;
+              moveNode(node.id, event.clientX, event.clientY);
+            }}
+            onPointerUp={(event) => {
+              if (dragStartRef.current?.pointerId === event.pointerId) {
+                window.setTimeout(() => {
+                  dragStartRef.current = null;
+                }, 0);
+              }
+              setDraggingId(null);
+            }}
+            onPointerCancel={() => {
+              dragStartRef.current = null;
+              setDraggingId(null);
+            }}
+          >
+            <b>{node.name.slice(0, 2).toUpperCase()}</b>
+            <strong>{node.name}</strong>
+            <span>{node.outgoingCount}/{node.incomingCount}/{node.taskCount}</span>
+          </Link>
+        ))}
+      </div>
+      {selectedEdge ? (
+        <aside className={styles.officeEdgeDrawer} aria-label="协作线详情">
+          <div className={styles.officeEdgeDrawerTitle}>
+            <span>{selectedEdge.kind === "collaboration" ? "真实协作" : "组织关系"}</span>
+            <button type="button" onClick={() => setSelectedEdgeId(null)} aria-label="关闭协作详情">×</button>
+          </div>
+          <strong>{selectedEdgeLabel}</strong>
+          <p>{selectedEdge.fromName} → {selectedEdge.toName}</p>
+          <p>{selectedEdge.summary}</p>
+          <div className={styles.officeEdgeBrief}>
+            <span>需求</span>
+            <strong>{selectedEdge.detailTitle}</strong>
+            <span>产出</span>
+            <p>{selectedEdge.detailOutput}</p>
+            <span>承接任务</span>
+            <p>{selectedEdge.latestTaskTitle}</p>
+          </div>
+          <div className={styles.officeEdgeSteps}>
+            <span data-tone={selectedEdge.needTone}>需求：{selectedEdge.needStatus}</span>
+            <span data-tone={selectedEdge.taskTone}>承接：{selectedEdge.taskStatus}</span>
+            <span data-tone={selectedEdge.receiptTone}>回执：{selectedEdge.receiptStatus}</span>
+          </div>
+          <div className={styles.officeEdgeLifecycle}>
+            <span>派发：{selectedEdge.dispatchStatus}</span>
+            <span>任务：{selectedEdge.taskCount}</span>
+            <span>回执：{selectedEdge.receiptCount}</span>
+            <span>最近：{selectedEdge.activityLabel}</span>
+          </div>
+          <div className={styles.officeEdgeReceipt}>
+            <span>最新回执</span>
+            <p>{selectedEdge.latestReceipt}</p>
+          </div>
+          <div className={styles.officeEdgeChainList}>
+            <span>这条线上的协作</span>
+            {selectedEdge.chainItems.slice(0, 5).map((item) => (
+              <div key={item.id} className={styles.officeEdgeChainItem}>
+                <strong>{item.title}</strong>
+                <p>{item.taskStatus} · {item.receiptStatus} · {item.activityLabel}</p>
+                <small>{item.latestReceipt}</small>
+              </div>
+            ))}
+          </div>
+          <div className={styles.officeEdgeClosure} data-active={selectedEdge.knowledgeClosureCount || selectedEdge.skillClosureCount ? "1" : undefined}>
+            <span>闭环沉淀</span>
+            <strong>{selectedEdge.knowledgeClosureCount + selectedEdge.skillClosureCount ? "已有可复用沉淀" : "等待沉淀"}</strong>
+            <p>知识 {selectedEdge.knowledgeClosureCount} · Skill {selectedEdge.skillClosureCount} · 最近 {selectedEdge.closureActivityLabel}</p>
+          </div>
+          <div className={styles.officeEdgeRuntime} data-active={selectedEdge.runtimePackageLabel !== "待刷新" ? "1" : undefined}>
+            <span>上岗包</span>
+            <strong>{selectedEdge.runtimePackageLabel}</strong>
+            <p>最近 {selectedEdge.runtimePackageActivityLabel}</p>
+          </div>
+          <div className={styles.officeEdgeNext}>
+            <span>下一步</span>
+            <strong>{selectedEdge.nextAction}</strong>
+          </div>
+          <div className={styles.officeEdgeActions}>
+            <Link href={selectedEdge.workbenchHref}>打开两端 NPC</Link>
+            <Link href={selectedEdge.knowledgeHref}>{selectedEdge.knowledgeClosureCount ? "补充知识" : "沉淀知识"}</Link>
+            <Link href={selectedEdge.skillHref}>{selectedEdge.skillClosureCount ? "完善 Skill" : "沉淀 Skill"}</Link>
+            <form action={索引Npc沉淀.bind(null, projectId, selectedEdge.toId)}>
+              <input type="hidden" name="return_to" value={`/projects/${projectId}/company`} />
+              <input type="hidden" name="closure_source" value="company_collaboration" />
+              <input type="hidden" name="closure_need_id" value={selectedEdge.needId ?? ""} />
+              <input type="hidden" name="closure_task_id" value={selectedEdge.taskId ?? ""} />
+              <input type="hidden" name="closure_dispatch_id" value={selectedEdge.dispatchId ?? ""} />
+              <button type="submit">索引沉淀</button>
+            </form>
+          </div>
+        </aside>
+      ) : null}
+      {!edges.length ? (
+        <div className={styles.emptyOfficeNetwork}>
+          <strong>还没有 NPC 间协作线</strong>
+          <p>NPC 创建 Need 并路由成 Task 后，这里会出现带颜色分段的协作线。</p>
+        </div>
+      ) : filteredEdges.length === 0 ? (
+        <div className={styles.emptyOfficeNetwork}>
+          <strong>没有符合条件的协作线</strong>
+          <p>换一个关键词，或切回“全部”查看完整办公室关系网。</p>
+        </div>
+      ) : null}
+    </div>
+  );
+}

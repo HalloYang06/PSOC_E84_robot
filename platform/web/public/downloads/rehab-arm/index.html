@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#007aff" />
+    <title>灵动康复 ArmControl 下载</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --blue: #007aff;
+        --ink: #111827;
+        --muted: #5b6472;
+        --line: #d8dfec;
+        --bg: #f7f9fd;
+        --panel: #ffffff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      main {
+        width: min(100%, 760px);
+        margin: 0 auto;
+        padding: 28px 18px 48px;
+      }
+
+      header {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 24px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(28px, 7vw, 44px);
+        line-height: 1.06;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+
+      section {
+        padding: 18px 0;
+        border-top: 1px solid var(--line);
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: 18px;
+      }
+
+      .download {
+        display: grid;
+        gap: 14px;
+        align-items: center;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      a.button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 46px;
+        padding: 0 16px;
+        border-radius: 6px;
+        background: var(--blue);
+        color: #fff;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      a.secondary {
+        background: #eef5ff;
+        color: #005bbb;
+      }
+
+      dl {
+        display: grid;
+        grid-template-columns: 96px 1fr;
+        gap: 8px 12px;
+        margin: 0;
+        font-size: 13px;
+      }
+
+      dt {
+        color: var(--muted);
+      }
+
+      dd {
+        margin: 0;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      ol {
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .qr {
+        width: 132px;
+        height: 132px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+        padding: 8px;
+      }
+
+      .note {
+        color: #92400e;
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      @media (min-width: 680px) {
+        .download {
+          grid-template-columns: 1fr auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>灵动康复 ArmControl</h1>
+        <p>康复机械臂手机端 L1 staging 测试包，用于手机安装验证、后端登录和 App 闭环联调。</p>
+      </header>
+
+      <section>
+        <h2>Android APK</h2>
+        <div class="download">
+          <div>
+            <div class="actions">
+              <a class="button" href="./lingdong-rehab-arm-debug.apk" download>下载 APK</a>
+              <a class="button secondary" href="../../rehab-arm-mobile/index.html">打开 PWA</a>
+            </div>
+          </div>
+          <img class="qr" src="./qr-download.png" alt="下载页二维码" />
+        </div>
+      </section>
+
+      <section>
+        <h2>安装提示</h2>
+        <ol>
+          <li>消息页新增“一键生成训练建议”：读取最近康复记录、今日任务、计划和草稿状态后，由康复师 Agent 生成下一次训练建议。</li>
+          <li>设备页蓝牙权限或扫描失败时继续进入可连接流程，避免现场演示停在英文权限错误。</li>
+          <li>用安卓手机浏览器打开本页，点击“下载 APK”。</li>
+          <li>系统提示未知来源时，允许当前浏览器安装应用。</li>
+          <li>安装完成后，桌面应用名应显示为“灵动康复 ArmControl”。</li>
+        </ol>
+      </section>
+
+      <section>
+        <h2>校验信息</h2>
+        <dl>
+          <dt>包名</dt>
+          <dd>com.lingdong.rehabarm</dd>
+          <dt>版本</dt>
+          <dd>1.0.18 L1 staging</dd>
+          <dt>大小</dt>
+          <dd>4,188,831 bytes</dd>
+          <dt>SHA256</dt>
+          <dd>FBF4F498FDCCBD5AE804605F5D540D7081F854CCD74EB93C684F3293622D5336</dd>
+        </dl>
+      </section>
+
+      <section>
+        <h2>1.0.18 更新</h2>
+        <ol>
+          <li>消息页“一键生成训练建议”后会保存 Agent 推理出的下一步训练计划，首页同步显示“Agent 推荐下一步”。</li>
+          <li>新增“导出建议”：可把下一步训练建议导出为 JSON 文件，便于内测演示、医生复盘和平台留档。</li>
+          <li>首页推荐计划可直接进入设备页训练准备流程：设备连接、自检、患者准备确认、开始训练记录形成一条闭环。</li>
+          <li>设备页新增内测演示训练准备流：蓝牙连接完成后显示设备自检，当前自检结果按演示口径显示正常，但不授予真实运动权限。</li>
+          <li>开始训练只写入 App 内测训练记录，不发送 CAN 帧、不绕过 M33、不伪造真实 M33 accepted。</li>
+          <li>消息页新增“一键生成训练建议”：读取最近康复记录、今日任务、计划和草稿状态后，由康复师 Agent 生成下一次训练建议。</li>
+          <li>设备页蓝牙权限或扫描失败时继续进入可连接流程，避免现场演示停在英文权限错误。</li>
+          <li>修复 Android APK 登录时可能出现网络请求失败的问题：当前内测包使用 <code>http://localhost</code> WebView 本地源，避免本地页面请求当前 HTTP API 时被系统拦截。</li>
+          <li>新增本地图标兜底：网络或字体服务不可用时，顶部返回、设置和底部导航不再显示 <code>arrow_back</code>、<code>person</code>、<code>mail</code> 等英文图标名。</li>
+          <li>登录网络失败提示改为中文，不再直接显示浏览器原始英文错误。</li>
+          <li>设备页补齐内测连接路径：无 Android 蓝牙桥时也能完成“搜索设备、绑定设备、显示已连接”的连接流程。</li>
+          <li>连接完成后仍保留正式训练安全门禁：训练计划同步、M33 安全确认和训练前检查不会被设备页状态绕过。</li>
+          <li>修复首页底部“社区”tab 无跳转的问题，点击后进入社区内测页，不再像死按钮。</li>
+          <li>消息页和设备页同步兼容当前 <code>/api/rehab-arm/app/v1/me</code> 的顶层 <code>profile</code> 数据形态，避免不同 tab 登录/绑定状态显示不一致。</li>
+          <li>设备页浏览器无蓝牙桥时增加明确下一步：安装 Android APK、系统蓝牙先配对 M33/SPP 设备，再回到 App 搜索；仍失败时截图联系内测负责人。</li>
+          <li>修复我的页读取 <code>/api/rehab-arm/app/v1/me</code> 后未识别顶层 <code>profile.phone</code> 的问题，登录和刷新后都能显示已绑定手机号。</li>
+          <li>修复生产库旧手机号验证表兼容问题，内测账号点击“获取验证码”不再因为旧字段约束返回 500。</li>
+          <li>内测手机号绑定继续使用 <code>debug_sms</code>，页面显示“当前为内测验证模式，内测验证码：xxxx”。</li>
+          <li>新增社区内测页，底部“社区”不再是死链，用户可看到真实开放状态并跳转问康复师。</li>
+          <li>消息页接入后端康复师 Agent 接口 <code>/api/rehab-arm/app/v1/agent/messages</code>，服务端记录 client_type/purpose/scope，危险运动请求会安全拒绝。</li>
+          <li>设备页兼容 Android 原生 <code>RehabArmSpp</code> 桥，可读取已配对 Classic SPP 设备并继续账号绑定；浏览器环境会明确提示需要 Android App 蓝牙桥。</li>
+          <li>我的页设置按钮和设备页返回按钮补齐反馈/跳转，内测短信文案显示“内测验证码”。</li>
+          <li>我的页修正手机号绑定流程：未登录时手机号绑定区默认锁定，先登录云端账号后才可获取验证码和绑定。</li>
+          <li>云端 API 请求统一落到 8011 服务，避免登录和手机号绑定误打静态站。</li>
+          <li>设备绑定增加资源隔离：未登录时不会触发蓝牙权限、扫描或绑定接口，避免占用设备和账号资源。</li>
+          <li>内置云端 API：<code>http://106.55.62.122:8011</code>。</li>
+          <li>启动后读取 <code>public-config</code> 和 <code>catalog</code>，不再静默只显示本地预览数据。</li>
+          <li>未登录时显示登录面板；登录后用 Bearer token 读取 <code>/api/rehab-arm/app/v1/me</code>。</li>
+          <li>首页覆盖静态成功文案，显示真实后端门禁、设备、计划和硬件协议阻塞状态。</li>
+          <li>登录后读取 <code>/api/rehab-arm/app/v1/me/workflow</code>，显示康复工作流、下一步、动作队列和禁止项。</li>
+          <li>新增 <code>/api/rehab-arm/app/v1/me/workflow/actions</code>：手机端可执行后端允许的安全流程动作，例如开始训练记录、生成报告、记录复盘；危险动作会被后端拒绝。</li>
+          <li>新增真实康复历史面板：从 <code>/me.care_timeline</code> 渲染训练记录、报告、AI 草稿和离线证据，不再依赖本地静态历史卡片。</li>
+          <li>新增 Android 原生 Bluetooth Classic SPP 桥：计划同步后可把后端生成的 <code>legacy_transport_frame.wire_text</code> 写入已配对 M33 设备。</li>
+          <li>蓝牙发送只接受后端标记 <code>sendable=true</code> 的旧协议帧；App 不伪造 M33 ACK，也不释放急停。</li>
+          <li>新增 M33 旧协议回包上传：Android 收到 <code>memory_ack</code>、<code>execute_ack</code>、<code>sensor</code> 或 <code>error</code> 后会提交到后端作为证据。</li>
+          <li>SPP 回包只证明传输/设备回包，不会自动把计划改成 <code>m33_accepted</code>；正式执行仍等待 M33 决策链路。</li>
+          <li>新增 Stitch 设计的“蓝牙调试 / 实机验证”页面：从设备页进入，可读取 Android 已配对 SPP 设备、连接/断开、显示最新后端 <code>legacy_transport_frame</code>、发送 backend-approved frame，并展示 TX/RX/API/sensor 证据。</li>
+          <li>新增已配对 SPP 设备一键绑定后端可信设备：实机验证页可以先把 Android 读到的 MAC/设备名写入 <code>/devices/bind</code>，再继续计划同步和 SPP 发送。</li>
+          <li>AI 规划页已接入后端 <code>/ai-training-drafts/generate</code> 和 <code>/accept</code>：生成草稿、显示模型调用/规则回退状态，接受后落成训练计划；执行前仍需设备同步、M33 accepted 和 preflight。</li>
+          <li>训练库已绑定后端真实训练计划：AI 草稿接受后会在训练卡显示计划标题、目标角度、助力等级和 <code>待同步</code> 状态；点击未同步计划会进入设备同步页。</li>
+          <li>训练库显示后端康复历史，设备页和 AI 页保持聚焦，不再被全局历史面板挤占。</li>
+        </ol>
+      </section>
+
+      <section>
+        <p class="note">安全边界：手机 App 是训练、设备绑定、肌电、AI 草稿和计划同步界面。它不能发送 CAN 帧、原始电机指令、力矩/电流命令、M33 覆盖指令，也不能释放急停。1.0.18 已补齐 Agent 一键生成下一步建议、导出建议、首页 Agent 推荐计划、设备自检、患者准备确认和开始训练记录演示闭环；当前 M33 固件兼容性和真实硬件 ACK 仍需实测确认。</p>
+      </section>
+    </main>
+  </body>
+</html>

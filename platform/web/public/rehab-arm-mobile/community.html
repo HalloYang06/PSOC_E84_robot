@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html class="light" lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>社区内测 - 领动康复手臂</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500;600&amp;display=swap" rel="stylesheet"/>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            background: "#faf9fe",
+            surface: "#faf9fe",
+            "surface-container": "#eeedf3",
+            "surface-container-low": "#f4f3f8",
+            "surface-container-lowest": "#ffffff",
+            "surface-variant": "#e3e2e7",
+            primary: "#0058bc",
+            "primary-container": "#d8e2ff",
+            "on-primary": "#ffffff",
+            "on-surface": "#1a1b1f",
+            "on-surface-variant": "#414755",
+            outline: "#717786",
+            "outline-variant": "#c1c6d7",
+            secondary: "#4c4aca",
+            "secondary-container": "#e2dfff",
+            tertiary: "#9e3d00"
+          },
+          fontFamily: {
+            sans: ["Inter", "sans-serif"],
+            mono: ["JetBrains Mono", "monospace"]
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    .material-symbols-outlined {
+      font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+      vertical-align: middle;
+    }
+  </style>
+<script src="./icon-fallback.js"></script>
+</head>
+<body class="min-h-screen bg-background text-on-surface font-sans">
+  <header class="fixed top-0 left-0 right-0 z-50 h-16 px-4 bg-surface/90 backdrop-blur-xl border-b border-outline-variant/70 flex items-center justify-between">
+    <a class="w-12 h-12 rounded-full flex items-center justify-center text-primary active:scale-95" href="home.html" aria-label="返回首页">
+      <span class="material-symbols-outlined">arrow_back</span>
+    </a>
+    <h1 class="text-[22px] leading-7 font-semibold text-primary truncate">社区内测</h1>
+    <span class="w-12 h-12 rounded-full flex items-center justify-center text-primary">
+      <span class="material-symbols-outlined">groups</span>
+    </span>
+  </header>
+
+  <main class="pt-24 pb-28 px-4 flex flex-col gap-5">
+    <section class="bg-surface-container-lowest rounded-lg border border-outline-variant/40 p-5 shadow-sm text-center">
+      <div class="mx-auto mb-4 w-16 h-16 rounded-full bg-primary-container text-primary flex items-center justify-center">
+        <span class="material-symbols-outlined text-[32px]">construction</span>
+      </div>
+      <h2 class="text-2xl font-semibold mb-2">社区功能正在准备中</h2>
+      <p class="text-base leading-6 text-on-surface-variant">
+        当前处于内测阶段。为了确保康复交流、康复师答疑和训练打卡不会误导用户，社区能力尚未正式开放。
+      </p>
+      <div class="mt-4 inline-flex items-center gap-2 rounded-full bg-surface-container px-3 py-1 border border-outline-variant/70">
+        <span class="w-2 h-2 rounded-full bg-tertiary"></span>
+        <span class="font-mono text-xs text-on-surface-variant">INTERNAL BETA</span>
+      </div>
+    </section>
+
+    <section class="flex flex-col gap-3">
+      <h3 class="font-mono text-xs tracking-wide text-outline px-1">功能状态</h3>
+      <div class="bg-surface-container-lowest rounded-lg border border-outline-variant/30 p-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="w-10 h-10 rounded-lg bg-surface-container text-on-surface-variant flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined">groups</span>
+          </span>
+          <span class="font-semibold truncate">康复小组</span>
+        </div>
+        <span class="rounded-full bg-surface-variant px-3 py-1 font-mono text-xs text-outline shrink-0">规划中</span>
+      </div>
+      <div class="bg-surface-container-lowest rounded-lg border border-outline-variant/30 p-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="w-10 h-10 rounded-lg bg-secondary-container text-secondary flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined">medical_services</span>
+          </span>
+          <span class="font-semibold truncate">康复师答疑</span>
+        </div>
+        <span class="rounded-full bg-secondary text-white px-3 py-1 font-mono text-xs shrink-0">灰度测试</span>
+      </div>
+      <div class="bg-surface-container-lowest rounded-lg border border-outline-variant/30 p-4 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="w-10 h-10 rounded-lg bg-primary-container text-primary flex items-center justify-center shrink-0">
+            <span class="material-symbols-outlined">calendar_today</span>
+          </span>
+          <span class="font-semibold truncate">训练打卡</span>
+        </div>
+        <span class="rounded-full bg-primary text-white px-3 py-1 font-mono text-xs shrink-0">即将开启</span>
+      </div>
+    </section>
+
+    <section class="flex flex-col gap-3">
+      <a class="h-14 rounded-lg bg-primary text-on-primary font-semibold flex items-center justify-center gap-2 active:scale-95" href="ai-plan.html">
+        <span class="material-symbols-outlined">forum</span>
+        问康复师
+      </a>
+      <a class="h-14 rounded-lg bg-surface-container text-on-surface-variant font-medium flex items-center justify-center gap-2 border border-outline-variant active:scale-95" href="home.html">
+        <span class="material-symbols-outlined">home</span>
+        返回首页
+      </a>
+      <p class="text-xs leading-5 text-outline text-center px-4">
+        涉及康复训练的建议只作为辅助参考，真实训练仍需完成设备同步、M33 接受和训练前安全检查。
+      </p>
+    </section>
+  </main>
+
+  <nav class="fixed bottom-0 left-0 right-0 z-50 h-20 px-2 bg-surface/95 backdrop-blur-xl border-t border-outline-variant rounded-t-lg flex items-center justify-around">
+    <a class="flex flex-col items-center justify-center min-h-[48px] w-16 text-on-surface-variant" href="home.html">
+      <span class="material-symbols-outlined mb-1">home</span>
+      <span class="text-xs font-semibold">首页</span>
+    </a>
+    <a class="flex flex-col items-center justify-center min-h-[48px] w-16 text-on-surface-variant" href="device.html">
+      <span class="material-symbols-outlined mb-1">fitness_center</span>
+      <span class="text-xs font-semibold">训练</span>
+    </a>
+    <a class="flex flex-col items-center justify-center min-h-[48px] w-16 text-primary bg-primary-container/60 rounded-full" href="community.html" aria-current="page">
+      <span class="material-symbols-outlined mb-1" style='font-variation-settings: "FILL" 1;'>group</span>
+      <span class="text-xs font-semibold">社区</span>
+    </a>
+    <a class="flex flex-col items-center justify-center min-h-[48px] w-16 text-on-surface-variant" href="ai-plan.html">
+      <span class="material-symbols-outlined mb-1">mail</span>
+      <span class="text-xs font-semibold">消息</span>
+    </a>
+    <a class="flex flex-col items-center justify-center min-h-[48px] w-16 text-on-surface-variant" href="profile.html">
+      <span class="material-symbols-outlined mb-1">person</span>
+      <span class="text-xs font-semibold">我的</span>
+    </a>
+  </nav>
+</body>
+</html>

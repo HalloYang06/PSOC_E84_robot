@@ -1,0 +1,225 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100%;
+  background: #000;
+  color: #eaffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  overflow: hidden;
+}
+
+.topNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 36px;
+  flex-shrink: 0;
+  padding: 0 14px;
+  background: linear-gradient(180deg, rgba(2, 20, 30, 0.92), rgba(2, 10, 16, 0.78));
+  border-bottom: 1px solid rgba(88, 240, 255, 0.2);
+  backdrop-filter: blur(6px);
+  z-index: 40;
+}
+
+.navLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.navLink {
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: rgba(88, 240, 255, 0.1);
+  color: #b9fff3;
+  border: 1px solid rgba(88, 240, 255, 0.25);
+  text-decoration: none;
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.navLink:hover { background: rgba(88, 240, 255, 0.2); }
+.projectName {
+  font-size: 13px;
+  color: #f4ffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.gradeChip {
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #001016;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.actionHint {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  min-width: 0;
+  max-width: min(520px, 42vw);
+  color: rgba(234, 255, 255, 0.72);
+  font-size: 11.5px;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.actionHint:hover {
+  color: #b9fff3;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.navRight {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.navBtn {
+  padding: 4px 10px;
+  border-radius: 7px;
+  background: rgba(23, 215, 255, 0.08);
+  border: 1px solid rgba(88, 240, 255, 0.24);
+  color: #b9fff3;
+  font-size: 11.5px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, border-color 0.12s;
+}
+.navBtn:hover { background: rgba(88, 240, 255, 0.18); border-color: rgba(167, 255, 237, 0.5); }
+.navBtn[data-active="1"] {
+  background: rgba(167, 255, 237, 0.24);
+  border-color: rgba(167, 255, 237, 0.8);
+  color: #e6fffa;
+  font-weight: 600;
+}
+
+.body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.gameFrameWrap {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+.gameFrameWrap[data-hidden="1"] {
+  background: radial-gradient(ellipse at center, rgba(6, 28, 40, 0.9), rgba(2, 8, 14, 1));
+}
+.gameFrame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+.gameHiddenPlaceholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(190, 220, 240, 0.8);
+  text-align: center;
+  padding: 32px;
+}
+.gameHiddenPlaceholder strong { font-size: 16px; color: #b9fff3; }
+.gameHiddenPlaceholder p { max-width: 480px; line-height: 1.6; font-size: 13px; }
+
+.drawerBackdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 8, 14, 0.45);
+  z-index: 50;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(70vw, 1200px);
+  min-width: 320px;
+  background: linear-gradient(180deg, rgba(2, 22, 33, 0.98), rgba(2, 10, 16, 0.98));
+  border-left: 1px solid rgba(88, 240, 255, 0.35);
+  box-shadow: -12px 0 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  z-index: 60;
+  animation: slideIn 0.18s ease-out;
+}
+
+.drawerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(88, 240, 255, 0.22);
+  flex-shrink: 0;
+}
+.drawerHead strong {
+  font-size: 13px;
+  color: #f4ffff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drawerHeadActions { display: flex; gap: 6px; flex-shrink: 0; }
+.drawerLink {
+  padding: 3px 9px;
+  border-radius: 6px;
+  background: rgba(88, 240, 255, 0.12);
+  color: #b9fff3;
+  border: 1px solid rgba(88, 240, 255, 0.3);
+  text-decoration: none;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.drawerLink:hover { background: rgba(88, 240, 255, 0.22); }
+.drawerClose {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(255, 120, 140, 0.14);
+  border: 1px solid rgba(255, 120, 140, 0.4);
+  color: #ffd0d8;
+  font-size: 12px;
+  cursor: pointer;
+}
+.drawerClose:hover { background: rgba(255, 120, 140, 0.26); }
+
+.drawerFrame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: #000;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@media (max-width: 900px) {
+  .drawer { width: 100vw; }
+  .projectName { max-width: 120px; }
+  .actionHint { display: none; }
+}

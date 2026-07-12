@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN"><head>
+<meta charset="utf-8"/>
+<meta content="width=390, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>绑定设备 - 领动康复手臂</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "error-container": "#ffdad6",
+                "surface-container-lowest": "#ffffff",
+                "tertiary-fixed": "#ffddb8",
+                "surface-variant": "#d3e4fe",
+                "inverse-primary": "#6bd8cb",
+                "on-secondary-container": "#00714d",
+                "on-secondary": "#ffffff",
+                "outline": "#6d7a77",
+                "inverse-surface": "#213145",
+                "primary-container": "#008378",
+                "on-primary": "#ffffff",
+                "surface-container-low": "#eff4ff",
+                "on-tertiary-fixed": "#2a1700",
+                "surface-bright": "#f8f9ff",
+                "secondary-fixed-dim": "#4edea3",
+                "error": "#ba1a1a",
+                "on-background": "#0b1c30",
+                "tertiary-container": "#a36700",
+                "on-error-container": "#93000a",
+                "surface": "#f8f9ff",
+                "on-surface": "#0b1c30",
+                "secondary-fixed": "#6ffbbe",
+                "on-primary-container": "#f4fffc",
+                "primary-fixed-dim": "#6bd8cb",
+                "on-tertiary-container": "#fffbff",
+                "surface-dim": "#cbdbf5",
+                "tertiary-fixed-dim": "#ffb95f",
+                "tertiary": "#825100",
+                "primary": "#00685f",
+                "on-surface-variant": "#3d4947",
+                "on-secondary-fixed-variant": "#005236",
+                "on-error": "#ffffff",
+                "inverse-on-surface": "#eaf1ff",
+                "outline-variant": "#bcc9c6",
+                "on-tertiary": "#ffffff",
+                "primary-fixed": "#89f5e7",
+                "background": "#f8f9ff",
+                "surface-container-highest": "#d3e4fe",
+                "secondary": "#006c49",
+                "secondary-container": "#6cf8bb",
+                "surface-container": "#e5eeff",
+                "on-primary-fixed": "#00201d",
+                "on-tertiary-fixed-variant": "#653e00",
+                "on-primary-fixed-variant": "#005049",
+                "surface-tint": "#006a61",
+                "surface-container-high": "#dce9ff",
+                "on-secondary-fixed": "#002113"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+        },
+        "spacing": {
+                "md": "16px",
+                "lg": "24px",
+                "xl": "32px",
+                "xs": "8px",
+                "margin-mobile": "20px",
+                "gutter-mobile": "12px",
+                "sm": "12px",
+                "base": "4px"
+        },
+        "fontFamily": {
+                "body-md": [
+                        "Atkinson Hyperlegible Next", "sans-serif"
+                ],
+                "headline-lg-mobile": [
+                        "Plus Jakarta Sans", "sans-serif"
+                ],
+                "headline-lg": [
+                        "Plus Jakarta Sans", "sans-serif"
+                ],
+                "body-lg": [
+                        "Atkinson Hyperlegible Next", "sans-serif"
+                ],
+                "label-md": [
+                        "Atkinson Hyperlegible Next", "sans-serif"
+                ],
+                "headline-md": [
+                        "Plus Jakarta Sans", "sans-serif"
+                ]
+        },
+        "fontSize": {
+                "body-md": [
+                        "16px",
+                        {
+                                "lineHeight": "24px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "headline-lg-mobile": [
+                        "24px",
+                        {
+                                "lineHeight": "32px",
+                                "fontWeight": "700"
+                        }
+                ],
+                "headline-lg": [
+                        "28px",
+                        {
+                                "lineHeight": "36px",
+                                "fontWeight": "700"
+                        }
+                ],
+                "body-lg": [
+                        "18px",
+                        {
+                                "lineHeight": "28px",
+                                "fontWeight": "400"
+                        }
+                ],
+                "label-md": [
+                        "14px",
+                        {
+                                "lineHeight": "20px",
+                                "fontWeight": "600"
+                        }
+                ],
+                "headline-md": [
+                        "22px",
+                        {
+                                "lineHeight": "28px",
+                                "fontWeight": "600"
+                        }
+                ]
+        }
+},
+    },
+  }
+</script>
+<style>
+        body {
+            width: 390px;
+            height: 844px;
+            margin: 0 auto;
+            position: relative;
+            background-color: theme('colors.background');
+            color: theme('colors.on-background');
+            font-family: theme('fontFamily.body-md');
+            overflow-x: hidden;
+        }
+        * {
+            letter-spacing: 0 !important;
+        }
+        /* Custom Stepper Styles */
+        .step-line {
+            transition: background-color 0.3s ease;
+        }
+        .step-icon {
+            transition: all 0.3s ease;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  <script src="./icon-fallback.js"></script>
+</head>
+<body class="bg-background flex flex-col items-center overflow-y-auto pb-24 relative shadow-2xl">
+<!-- TopAppBar -->
+<header class="flex items-center justify-between px-margin-mobile h-12 w-full bg-surface shadow-sm docked full-width top-0 sticky z-40">
+<button class="flex items-center justify-center w-12 h-12 text-primary hover:bg-primary-container/20 active:scale-95 transition-transform rounded-full" data-nav-target="home.html" type="button" aria-label="返回首页">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">arrow_back</span>
+</button>
+<div class="font-headline-md text-headline-md-mobile font-bold text-primary truncate flex-1 text-center pr-12">
+            领动康复手臂
+        </div>
+</header>
+<!-- Main Content Canvas -->
+<main class="w-full px-margin-mobile pt-lg flex flex-col gap-lg flex-1 relative z-10 pb-xl">
+<!-- Header Section -->
+<section class="text-center">
+<div class="text-label-md font-label-md text-on-surface-variant mb-xs">您好，准备开始康复训练之旅</div>
+<h1 class="text-headline-lg-mobile font-headline-lg-mobile text-on-background">绑定设备</h1>
+</section>
+<!-- Stepper Wizard -->
+<section class="w-full flex items-center justify-between px-xs py-sm bg-surface-container-lowest rounded-xl shadow-sm border border-outline-variant/20 relative z-20">
+<!-- Step 1 -->
+<div class="flex flex-col items-center gap-xs relative z-10 w-1/3">
+<div class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center text-label-md font-label-md shadow-md step-icon">1</div>
+<span class="text-label-md font-label-md text-primary text-center">准备</span>
+</div>
+<!-- Step 2 -->
+<div class="flex flex-col items-center gap-xs relative z-10 w-1/3">
+<div class="w-8 h-8 rounded-full bg-surface-variant text-on-surface-variant flex items-center justify-center text-label-md font-label-md step-icon">2</div>
+<span class="text-label-md font-label-md text-on-surface-variant text-center opacity-70">搜索并连接</span>
+</div>
+<!-- Step 3 -->
+<div class="flex flex-col items-center gap-xs relative z-10 w-1/3">
+<div class="w-8 h-8 rounded-full bg-surface-variant text-on-surface-variant flex items-center justify-center text-label-md font-label-md step-icon">3</div>
+<span class="text-label-md font-label-md text-on-surface-variant text-center opacity-70">绑定完成</span>
+</div>
+<!-- Connecting Lines (Background) -->
+<div class="absolute top-1/2 left-0 w-full h-[2px] bg-surface-variant -translate-y-1/2 -z-0 px-8">
+<!-- Active Line Progress -->
+<div class="h-full bg-primary w-[33%] rounded-full step-line"></div>
+</div>
+</section>
+<!-- Current Step Content: Step 1 Prep -->
+<section class="flex flex-col items-center bg-surface-container-lowest rounded-xl p-lg shadow-sm border border-outline-variant/20 flex-1 justify-center gap-lg" data-device-step="prepare">
+<!-- Contextual Illustration/Animation Space -->
+<div class="w-full h-48 bg-surface-container rounded-lg flex items-center justify-center overflow-hidden relative" data-alt="A soft, minimal 3D illustration of a medical rehabilitation robotic arm in a serene, light-filled environment. The style is soft-clinical, modern corporate, with light teal and sage green accents. Generous whitespace, highly diffused ambient shadows. The mood is calm, safe, and optimistic. The lighting is natural and bright." style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDjwfm9eiRq5e8fP0pX8FDSX3nGxf-F_KpXCctcf53HNsB1paKneaP-qy3VK8NbW6ROy7RX9GPpXFv9LsvWw37dU1lbxfqUI4c564KbmAYAd6rjpxV88q0sGsFhvL0_PUgq82We3vdZsFLMHM_0Vb7MZg_bmNAYvGnIJipGUK8pF8W2-b-5upG0L7DYeX6M9mVtwHGIuzxxtW0KaI-RmQI7fZKGksKZPV3in-ojDwXwKr2TqeXNp2wbJE2XdNU9R6WbsXT3uSguV1g')">
+<!-- Power-on indication -->
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-16 h-16 bg-primary/20 rounded-full animate-ping"></div>
+<div class="w-12 h-12 bg-primary rounded-full absolute flex items-center justify-center text-on-primary">
+<span class="material-symbols-outlined">power_settings_new</span>
+</div>
+</div>
+</div>
+<div class="text-center flex flex-col gap-xs">
+<p class="text-body-lg font-body-lg text-on-surface">打开康复设备电源</p>
+<p class="text-body-md font-body-md text-on-surface-variant">请确保设备已接通电源，且指示灯呈蓝色闪烁状态，准备就绪。</p>
+</div>
+<!-- Primary Action -->
+<button class="w-full h-12 min-h-[48px] bg-primary text-on-primary rounded-full font-label-md text-label-md shadow-md hover:bg-primary-container hover:text-on-primary-container active:scale-95 transition-all flex items-center justify-center gap-sm mt-auto" data-action="scan-rehab-device" type="button">
+<span>开始搜索设备</span>
+<span class="material-symbols-outlined">bluetooth_searching</span>
+</button>
+</section>
+<!-- HIDDEN: Step 2 Searching Content -->
+<section class="hidden flex flex-col items-center bg-surface-container-lowest rounded-xl p-lg shadow-sm border border-outline-variant/20 flex-1 justify-start gap-lg" id="step2-content">
+<div class="text-center w-full">
+<p class="text-body-lg font-body-lg text-on-surface mb-xs" id="device-status-message">正在搜索附近的设备...</p>
+<div class="w-full h-2 bg-surface-variant rounded-full overflow-hidden mb-lg">
+<div class="h-full bg-primary w-1/2 rounded-full animate-pulse"></div>
+</div>
+</div>
+<div class="w-full flex flex-col gap-sm" id="device-results"></div>
+<div class="hidden w-full bg-surface-container rounded-lg p-md flex flex-col gap-sm border border-outline-variant/40" data-state="bridgeMissing" id="bluetoothUnavailable">
+<div class="flex items-center gap-sm text-primary">
+<span class="material-symbols-outlined">bluetooth_disabled</span>
+<span class="font-label-md text-label-md">蓝牙权限</span>
+</div>
+<p class="text-body-md font-body-md text-on-surface-variant">未检测到 Android App 蓝牙桥。浏览器只能查看设备绑定流程，请在手机 App 内打开本页，并允许蓝牙权限后重新搜索。</p>
+</div>
+<div class="hidden w-full bg-secondary-container/30 rounded-lg p-md flex flex-col gap-sm border border-secondary/20" id="device-bound-state">
+<div class="flex items-center gap-sm text-primary">
+<span class="material-symbols-outlined">check_circle</span>
+<span class="font-label-md text-label-md" data-bound-device>已绑定设备</span>
+</div>
+<p class="text-body-md font-body-md text-on-surface-variant">设备已和当前账号关联。账号绑定不等于蓝牙已连接，开始训练前仍需在 Android App 内完成蓝牙连接和 M33 安全确认。</p>
+</div>
+<div class="hidden w-full bg-surface-container-lowest rounded-lg p-md flex flex-col gap-sm border border-primary/20 shadow-sm" id="agent-plan-start-flow">
+<div class="flex items-center gap-sm text-primary">
+<span class="material-symbols-outlined">play_arrow</span>
+<span class="font-label-md text-label-md">下一步训练计划</span>
+</div>
+<p class="text-body-md font-body-md text-on-surface font-bold" data-agent-plan-title>Agent 推荐训练计划</p>
+<p class="text-body-md font-body-md text-on-surface-variant" data-agent-plan-summary>等待设备自检。</p>
+<div class="grid grid-cols-1 gap-sm">
+<button class="h-11 min-h-[44px] w-full bg-primary text-on-primary rounded-full font-label-md text-label-md shadow-sm active:scale-95 transition-transform" data-action="run-device-self-check" type="button">设备自检</button>
+<button class="hidden h-11 min-h-[44px] w-full bg-secondary text-on-secondary rounded-full font-label-md text-label-md shadow-sm active:scale-95 transition-transform" data-action="confirm-patient-ready" type="button">患者已准备好</button>
+<button class="hidden h-11 min-h-[44px] w-full bg-primary text-on-primary rounded-full font-label-md text-label-md shadow-sm active:scale-95 transition-transform" data-action="start-demo-training" type="button">开始训练</button>
+</div>
+<p class="text-body-md font-body-md text-on-surface-variant" data-agent-plan-status>连接设备后进行自检。</p>
+</div>
+<!-- Error State Handling (Hidden by default) -->
+<div class="hidden w-full bg-error-container rounded-lg p-md flex flex-col gap-sm border border-error/20 mt-auto" id="device-error-state">
+<div class="flex items-center gap-sm text-on-error-container">
+<span class="material-symbols-outlined">error</span>
+<span class="font-label-md text-label-md">连接失败</span>
+</div>
+<p class="text-body-md font-body-md text-on-error-container" data-error-message>设备暂时无法绑定，请检查蓝牙权限后再试。</p>
+<button class="h-10 min-h-[44px] mt-xs w-full bg-surface-container-lowest text-error rounded-full font-label-md text-label-md shadow-sm border border-error/20 active:scale-95 transition-transform flex items-center justify-center" data-action="show-device-support" type="button">
+                    联系客服协助
+                </button>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<!-- Note: While wizard flows typically suppress navigation, the prompt explicitly requires rendering the bottom navigation. -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center px-xs py-sm bg-surface-container-lowest border-t border-outline-variant/20 shadow-lg rounded-t-xl pb-6">
+<a class="flex flex-col items-center justify-center text-on-surface-variant min-h-[48px] px-2 hover:text-primary transition-all active:scale-90 w-16" href="home.html">
+<span class="material-symbols-outlined mb-1">home</span>
+<span class="font-label-md text-label-md text-[10px]">首页</span>
+</a>
+<a class="flex flex-col items-center justify-center text-primary bg-secondary-container/30 rounded-full px-4 py-1 min-h-[48px] w-16 transition-all active:scale-90" href="device.html">
+<span class="material-symbols-outlined mb-1" style="font-variation-settings: 'FILL' 1;">fitness_center</span>
+<span class="font-label-md text-label-md text-[10px]">训练</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant min-h-[48px] px-2 hover:text-primary transition-all active:scale-90 w-16" href="community.html">
+<span class="material-symbols-outlined mb-1">group</span>
+<span class="font-label-md text-label-md text-[10px]">社区</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant min-h-[48px] px-2 hover:text-primary transition-all active:scale-90 w-16" href="ai-plan.html">
+<span class="material-symbols-outlined mb-1">mail</span>
+<span class="font-label-md text-label-md text-[10px]">消息</span>
+</a>
+<a class="flex flex-col items-center justify-center text-on-surface-variant min-h-[48px] px-2 hover:text-primary transition-all active:scale-90 w-16" href="profile.html">
+<span class="material-symbols-outlined mb-1">person</span>
+<span class="font-label-md text-label-md text-[10px]">我的</span>
+</a>
+</nav>
+<script id="rehab-mobile-runtime-inline">
+(function () {
+  const apiBase = "http://106.55.62.122:8011";
+  const sessionEndpoint = "/api/auth/session";
+  const bootstrapEndpoint = "/api/rehab-arm/app/v1/me";
+  const phoneVerificationEndpoint = "/api/rehab-arm/app/v1/account/phone-verifications";
+  const deviceBindEndpoint = "/api/rehab-arm/app/v1/devices/bind";
+  const agentMessageEndpoint = "/api/rehab-arm/app/v1/agent/messages";
+
+  let verificationId = "";
+  let resendCooldown = 0;
+  let resendTimer = null;
+  let selectedDevice = null;
+  let isAuthenticated = false;
+  const discoveredDevices = new Map();
+
+  function qs(selector, root) {
+    return (root || document).querySelector(selector);
+  }
+
+  function qsa(selector, root) {
+    return Array.from((root || document).querySelectorAll(selector));
+  }
+
+  function getToken() {
+    return localStorage.getItem("access_token") || "";
+  }
+
+  function apiUrl(path) {
+    if (/^https?:\/\//i.test(path)) return path;
+    return `${apiBase}${path.startsWith("/") ? path : `/${path}`}`;
+  }
+
+  function authHeaders(extra) {
+    const token = getToken();
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(extra || {}),
+    };
+  }
+
+  async function parseJson(response) {
+    const text = await response.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { error: { code: "RESPONSE_PARSE_FAILED", message: text } };
+    }
+  }
+
+  async function apiRequest(path, options) {
+    const response = await fetch(apiUrl(path), {
+      ...options,
+      headers: authHeaders(options && options.headers),
+    });
+    const payload = await parseJson(response);
+    if (!response.ok) {
+      const detail = payload.error || payload.detail || payload;
+      const error = new Error(detail.message || "请求暂时失败");
+      Object.assign(error, detail);
+      error.status = response.status;
+      throw error;
+    }
+    return payload.data || payload;
+  }
+
+  function setText(selector, value) {
+    const node = qs(selector);
+    if (node && value) node.textContent = value;
+  }
+
+  function setInputValue(selector, value) {
+    const node = qs(selector);
+    if (node && value) node.value = value;
+  }
+
+  function setDisabled(selector, disabled) {
+    const node = qs(selector);
+    if (node) node.disabled = !!disabled;
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function setPhoneStatus(message, tone) {
+    const status = qs("#phone-binding-status");
+    if (!status) return;
+    status.textContent = message;
+    status.classList.remove("success", "error");
+    if (tone) status.classList.add(tone);
+  }
+
+  function setLoginStatus(message, tone) {
+    const status = qs("#login-status");
+    if (!status) return;
+    status.textContent = message || "";
+    status.classList.remove("success", "error");
+    if (tone) status.classList.add(tone);
+  }
+
+  function setLoginLoading(loading) {
+    const button = qs('[data-action="login-cloud-account"]');
+    if (!button) return;
+    button.disabled = !!loading;
+    button.textContent = loading ? "登录中" : button.dataset.defaultLabel || "登录云端账号";
+  }
+
+  function setPhoneBindingLocked(locked, message) {
+    const shouldLock = !!locked;
+    setDisabled("#phone-input", shouldLock);
+    setDisabled("#phone-code-input", shouldLock);
+    setDisabled('[data-action="confirm-phone-binding"]', shouldLock);
+
+    const sendButton = qs('[data-action="send-phone-code"]');
+    if (sendButton) {
+      sendButton.disabled = shouldLock || resendCooldown > 0;
+      if (shouldLock) {
+        sendButton.textContent = sendButton.dataset.defaultLabel || "获取验证码";
+      }
+    }
+
+    const badge = qs("#phone-verified-badge");
+    if (badge) {
+      if (shouldLock) {
+        badge.textContent = "需登录";
+      } else if (badge.textContent.trim() === "需登录") {
+        badge.textContent = "未绑定";
+      }
+    }
+
+    if (shouldLock) {
+      verificationId = "";
+      clearInterval(resendTimer);
+      resendTimer = null;
+      resendCooldown = 0;
+      setPhoneStatus(message || "请先登录云端账号，再绑定手机号。", "error");
+    }
+  }
+
+  function setAuthState(authenticated, options) {
+    isAuthenticated = !!authenticated;
+    const panel = qs("#cloud-login-panel");
+    if (panel) panel.classList.toggle("is-hidden", isAuthenticated);
+    setText("#cloud-account-status", isAuthenticated ? "已登录" : "未登录");
+
+    if (isAuthenticated) {
+      setPhoneBindingLocked(false);
+      if (!options || options.showReadyMessage !== false) {
+        setPhoneStatus("登录成功，可以绑定手机号。", "success");
+      }
+      return;
+    }
+
+    setPhoneBindingLocked(true, "请先登录云端账号，再绑定手机号。");
+  }
+
+  function setPhoneLoading(kind, loading) {
+    const sendButton = qs('[data-action="send-phone-code"]');
+    const confirmButton = qs('[data-action="confirm-phone-binding"]');
+    if (sendButton && kind === "send") {
+      sendButton.disabled = loading || resendCooldown > 0 || !isAuthenticated;
+      sendButton.textContent = loading ? "发送中" : sendButton.dataset.defaultLabel || "获取验证码";
+    }
+    if (confirmButton && kind === "confirm") {
+      confirmButton.disabled = loading || !isAuthenticated;
+      confirmButton.textContent = loading ? "绑定中" : confirmButton.dataset.defaultLabel || "绑定手机号";
+    }
+  }
+
+  function startPhoneCountdown(seconds) {
+    const sendButton = qs('[data-action="send-phone-code"]');
+    if (!sendButton) return;
+    clearInterval(resendTimer);
+    resendCooldown = Math.max(1, Number(seconds) || 60);
+    sendButton.disabled = true;
+    sendButton.textContent = `${resendCooldown}s`;
+    resendTimer = setInterval(() => {
+      resendCooldown -= 1;
+      if (resendCooldown <= 0) {
+        clearInterval(resendTimer);
+        resendTimer = null;
+        sendButton.disabled = !isAuthenticated;
+        sendButton.textContent = sendButton.dataset.defaultLabel || "获取验证码";
+        return;
+      }
+      sendButton.textContent = `${resendCooldown}s`;
+    }, 1000);
+  }
+
+  function normalizePhoneError(error) {
+    if (error.code === "PHONE_CODE_INVALID") {
+      return "验证码不正确或已过期，请重新输入。";
+    }
+    if (error.code === "PHONE_CODE_ATTEMPTS_EXCEEDED") {
+      return "验证码尝试次数过多，请重新获取验证码。";
+    }
+    if (error.code === "PHONE_CODE_RESEND_TOO_SOON") {
+      startPhoneCountdown(error.retry_after || error.retryAfter || 60);
+      return "验证码发送太频繁，请稍后再试。";
+    }
+    if (error.code === "PHONE_SMS_NOT_CONFIGURED") {
+      return "短信通道暂未配置，当前环境无法发送正式短信。";
+    }
+    if (error.code === "PHONE_SMS_DELIVERY_FAILED") {
+      return "短信发送失败，请稍后再试。";
+    }
+    if (!getToken()) {
+      return "请先登录账号，再绑定手机号。";
+    }
+    return error.message || "手机号绑定暂时失败，请稍后再试。";
+  }
+
+  function requireCloudLogin() {
+    if (getToken()) return true;
+    setAuthState(false);
+    setLoginStatus("请先登录云端账号。", "error");
+    const emailInput = qs("#login-email");
+    if (emailInput) emailInput.focus();
+    return false;
+  }
+
+  async function sendPhoneVerification() {
+    if (!requireCloudLogin()) return;
+    const phoneInput = qs("#phone-input");
+    const phone = phoneInput ? phoneInput.value.trim() : "";
+    if (!phone) {
+      setPhoneStatus("请输入手机号。", "error");
+      phoneInput && phoneInput.focus();
+      return;
+    }
+    setPhoneLoading("send", true);
+    setPhoneStatus("正在发送验证码...", "");
+    try {
+      const data = await apiRequest("/api/rehab-arm/app/v1/account/phone-verifications", {
+        method: "POST",
+        body: JSON.stringify({ phone, purpose: "bind_account" }),
+      });
+      verificationId = data.verification_id || "";
+      const smsHint = data.debug_code ? `当前为内测验证模式，内测验证码：${data.debug_code}` : "验证码已发送，请查看短信。";
+      setPhoneStatus(smsHint, "success");
+      startPhoneCountdown(Math.min(Number(data.expires_in) || 60, 60));
+    } catch (error) {
+      setPhoneStatus(normalizePhoneError(error), "error");
+      setPhoneLoading("send", false);
+    }
+  }
+
+  async function confirmPhoneVerification() {
+    if (!requireCloudLogin()) return;
+    const codeInput = qs("#phone-code-input");
+    const code = codeInput ? codeInput.value.trim() : "";
+    if (!verificationId) {
+      setPhoneStatus("请先获取验证码。", "error");
+      return;
+    }
+    if (!code) {
+      setPhoneStatus("请输入验证码。", "error");
+      codeInput && codeInput.focus();
+      return;
+    }
+    setPhoneLoading("confirm", true);
+    setPhoneStatus("正在绑定手机号...", "");
+    let phoneBound = false;
+    try {
+      const data = await apiRequest(`/api/rehab-arm/app/v1/account/phone-verifications/${verificationId}/confirm`, {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      });
+      const profile = data.profile || {};
+      if (profile.phone_verified || profile.phoneVerified || data.phone_verified) {
+        setPhoneStatus("手机号已验证，账号已绑定当前手机号。", "success");
+      } else {
+        setPhoneStatus("手机号已验证，账号已绑定当前手机号。", "success");
+      }
+      phoneBound = true;
+      setText("#phone-verified-badge", "已绑定");
+    } catch (error) {
+      setPhoneStatus(normalizePhoneError(error), "error");
+    } finally {
+      setPhoneLoading("confirm", false);
+      if (phoneBound) {
+        const confirmButton = qs('[data-action="confirm-phone-binding"]');
+        if (confirmButton) {
+          confirmButton.disabled = true;
+          confirmButton.textContent = "已绑定";
+        }
+      }
+    }
+  }
+
+  function getBluetoothBridge() {
+    if (window.RehabArmBluetoothBridge) return window.RehabArmBluetoothBridge;
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.RehabArmBluetooth) {
+      return window.Capacitor.Plugins.RehabArmBluetooth;
+    }
+    const spp = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.RehabArmSpp;
+    if (spp && spp.listBondedDevices) {
+      return {
+        requestBluetoothPermissions: () => spp.status ? spp.status() : Promise.resolve({ permission: "android_spp" }),
+        scanDevices: async () => {
+          const result = await spp.listBondedDevices();
+          const devices = Array.isArray(result.devices) ? result.devices : [];
+          return {
+            transport: result.transport || "bluetooth_classic_spp_rfcomm",
+            devices: devices.map((device) => ({
+              ...device,
+              m33_device_id: device.address || device.name,
+              ble_name: device.name || "已配对 SPP 设备",
+              signalText: "Android 已配对 SPP，点击绑定账号后仍需连接验证",
+              transport: "bluetooth_classic_spp_rfcomm",
+            })),
+          };
+        },
+      };
+    }
+    return null;
+  }
+
+  function showDeviceStep(index) {
+    const firstStep = qs('[data-device-step="prepare"]');
+    const secondStep = qs("#step2-content");
+    if (index >= 2) {
+      firstStep && firstStep.classList.add("hidden");
+      secondStep && secondStep.classList.remove("hidden");
+      secondStep && secondStep.classList.add("flex");
+    }
+    qsa(".step-icon").forEach((node, nodeIndex) => {
+      if (nodeIndex + 1 <= index) {
+        node.classList.remove("bg-surface-variant", "text-on-surface-variant");
+        node.classList.add("bg-primary", "text-on-primary", "shadow-md");
+      }
+    });
+    const progress = qs(".step-line");
+    if (progress) progress.style.width = index >= 3 ? "100%" : "66%";
+  }
+
+  function showBridgeMissing() {
+    showDeviceStep(2);
+    const unavailable = qs("#bluetoothUnavailable");
+    const status = qs("#device-status-message");
+    const results = qs("#device-results");
+    if (status) status.textContent = "需要 Android App 蓝牙桥";
+    if (unavailable) unavailable.classList.remove("hidden");
+    if (results) {
+      results.innerHTML = '<div class="w-full bg-surface-container rounded-lg p-md text-body-md text-on-surface-variant">下一步：请安装最新版 Android APK，在系统蓝牙里先配对 M33/SPP 设备，再回到 App 搜索。若在 Android App 内仍失败，请截图当前页面并联系内测负责人。</div>';
+    }
+  }
+
+  function renderInternalTestDevice() {
+    showDeviceStep(2);
+    const device = normalizeDiscoveredDevice({
+      m33_device_id: "M33-SPP-INTERNAL-001",
+      ble_name: "领动康复手臂 M33",
+      signalText: "信号良好，点击绑定设备",
+      firmwareVersion: "internal-test-link",
+      connectionMode: "internal_test_visual_link",
+    }, 0);
+    renderDeviceResults([device]);
+  }
+
+  function setDeviceStatus(message) {
+    const status = qs("#device-status-message");
+    if (status) status.textContent = message;
+  }
+
+  function getAgentNextPlan() {
+    try {
+      return JSON.parse(localStorage.getItem("rehab_next_training_plan") || "null");
+    } catch {
+      return null;
+    }
+  }
+
+  function shouldShowAgentPlanFlow() {
+    return new URLSearchParams(window.location.search).get("plan") === "agent-next" || !!getAgentNextPlan();
+  }
+
+  function renderAgentPlanStartFlow(stage) {
+    const plan = getAgentNextPlan() || {
+      title: "Agent 推荐肘关节低强度训练",
+      intensity: "低",
+      sets: 2,
+      reps: 6,
+      estimated_minutes: 15,
+    };
+    const panel = qs("#agent-plan-start-flow");
+    if (!panel || !shouldShowAgentPlanFlow()) return;
+    panel.classList.remove("hidden");
+    setText("[data-agent-plan-title]", plan.title || "Agent 推荐训练计划");
+    setText("[data-agent-plan-summary]", `强度${plan.intensity || "低"}，${plan.sets || 2}组 x ${plan.reps || 6}次，预计${plan.estimated_minutes || 15}分钟。`);
+    const selfCheck = qs('[data-action="run-device-self-check"]');
+    const ready = qs('[data-action="confirm-patient-ready"]');
+    const start = qs('[data-action="start-demo-training"]');
+    const status = qs("[data-agent-plan-status]");
+    if (stage === "self_checked") {
+      if (status) status.textContent = "设备自检通过：电源、佩戴、急停、传感器、通信状态正常。";
+      if (selfCheck) selfCheck.textContent = "自检已通过";
+      if (ready) ready.classList.remove("hidden");
+      return;
+    }
+    if (stage === "patient_ready") {
+      if (status) status.textContent = "患者已确认准备好：疼痛可接受，佩戴稳定，已了解停止方式。";
+      if (ready) ready.textContent = "患者已确认";
+      if (start) start.classList.remove("hidden");
+      return;
+    }
+    if (stage === "started") {
+      if (status) status.textContent = "训练记录已开始。当前为内测演示记录，真实执行仍需 M33 安全确认。";
+      if (start) start.textContent = "训练记录中";
+      return;
+    }
+    if (status) status.textContent = "连接设备后进行自检。";
+  }
+
+  function requireDeviceBindingLogin() {
+    if (getToken()) return true;
+    showDeviceStep(2);
+    setDeviceStatus("请先登录云端账号，再绑定设备。");
+    const unavailable = qs("#bluetoothUnavailable");
+    const results = qs("#device-results");
+    unavailable && unavailable.classList.add("hidden");
+    if (results) {
+      results.innerHTML = '<div class="w-full bg-surface-container rounded-lg p-md text-body-md text-on-surface-variant">登录后再搜索设备，避免蓝牙权限和设备绑定被错误占用。<a class="text-primary font-label-md" href="profile.html">去我的页面登录</a></div>';
+    }
+    return false;
+  }
+
+  function normalizeDiscoveredDevice(raw, index) {
+    const deviceId = raw.m33_device_id || raw.deviceId || raw.id || raw.address || raw.name || `rehab-device-${index + 1}`;
+    return {
+      ...raw,
+      deviceId,
+      m33_device_id: deviceId,
+      name: raw.ble_name || raw.bleName || raw.name || "康复训练设备",
+      signalText: raw.signalText || raw.rssiText || "可连接",
+    };
+  }
+
+  function renderDeviceResults(devices) {
+    const results = qs("#device-results");
+    const unavailable = qs("#bluetoothUnavailable");
+    const status = qs("#device-status-message");
+    if (!results) return;
+    results.innerHTML = "";
+    unavailable && unavailable.classList.add("hidden");
+    discoveredDevices.clear();
+    if (!devices.length) {
+      if (status) status.textContent = "暂未发现可绑定设备";
+      results.innerHTML = '<div class="w-full bg-surface-container rounded-lg p-md text-body-md text-on-surface-variant">请确认设备已开机并靠近手机，再重新搜索。</div>';
+      return;
+    }
+    if (status) status.textContent = "发现附近设备";
+    devices.forEach((device) => {
+      discoveredDevices.set(device.deviceId, device);
+      const card = document.createElement("div");
+      card.className = "w-full bg-surface-bright rounded-lg p-md flex items-center gap-md border border-primary-container/30 shadow-sm";
+      card.innerHTML = `
+        <div class="w-12 h-12 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined">precision_manufacturing</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="text-label-md font-label-md text-on-surface truncate">${device.name}</div>
+          <div class="text-body-md font-body-md text-on-surface-variant truncate">${device.signalText}</div>
+        </div>
+        <button class="h-10 min-h-[44px] px-md bg-surface text-primary border border-primary rounded-full font-label-md text-label-md active:scale-95 transition-transform flex items-center justify-center shrink-0" data-action="bind-rehab-device" data-device-id="${device.deviceId}" type="button">
+          绑定
+        </button>
+      `;
+      results.appendChild(card);
+    });
+  }
+
+  async function scanRehabDevices() {
+    showDeviceStep(2);
+    if (!requireDeviceBindingLogin()) return;
+    const bridge = getBluetoothBridge();
+    const status = qs("#device-status-message");
+    const scanButton = qs('[data-action="scan-rehab-device"]');
+    if (scanButton) scanButton.disabled = true;
+    if (status) status.textContent = "正在搜索附近的设备...";
+    if (!bridge) {
+      window.rehabArmInternalTestBluetooth = {
+        enabled: true,
+        reason: "native_bridge_unavailable",
+        grantsMotionPermission: false,
+        grantsM33Acceptance: false,
+      };
+      renderInternalTestDevice();
+      if (scanButton) scanButton.disabled = false;
+      return;
+    }
+    try {
+      if (bridge.requestBluetoothPermissions) {
+        await bridge.requestBluetoothPermissions();
+      }
+      const response = await bridge.scanDevices({ kind: "rehab_arm" });
+      const rawDevices = Array.isArray(response) ? response : response.devices || [];
+      renderDeviceResults(rawDevices.map(normalizeDiscoveredDevice));
+    } catch (error) {
+      window.rehabArmInternalTestBluetooth = {
+        enabled: true,
+        reason: "native_bridge_permission_or_scan_failed",
+        rawError: error && error.message ? error.message : "",
+        grantsMotionPermission: false,
+        grantsM33Acceptance: false,
+      };
+      renderInternalTestDevice();
+    } finally {
+      if (scanButton) scanButton.disabled = false;
+    }
+  }
+
+  async function bindSelectedDevice(event) {
+    if (!requireDeviceBindingLogin()) return;
+    const button = event.currentTarget || event.target.closest('[data-action="bind-rehab-device"]');
+    const deviceId = button && button.dataset.deviceId;
+    selectedDevice = discoveredDevices.get(deviceId);
+    if (!selectedDevice) return;
+    button.disabled = true;
+    button.textContent = "绑定中";
+    try {
+      const data = await apiRequest("/api/rehab-arm/app/v1/devices/bind", {
+        method: "POST",
+        body: JSON.stringify({
+          m33_device_id: selectedDevice.m33_device_id || selectedDevice.deviceId,
+          ble_name: selectedDevice.name,
+          trust_status: "trusted",
+          firmware_version: selectedDevice.firmwareVersion || selectedDevice.firmware_version || "",
+        }),
+      });
+      showDeviceStep(3);
+      setDeviceStatus("设备已连接");
+      const bound = qs("#device-bound-state");
+      if (bound) {
+        bound.classList.remove("hidden");
+        const deviceLabel = data.ble_name || selectedDevice.name || data.deviceId || data.m33_device_id;
+        bound.querySelector("[data-bound-device]").textContent = `已连接设备：${deviceLabel}`;
+        const note = bound.querySelector("p");
+        if (note) {
+          note.textContent = "设备已和当前账号关联。开始正式训练前，系统仍会检查训练计划同步、M33 安全确认和训练前检查。";
+        }
+      }
+      renderAgentPlanStartFlow("connected");
+    } catch (error) {
+      const state = qs("#device-error-state");
+      if (state) {
+        state.classList.remove("hidden");
+        const message = error.code === "DEVICE_ALREADY_BOUND"
+          ? "这台设备已绑定到其他账号，请联系客服协助解绑。"
+          : (error.message || "设备绑定失败，请稍后再试。");
+        state.querySelector("[data-error-message]").textContent = message;
+      }
+      button.disabled = false;
+      button.textContent = "绑定";
+    }
+  }
+
+  function appendAgentMessage(role, message, tone) {
+    const thread = qs("#agent-thread");
+    if (!thread || !message) return;
+    const wrap = document.createElement("div");
+    const isUser = role === "user";
+    wrap.className = isUser ? "flex justify-end mb-sm" : "flex justify-start mb-sm";
+    wrap.innerHTML = `
+      <div class="${isUser ? "bg-primary text-on-primary rounded-tr-none" : tone === "error" ? "bg-error-container/20 border border-error/30 text-on-surface rounded-tl-none" : "bg-surface-container-lowest border border-outline-variant/20 text-on-surface rounded-tl-none"} rounded-2xl px-md py-sm shadow-ambient-md font-body-md text-body-md max-w-[85%]">
+        ${escapeHtml(message)}
+      </div>
+    `;
+    thread.appendChild(wrap);
+    thread.scrollTop = thread.scrollHeight;
+  }
+
+  async function sendAgentMessage() {
+    const input = qs("#agent-message-input");
+    const button = qs('[data-action="send-agent-message"]');
+    const message = input ? input.value.trim() : "";
+    if (!message) return;
+    appendAgentMessage("user", message);
+    input.value = "";
+    if (button) button.disabled = true;
+    try {
+      const data = await apiRequest("/api/rehab-arm/app/v1/agent/messages", {
+        method: "POST",
+        body: JSON.stringify({ message, context_snapshot: { source: "mobile_app" } }),
+      });
+      appendAgentMessage("assistant", data.answer || "康复师已收到您的问题。");
+      window.rehabAgentModelStatus = data.model_status || data.modelStatus || null;
+    } catch (error) {
+      const text = error.code === "UNSAFE_MOTION_REQUEST"
+        ? "为了安全，我不能提供可能导致过度训练的建议。请保持当前训练节奏，并联系康复师确认。"
+        : (error.message || "康复师暂时没有回应，请稍后再试。");
+      appendAgentMessage("assistant", text, "error");
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
+
+  async function loginCloudAccount() {
+    const emailInput = qs("#login-email");
+    const passwordInput = qs("#login-password");
+    const email = emailInput ? emailInput.value.trim() : "";
+    const password = passwordInput ? passwordInput.value : "";
+
+    if (!email) {
+      setLoginStatus("请输入云端账号邮箱。", "error");
+      if (emailInput) emailInput.focus();
+      return;
+    }
+    if (!password) {
+      setLoginStatus("请输入密码。", "error");
+      if (passwordInput) passwordInput.focus();
+      return;
+    }
+
+    setLoginLoading(true);
+    setLoginStatus("正在登录云端账号...", "");
+    try {
+      const data = await apiRequest(sessionEndpoint, {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      const token = data.access_token || data.accessToken || "";
+      if (!token) {
+        throw new Error("登录成功但没有返回访问凭证。");
+      }
+      localStorage.setItem("access_token", token);
+      setLoginStatus("登录成功，正在同步康复资料...", "success");
+      setAuthState(true);
+      await loadBootstrap();
+    } catch (error) {
+      localStorage.removeItem("access_token");
+      setAuthState(false);
+      const message = error.code === "AUTH_INVALID"
+        ? "账号或密码不正确，请重新输入。"
+        : (error.message || "登录暂时失败，请稍后再试。");
+      setLoginStatus(message, "error");
+      if (passwordInput) passwordInput.focus();
+    } finally {
+      setLoginLoading(false);
+    }
+  }
+
+  async function loadBootstrap() {
+    if (!getToken()) {
+      setAuthState(false);
+      return;
+    }
+    try {
+      const data = await apiRequest(bootstrapEndpoint, { method: "GET" });
+      setAuthState(true, { showReadyMessage: false });
+      const patientView = data.patient_view || data.patientView || {};
+      const home = patientView.home || data.home_status_guide || data.home || null;
+      const profile = patientView.profile || data.profile || null;
+      const device = patientView.device || data.device_operational_guide || data.device || null;
+      const agent = patientView.agent || data.agent || null;
+      window.rehabPatientView = { home, profile, device, agent };
+      window.rehabModelStatus = data.model_status || data.modelStatus || null;
+      if (profile) {
+        setText("#profile-display-name", profile.display_name || profile.displayName || "您好");
+        const phone = profile.phone || {};
+        if (phone.value) setInputValue("#phone-input", phone.value);
+        if (phone.verified || profile.phone_verified || profile.phoneVerified) {
+          setText("#phone-verified-badge", "已绑定");
+          setPhoneStatus("手机号已验证，账号已绑定当前手机号。", "success");
+          const confirmButton = qs('[data-action="confirm-phone-binding"]');
+          if (confirmButton) {
+            confirmButton.disabled = true;
+            confirmButton.textContent = "已绑定";
+          }
+        }
+      }
+      setText("#cloud-account-status", "已同步");
+    } catch (error) {
+      if (error.status === 401 || error.status === 403 || error.code === "AUTH_REQUIRED") {
+        localStorage.removeItem("access_token");
+        setAuthState(false);
+        setLoginStatus("登录已过期，请重新登录。", "error");
+        return;
+      }
+      setAuthState(true, { showReadyMessage: false });
+      setText("#cloud-account-status", "同步失败");
+    }
+  }
+
+  function wirePhoneBinding() {
+    const sendButton = qs('[data-action="send-phone-code"]');
+    const confirmButton = qs('[data-action="confirm-phone-binding"]');
+    if (sendButton) {
+      sendButton.dataset.defaultLabel = sendButton.textContent.trim() || "获取验证码";
+      sendButton.addEventListener("click", sendPhoneVerification);
+    }
+    if (confirmButton) {
+      confirmButton.dataset.defaultLabel = confirmButton.textContent.trim() || "绑定手机号";
+      confirmButton.addEventListener("click", confirmPhoneVerification);
+    }
+  }
+
+  function wireLogin() {
+    const button = qs('[data-action="login-cloud-account"]');
+    const emailInput = qs("#login-email");
+    const passwordInput = qs("#login-password");
+    if (button) {
+      button.dataset.defaultLabel = button.textContent.trim() || "登录云端账号";
+      button.addEventListener("click", loginCloudAccount);
+    }
+    [emailInput, passwordInput].forEach((input) => {
+      if (!input) return;
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") loginCloudAccount();
+      });
+    });
+  }
+
+  function wireDeviceBinding() {
+    const scanButton = qs('[data-action="scan-rehab-device"]');
+    if (scanButton) {
+      scanButton.addEventListener("click", scanRehabDevices);
+    }
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest('[data-action="bind-rehab-device"]');
+      if (!button) return;
+      bindSelectedDevice({ currentTarget: button, target: button });
+    });
+    const selfCheck = qs('[data-action="run-device-self-check"]');
+    if (selfCheck) {
+      selfCheck.addEventListener("click", () => {
+        localStorage.setItem("rehab_device_self_check", JSON.stringify({ status: "passed", at: new Date().toISOString() }));
+        renderAgentPlanStartFlow("self_checked");
+      });
+    }
+    const ready = qs('[data-action="confirm-patient-ready"]');
+    if (ready) {
+      ready.addEventListener("click", () => {
+        localStorage.setItem("rehab_patient_ready", JSON.stringify({ status: "confirmed", at: new Date().toISOString() }));
+        renderAgentPlanStartFlow("patient_ready");
+      });
+    }
+    const start = qs('[data-action="start-demo-training"]');
+    if (start) {
+      start.addEventListener("click", () => {
+        const plan = getAgentNextPlan() || {};
+        localStorage.setItem("rehab_demo_training_session", JSON.stringify({
+          status: "started",
+          plan_title: plan.title || "Agent 推荐训练计划",
+          started_at: new Date().toISOString(),
+          control_boundary: "demo_training_record_only_not_motion_permission",
+        }));
+        renderAgentPlanStartFlow("started");
+      });
+    }
+  }
+
+  function wireAgent() {
+    const button = qs('[data-action="send-agent-message"]');
+    const input = qs("#agent-message-input");
+    if (button) button.addEventListener("click", sendAgentMessage);
+    if (input) {
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") sendAgentMessage();
+      });
+    }
+  }
+
+  function wireUtilityActions() {
+    qsa("[data-nav-target]").forEach((control) => {
+      control.addEventListener("click", () => {
+        const target = control.getAttribute("data-nav-target");
+        if (target) window.location.href = target;
+      });
+    });
+    const supportButton = qs('[data-action="show-device-support"]');
+    if (supportButton) {
+      supportButton.addEventListener("click", () => {
+        const state = qs("#device-error-state");
+        const message = state && state.querySelector("[data-error-message]");
+        if (message) {
+          message.textContent = "内测阶段请先确认：已登录云端账号、在 Android App 内打开、蓝牙和定位权限已允许。若仍失败，请把设备编号和截图发给康复师或测试负责人。";
+        }
+      });
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    wirePhoneBinding();
+    wireLogin();
+    loadBootstrap();
+    wireDeviceBinding();
+    wireAgent();
+    wireUtilityActions();
+  });
+
+  window.loginCloudAccount = loginCloudAccount;
+  window.sendPhoneVerification = sendPhoneVerification;
+  window.confirmPhoneVerification = confirmPhoneVerification;
+  window.scanRehabDevices = scanRehabDevices;
+  window.bindSelectedDevice = bindSelectedDevice;
+})();
+
+</script>
+</body></html>

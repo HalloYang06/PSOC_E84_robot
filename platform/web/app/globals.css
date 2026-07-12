@@ -1,0 +1,40 @@
+:root {
+  color-scheme: light;
+  --bg: #d8f3ff;
+  --panel: rgba(255, 255, 255, 0.82);
+  --panel-alt: rgba(255, 249, 233, 0.92);
+  --text: #2f2a1f;
+  --muted: #6a6458;
+  --accent: #4fb54f;
+  --warn: #d39b1e;
+  --danger: #db5f49;
+  --info: #5a9df2;
+  --border: rgba(120, 145, 92, 0.2);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background:
+    radial-gradient(circle at top, rgba(255, 247, 211, 0.85), transparent 22%),
+    linear-gradient(180deg, #d9f3ff 0%, #f7fcff 18%, #cfeeb4 19%, #bfe59c 100%);
+  color: var(--text);
+  font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}

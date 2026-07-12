@@ -1,0 +1,240 @@
+.shell {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 18% 12%, rgba(123, 239, 255, 0.14), transparent 26%),
+    radial-gradient(circle at 82% 18%, rgba(255, 224, 148, 0.14), transparent 24%),
+    #070b10;
+  color: #f4fbff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.emptyPage {
+  min-height: 100vh;
+  padding: 32px;
+  background: #070b10;
+  color: #f4fbff;
+}
+
+.shell a,
+.emptyPage a {
+  color: inherit;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(180, 223, 255, 0.18);
+  background: rgba(5, 9, 14, 0.88);
+  backdrop-filter: blur(18px);
+}
+
+.topbar nav,
+.topbar div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topbar a,
+.topbar span {
+  padding: 7px 10px;
+  border: 1px solid rgba(180, 223, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(180, 223, 255, 0.08);
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.hero {
+  display: grid;
+  gap: 14px;
+  padding: 58px 56px 34px;
+  border-bottom: 1px solid rgba(180, 223, 255, 0.14);
+}
+
+.hero span,
+.groupHead span {
+  color: #9feaff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.hero h1 {
+  margin: 0;
+  max-width: 840px;
+  font-size: 56px;
+  line-height: 1.02;
+  letter-spacing: 0;
+}
+
+.hero p {
+  margin: 0;
+  max-width: 760px;
+  color: rgba(244, 251, 255, 0.7);
+  font-size: 17px;
+  line-height: 1.65;
+}
+
+.groups {
+  display: grid;
+  gap: 28px;
+  padding: 0 56px 56px;
+}
+
+.commandCenter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  padding: 34px 56px;
+}
+
+.readinessGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(180, 223, 255, 0.16);
+}
+
+.readinessCard {
+  min-height: 150px;
+  padding: 20px;
+  background: rgba(7, 13, 19, 0.98);
+  text-decoration: none;
+}
+
+.readinessCard:hover {
+  background: rgba(18, 32, 42, 0.98);
+}
+
+.readinessCard span,
+.nextPanel span {
+  color: #9feaff;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.readinessCard strong {
+  display: block;
+  margin: 12px 0 10px;
+  word-break: break-word;
+  font-size: 24px;
+}
+
+.readinessCard p {
+  margin: 0;
+  color: rgba(244, 251, 255, 0.66);
+  line-height: 1.55;
+}
+
+.nextPanel {
+  align-self: stretch;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  padding: 18px;
+  border: 1px solid rgba(180, 223, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.nextPanel div {
+  display: grid;
+  gap: 10px;
+}
+
+.nextPanel a {
+  padding: 10px 12px;
+  border: 1px solid rgba(180, 223, 255, 0.24);
+  border-radius: 8px;
+  background: rgba(180, 223, 255, 0.08);
+  text-decoration: none;
+  font-size: 13px;
+}
+
+.group {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.groupHead {
+  position: sticky;
+  top: 86px;
+  display: grid;
+  gap: 8px;
+}
+
+.groupHead p {
+  margin: 0;
+  color: rgba(244, 251, 255, 0.64);
+  line-height: 1.55;
+}
+
+.surfaceGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  background: rgba(180, 223, 255, 0.16);
+}
+
+.surface {
+  min-height: 156px;
+  padding: 20px;
+  background: rgba(7, 13, 19, 0.98);
+  text-decoration: none;
+}
+
+.surface:hover {
+  background: rgba(18, 32, 42, 0.98);
+}
+
+.surface strong {
+  font-size: 19px;
+}
+
+.surface p {
+  margin: 14px 0 0;
+  color: rgba(244, 251, 255, 0.66);
+  line-height: 1.55;
+}
+
+@media (max-width: 980px) {
+  .hero,
+  .commandCenter,
+  .groups {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .commandCenter,
+  .group {
+    grid-template-columns: 1fr;
+  }
+
+  .readinessGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .groupHead {
+    position: static;
+  }
+
+  .surfaceGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .hero h1 {
+    font-size: 38px;
+  }
+
+  .surfaceGrid {
+    grid-template-columns: 1fr;
+  }
+}

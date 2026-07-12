@@ -1,0 +1,1470 @@
+.emptyPage {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  gap: 14px;
+  background: #041018;
+  color: #ecffff;
+}
+
+.emptyPage a {
+  color: inherit;
+}
+
+.forgeShell {
+  --forge-bg: #0d1009;
+  --forge-panel: rgba(28, 31, 19, 0.86);
+  --forge-panel-strong: rgba(38, 35, 22, 0.94);
+  --forge-line: rgba(232, 189, 95, 0.2);
+  --forge-line-strong: rgba(232, 189, 95, 0.46);
+  --forge-text: #fff7e1;
+  --forge-muted: rgba(244, 229, 190, 0.66);
+  --forge-amber: #e8bd5f;
+  --forge-green: #a7df9a;
+  --forge-blue: #8fd6ff;
+  background:
+    radial-gradient(circle at 12% 6%, rgba(232, 189, 95, 0.18), transparent 28%),
+    radial-gradient(circle at 82% 18%, rgba(167, 223, 154, 0.14), transparent 30%),
+    linear-gradient(90deg, rgba(232, 189, 95, 0.045) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(167, 223, 154, 0.03) 1px, transparent 1px),
+    var(--forge-bg) !important;
+  background-size: auto, auto, 42px 42px, 42px 42px, auto !important;
+  color: var(--forge-text) !important;
+  font-family: "LXGW WenKai Screen", "Noto Serif SC", "PingFang SC", "Microsoft YaHei", serif !important;
+}
+
+.forgeTopbar {
+  min-height: 68px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--forge-line);
+  background:
+    linear-gradient(145deg, rgba(26, 35, 22, 0.92), rgba(15, 18, 11, 0.82)),
+    rgba(13, 16, 9, 0.8);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.2);
+}
+
+.forgeBackLink,
+.forgeKpi,
+.forgeBatchBtn {
+  border-color: rgba(232, 189, 95, 0.26);
+  border-radius: 999px;
+  background: rgba(255, 247, 225, 0.06);
+  color: var(--forge-text);
+}
+
+.forgeKpi {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forgeBackLink:hover,
+.forgeBatchBtn:hover {
+  border-color: var(--forge-line-strong);
+  background: rgba(232, 189, 95, 0.13);
+}
+
+.forgeQuickActions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.forgeQuickActions .forgeBatchBtn {
+  min-width: 0;
+}
+
+.forgeBatchBtnGhost {
+  padding-inline: 12px;
+  border-color: rgba(232, 189, 95, 0.16);
+  background: rgba(255, 247, 225, 0.035);
+  color: rgba(255, 247, 225, 0.78);
+}
+
+.forgeTitle strong {
+  color: var(--forge-text);
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.forgeTitle small {
+  color: var(--forge-muted);
+  font-size: 12px;
+}
+
+.forgeBody {
+  gap: 12px;
+  padding: 12px;
+}
+
+.forgeSidebar {
+  position: relative;
+  width: 312px;
+  border: 1px solid var(--forge-line);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(232, 189, 95, 0.12), transparent 32%),
+    linear-gradient(160deg, rgba(25, 31, 20, 0.88), rgba(13, 17, 11, 0.78));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 22px 58px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.forgeSidebarHeader {
+  gap: 10px;
+  padding: 14px;
+  border-bottom-color: rgba(232, 189, 95, 0.14);
+}
+
+.forgeSearch {
+  min-height: 40px;
+  border-color: rgba(232, 189, 95, 0.22);
+  border-radius: 16px;
+  background: rgba(255, 247, 225, 0.055);
+  color: var(--forge-text);
+  font-weight: 800;
+}
+
+.forgeGroupList {
+  padding: 10px;
+}
+
+.forgeScrollHint {
+  display: none;
+}
+
+.forgeGroup {
+  margin-bottom: 12px;
+}
+
+.forgeGroupHeader {
+  padding: 7px 8px;
+  color: rgba(232, 189, 95, 0.88);
+  letter-spacing: 0.05em;
+}
+
+.forgeNpcList {
+  display: grid;
+  gap: 7px;
+}
+
+.forgeNpcRow {
+  min-height: 58px;
+  padding: 10px;
+  border: 1px solid rgba(232, 189, 95, 0.12);
+  border-left: 1px solid rgba(232, 189, 95, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 247, 225, 0.045);
+  transition: transform 150ms ease, border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.forgeNpcRow:hover {
+  transform: translateY(-1px);
+  border-color: rgba(232, 189, 95, 0.32);
+  background: rgba(232, 189, 95, 0.08);
+}
+
+.forgeNpcRowOpen {
+  border-color: rgba(167, 223, 154, 0.44);
+  background:
+    radial-gradient(circle at 0% 50%, rgba(167, 223, 154, 0.16), transparent 42%),
+    rgba(255, 247, 225, 0.055);
+  box-shadow: inset 0 0 0 1px rgba(167, 223, 154, 0.08);
+}
+
+.forgeNpcName {
+  color: var(--forge-text);
+  font-size: 13px;
+}
+
+.forgeNpcMeta {
+  color: var(--forge-muted);
+}
+
+.forgeDot {
+  background: var(--forge-amber);
+  box-shadow: 0 0 12px rgba(232, 189, 95, 0.25);
+}
+
+.forgeOpenBtn {
+  border-color: rgba(232, 189, 95, 0.28);
+  border-radius: 12px;
+  background: rgba(232, 189, 95, 0.1);
+  color: var(--forge-text);
+}
+
+.forgeMain {
+  padding: 0 !important;
+  border: 1px solid var(--forge-line);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(232, 189, 95, 0.08), transparent 30%),
+    linear-gradient(155deg, rgba(17, 24, 18, 0.88), rgba(9, 13, 9, 0.82));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 22px 58px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+
+.forgeReceipt {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  margin: 12px 12px 0;
+  padding: 13px 14px;
+  border: 1px solid rgba(167, 223, 154, 0.34);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(167, 223, 154, 0.18), transparent 34%),
+    linear-gradient(145deg, rgba(20, 42, 24, 0.82), rgba(12, 20, 13, 0.82));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.forgeReceipt[data-state="error"] {
+  border-color: rgba(255, 209, 102, 0.44);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 209, 102, 0.16), transparent 34%),
+    linear-gradient(145deg, rgba(48, 32, 14, 0.82), rgba(18, 16, 10, 0.84));
+}
+
+.forgeReceipt div {
+  min-width: 0;
+}
+
+.forgeReceipt span {
+  display: inline-flex;
+  margin-bottom: 4px;
+  color: var(--forge-amber);
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 900;
+}
+
+.forgeReceipt strong {
+  display: block;
+  color: var(--forge-text);
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.forgeReceipt p {
+  margin: 4px 0 0;
+  color: var(--forge-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.receiptActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.receiptActions button,
+.receiptActions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(232, 189, 95, 0.34);
+  border-radius: 999px;
+  background: rgba(232, 189, 95, 0.1);
+  color: var(--forge-text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.receiptActions button:hover,
+.receiptActions a:hover {
+  border-color: rgba(232, 189, 95, 0.62);
+  background: rgba(232, 189, 95, 0.16);
+}
+
+.forgeTileGrid {
+  gap: 12px;
+  padding: 12px;
+  grid-auto-rows: minmax(calc(100vh - 130px), calc(100vh - 130px));
+}
+
+.forgeMain[data-has-receipt="1"] .forgeTileGrid {
+  grid-auto-rows: minmax(calc(100vh - 228px), calc(100vh - 228px));
+}
+
+.forgeTileGrid[data-tile-count="2"],
+.forgeTileGrid[data-tile-count="3"],
+.forgeTileGrid[data-tile-count="4"] {
+  grid-auto-rows: minmax(calc(100vh - 130px), calc(100vh - 130px));
+}
+
+.forgeMain[data-has-receipt="1"] .forgeTileGrid[data-tile-count="2"],
+.forgeMain[data-has-receipt="1"] .forgeTileGrid[data-tile-count="3"],
+.forgeMain[data-has-receipt="1"] .forgeTileGrid[data-tile-count="4"] {
+  grid-auto-rows: minmax(calc(100vh - 228px), calc(100vh - 228px));
+}
+
+.forgePlaceholder {
+  align-self: start;
+  justify-content: flex-start;
+  align-items: flex-start;
+  height: auto;
+  width: min(680px, calc(100% - 24px));
+  min-height: 260px;
+  margin: 12px;
+  padding: 26px;
+  border: 1px solid rgba(232, 189, 95, 0.18);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(232, 189, 95, 0.12), transparent 34%),
+    linear-gradient(150deg, rgba(23, 30, 18, 0.82), rgba(10, 15, 10, 0.78));
+  color: var(--forge-muted);
+  text-align: left;
+}
+
+.forgePlaceholder strong {
+  color: var(--forge-text);
+  font-size: 22px;
+  letter-spacing: -0.03em;
+}
+
+.forgePlaceholder p {
+  max-width: 560px;
+  color: var(--forge-muted);
+}
+
+.placeholderActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.placeholderActions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 1px solid rgba(232, 189, 95, 0.42);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 0%, rgba(232, 189, 95, 0.2), transparent 60%),
+    rgba(232, 189, 95, 0.12);
+  color: var(--forge-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.placeholderActions button:hover {
+  border-color: rgba(232, 189, 95, 0.68);
+  background: rgba(232, 189, 95, 0.18);
+}
+
+.placeholderActions span {
+  color: rgba(244, 229, 190, 0.72);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.placeholderSteps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.placeholderSteps span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 5px 10px;
+  border: 1px solid rgba(143, 214, 255, 0.2);
+  border-radius: 999px;
+  background: rgba(143, 214, 255, 0.08);
+  color: rgba(236, 255, 255, 0.86);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.skillGrid {
+  min-height: 0;
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+  align-content: start;
+}
+
+.skillGrid article {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-content: initial;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(232, 189, 95, 0.16);
+  border-radius: 18px;
+  background:
+    linear-gradient(150deg, rgba(32, 35, 21, 0.82), rgba(15, 20, 13, 0.72));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.skillGrid .wideCard {
+  grid-column: 1 / -1;
+  min-height: 152px;
+  overflow: hidden;
+}
+
+.skillGrid .boundCard {
+  border-color: rgba(167, 223, 154, 0.38);
+  background:
+    radial-gradient(circle at 0% 20%, rgba(167, 223, 154, 0.16), transparent 34%),
+    linear-gradient(150deg, rgba(28, 44, 25, 0.8), rgba(14, 20, 13, 0.74));
+}
+
+.skillGrid .editorCard {
+  border-color: rgba(232, 189, 95, 0.36);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(232, 189, 95, 0.18), transparent 30%),
+    rgba(35, 26, 12, 0.5);
+}
+
+.skillGrid .depositCard {
+  border-color: rgba(143, 214, 255, 0.26);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(143, 214, 255, 0.14), transparent 30%),
+    rgba(12, 24, 30, 0.68);
+}
+
+.skillGrid .knowledgeEditorCard,
+.skillGrid .depositWideCard {
+  grid-column: 1 / -1;
+  min-height: 326px;
+  height: auto;
+  overflow: hidden;
+}
+
+.skillGrid .depositWideCard {
+  min-height: 204px;
+}
+
+.skillGrid .closureCard {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: stretch;
+  gap: 12px;
+  min-height: 214px;
+  height: auto;
+  border-color: rgba(143, 214, 255, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(143, 214, 255, 0.13), transparent 30%),
+    rgba(12, 24, 30, 0.58);
+}
+
+.skillGrid .closureCard[data-state="gap"] {
+  border-color: rgba(255, 209, 102, 0.38);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255, 209, 102, 0.16), transparent 30%),
+    rgba(35, 26, 12, 0.5);
+}
+
+.collaborationSeedCard {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid rgba(143, 214, 255, 0.28);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(143, 214, 255, 0.14), transparent 34%),
+    rgba(9, 24, 28, 0.64);
+}
+
+.collaborationSeedCard div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.collaborationSeedCard span {
+  color: var(--forge-amber);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.collaborationSeedCard strong,
+.collaborationSeedCard p,
+.collaborationSeedCard small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collaborationSeedCard strong {
+  color: var(--forge-text);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.collaborationSeedCard p {
+  margin: 0;
+  color: var(--forge-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+.collaborationSeedCard small {
+  max-width: 150px;
+  padding: 4px 7px;
+  border: 1px solid rgba(143, 214, 255, 0.18);
+  border-radius: 999px;
+  color: rgba(211, 238, 255, 0.78);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.collaborationSeedActions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.collaborationSeedActions form {
+  min-width: 0;
+}
+
+.collaborationSeedActions button {
+  min-height: 30px;
+  padding: 6px 11px;
+  border: 1px solid rgba(143, 214, 255, 0.28);
+  border-radius: 8px;
+  background: rgba(143, 214, 255, 0.1);
+  color: var(--forge-text);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.collaborationSeedActions button:hover {
+  border-color: rgba(167, 223, 154, 0.44);
+  background: rgba(167, 223, 154, 0.13);
+}
+
+.closureMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.closureMetrics span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 9px;
+  border: 1px solid rgba(232, 189, 95, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 247, 225, 0.055);
+}
+
+.closureMetrics span[data-state="ok"] {
+  border-color: rgba(167, 223, 154, 0.32);
+  background: rgba(167, 223, 154, 0.09);
+}
+
+.closureMetrics span[data-state="gap"] {
+  border-color: rgba(255, 209, 102, 0.32);
+  background: rgba(255, 209, 102, 0.08);
+}
+
+.closureMetrics b {
+  color: var(--forge-text);
+  font-size: 12px;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.closureMetrics small {
+  color: var(--forge-muted);
+  font-size: 10px;
+}
+
+.recommendStrip {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.recommendStrip > span {
+  color: var(--forge-amber);
+  flex: 0 0 auto;
+}
+
+.skillGrid span,
+.materialRows span {
+  color: var(--forge-amber);
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 900;
+}
+
+.skillGrid strong,
+.materialRows strong {
+  color: var(--forge-text);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.skillGrid p,
+.materialRows p {
+  margin: 0;
+  color: var(--forge-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.skillGrid small,
+.materialRows small {
+  color: #ffd166;
+  font-size: 11px;
+  line-height: 1.35;
+  font-weight: 900;
+}
+
+.cardTopline small[data-state],
+.skillRuntimeHint {
+  border: 1px solid rgba(232, 189, 95, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 247, 225, 0.055);
+}
+
+.cardTopline small[data-state] {
+  padding: 3px 8px;
+}
+
+.cardTopline small[data-state="active"] {
+  border-color: rgba(167, 223, 154, 0.46);
+  background: rgba(167, 223, 154, 0.12);
+  color: #c8f6bd;
+}
+
+.cardTopline small[data-state="draft"],
+.cardTopline small[data-state="pending"] {
+  border-color: rgba(255, 209, 102, 0.42);
+  background: rgba(255, 209, 102, 0.1);
+  color: #ffe0a3;
+}
+
+.cardTopline small[data-state="baseline"] {
+  border-color: rgba(143, 214, 255, 0.36);
+  background: rgba(143, 214, 255, 0.1);
+  color: #c5ecff;
+}
+
+.skillRuntimeHint {
+  margin: -2px 0 0;
+  padding: 6px 8px;
+  color: rgba(255, 247, 225, 0.76) !important;
+  font-size: 11px !important;
+  line-height: 1.45 !important;
+}
+
+.skillGrid .assetCard {
+  min-height: 260px;
+  height: auto;
+  overflow: hidden;
+}
+
+.gitGrid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+
+.skillGrid .gitCard {
+  min-height: 168px;
+  overflow: visible;
+}
+
+.skillGrid .gitSourceCard,
+.skillGrid .gitSafetyCard {
+  grid-column: 1 / -1;
+  min-height: 174px;
+}
+
+.skillGrid .gitSourceCard {
+  border-color: rgba(143, 214, 255, 0.3);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(143, 214, 255, 0.15), transparent 32%),
+    linear-gradient(150deg, rgba(17, 34, 36, 0.84), rgba(13, 19, 14, 0.74));
+}
+
+.skillGrid .gitSafetyCard {
+  border-color: rgba(255, 209, 102, 0.42);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(255, 209, 102, 0.16), transparent 32%),
+    linear-gradient(150deg, rgba(41, 30, 13, 0.82), rgba(17, 18, 10, 0.76));
+}
+
+.skillGrid .gitEmptyCard {
+  border-style: dashed;
+}
+
+.gitCard strong,
+.gitCard p,
+.gitCard small {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.gitCard strong a {
+  color: inherit;
+  text-decoration-color: rgba(232, 189, 95, 0.54);
+  text-underline-offset: 3px;
+}
+
+.gitFlowChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: auto;
+}
+
+.gitFlowChips span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border: 1px solid rgba(232, 189, 95, 0.2);
+  border-radius: 999px;
+  background: rgba(232, 189, 95, 0.08);
+  color: var(--forge-text);
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+@media (max-width: 980px) {
+  .closureMetrics {
+    grid-template-columns: 1fr;
+  }
+}
+
+.assetTitle {
+  display: block;
+  flex: 0 0 auto;
+  min-width: 0;
+  min-height: 20px;
+  color: var(--forge-text);
+  font-size: 13px;
+  line-height: 1.45;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assetDescription {
+  display: -webkit-box;
+  flex: 0 0 auto;
+  min-height: 58px;
+  overflow: hidden;
+  color: var(--forge-muted);
+  font-size: 12px;
+  line-height: 1.65;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.cardTopline {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cardTopline span,
+.cardTopline small {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 22px;
+  padding: 3px 8px;
+  border: 1px solid rgba(232, 189, 95, 0.18);
+  border-radius: 999px;
+  background: rgba(232, 189, 95, 0.08);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardTopline small {
+  flex-shrink: 0;
+  border-color: rgba(167, 223, 154, 0.24);
+  background: rgba(167, 223, 154, 0.1);
+  color: #d7ffc9;
+}
+
+.repoLine {
+  min-width: 0;
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 8px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid rgba(232, 189, 95, 0.12);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.repoLine b,
+.repoLine em {
+  grid-column: 1 / -1;
+  color: rgba(205, 232, 238, 0.64);
+  font-size: 10px;
+  line-height: 1.35;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.repoLine code {
+  grid-column: 1 / -1;
+  min-width: 0;
+  max-height: 34px;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: var(--forge-text);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.repoLine a {
+  grid-column: 1 / -1;
+  justify-self: start;
+  padding: 4px 8px;
+  border: 1px solid rgba(232, 189, 95, 0.24);
+  border-radius: 999px;
+  background: rgba(232, 189, 95, 0.08);
+  color: var(--forge-amber);
+  font-size: 11px;
+  line-height: 1.25;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.repoLine a:hover {
+  background: rgba(117, 247, 221, 0.16);
+}
+
+.actionColumns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.availableStrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  padding-top: 4px;
+}
+
+.availableStrip > span {
+  flex-basis: 100%;
+}
+
+.depositCard ul {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.depositCard li {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  color: rgba(205, 232, 238, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.depositCard code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  color: #ecffff;
+  font-family: inherit;
+  font-size: 11px;
+}
+
+.depositCard a {
+  color: var(--forge-amber);
+  font-size: 11px;
+  font-weight: 900;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.depositCard a:hover {
+  color: var(--forge-text);
+}
+
+.depositAudit {
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(117, 247, 221, 0.18);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(117, 247, 221, 0.1), transparent 38%),
+    rgba(0, 0, 0, 0.14);
+}
+
+.depositAudit > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.depositAudit span {
+  color: var(--forge-amber);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.depositAudit strong {
+  overflow-wrap: anywhere;
+  color: var(--forge-text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.depositAudit small {
+  color: rgba(205, 232, 238, 0.66);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.depositAuditGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.depositAuditGrid span {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid rgba(232, 189, 95, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 247, 225, 0.045);
+}
+
+.depositAuditGrid b,
+.depositAuditGrid small,
+.depositAuditGrid em {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.depositAuditGrid em {
+  color: rgba(205, 232, 238, 0.64);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.depositAuditActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding-top: 2px;
+}
+
+.depositAuditActions span {
+  color: rgba(205, 232, 238, 0.7);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.depositAuditActions a {
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid rgba(117, 247, 221, 0.2);
+  border-radius: 999px;
+  background: rgba(117, 247, 221, 0.08);
+  color: #d7fff8;
+  font-size: 10px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.depositAuditActions a:hover {
+  border-color: rgba(117, 247, 221, 0.5);
+  background: rgba(117, 247, 221, 0.14);
+}
+
+.depositAuditActions small {
+  flex-basis: 100%;
+  color: rgba(205, 232, 238, 0.6);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.depositAuditPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.depositAuditPills span {
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid rgba(117, 247, 221, 0.18);
+  border-radius: 999px;
+  background: rgba(117, 247, 221, 0.07);
+  color: rgba(218, 253, 248, 0.82);
+  font-size: 10px;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.inlineAction {
+  display: flex;
+}
+
+.cardActions {
+  margin-top: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stackForm {
+  display: grid;
+  gap: 7px;
+}
+
+.knowledgeForm {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.knowledgeForm label:nth-of-type(3) {
+  grid-column: 1 / -1;
+}
+
+.knowledgeForm button {
+  grid-column: 1 / -1;
+}
+
+.stackForm label {
+  display: grid;
+  gap: 4px;
+  color: rgba(205, 232, 238, 0.72);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.stackForm input,
+.stackForm textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(232, 189, 95, 0.2);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--forge-text);
+  font: inherit;
+  font-size: 12px;
+  padding: 7px 8px;
+  outline: none;
+}
+
+.stackForm input:focus,
+.stackForm textarea:focus {
+  border-color: rgba(232, 189, 95, 0.58);
+}
+
+.stackForm button,
+.inlineAction button {
+  min-height: 28px;
+  padding: 5px 8px;
+  border: 1px solid rgba(232, 189, 95, 0.38);
+  border-radius: 999px;
+  background: rgba(232, 189, 95, 0.1);
+  color: var(--forge-text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.stackForm button {
+  justify-self: start;
+}
+
+.stackForm button:hover,
+.inlineAction button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(232, 189, 95, 0.62);
+  background: rgba(232, 189, 95, 0.16);
+}
+
+.dangerAction button {
+  border-color: rgba(255, 143, 111, 0.42);
+  background: rgba(255, 143, 111, 0.08);
+  color: #ffc9b8;
+}
+
+.dangerAction button:hover {
+  border-color: rgba(255, 143, 111, 0.72);
+  background: rgba(255, 143, 111, 0.16);
+}
+
+.materialRows {
+  flex-shrink: 0;
+  display: grid;
+  gap: 8px;
+  max-height: 148px;
+  overflow: auto;
+  padding: 0 12px 12px;
+}
+
+.materialRows article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid rgba(232, 189, 95, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 247, 225, 0.045);
+}
+
+.materialRows .snapshotRow[data-state="ready"] {
+  border-color: rgba(167, 223, 154, 0.32);
+  background:
+    radial-gradient(circle at 0% 50%, rgba(167, 223, 154, 0.12), transparent 38%),
+    rgba(255, 247, 225, 0.052);
+}
+
+.snapshotChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.snapshotStack {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.snapshotEvidence {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid rgba(167, 223, 154, 0.18);
+  border-radius: 13px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.snapshotEvidence strong {
+  display: block;
+  overflow-wrap: anywhere;
+  color: rgba(255, 247, 225, 0.9);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.snapshotChips span {
+  min-width: 0;
+  min-height: 24px;
+  padding: 4px 8px;
+  border: 1px solid rgba(167, 223, 154, 0.22);
+  border-radius: 999px;
+  background: rgba(167, 223, 154, 0.08);
+  color: rgba(225, 255, 217, 0.86);
+  font-size: 10px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .forgeTopbar {
+    min-height: auto;
+    padding: 10px;
+    display: grid !important;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .forgeTopbar :global([class*="topbarLeft"]),
+  .forgeTopbar :global([class*="topbarRight"]) {
+    min-width: 0;
+  }
+
+  .forgeTopbar :global([class*="topbarLeft"]) {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+  }
+
+  .forgeTopbar :global([class*="topbarRight"]) {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 6px;
+    padding: 1px 0 3px;
+    scrollbar-width: none;
+  }
+
+  .forgeTopbar :global([class*="topbarRight"])::-webkit-scrollbar {
+    display: none;
+  }
+
+  .forgeBackLink {
+    min-height: 28px;
+    padding: 5px 10px;
+    white-space: nowrap;
+  }
+
+  .forgeTitle {
+    min-width: 0;
+  }
+
+  .forgeTitle strong,
+  .forgeTitle small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .forgeTitle strong {
+    font-size: 16px;
+  }
+
+  .forgeTitle small {
+    font-size: 11px;
+  }
+
+  .forgeKpi {
+    flex: 0 0 auto;
+    max-width: none;
+    min-height: 26px;
+    padding: 4px 9px;
+    font-size: 11px;
+  }
+
+  .forgeBody {
+    padding: 10px;
+  }
+
+  .forgeSidebar {
+    width: auto;
+    max-height: none;
+    border-radius: 20px;
+    overflow: visible;
+  }
+
+  .forgeSidebarHeader {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .forgeSearch {
+    min-height: 36px;
+    border-radius: 14px;
+    font-size: 12px;
+  }
+
+  .forgeQuickActions {
+    grid-template-columns: minmax(0, 1fr) minmax(68px, auto);
+    gap: 6px;
+  }
+
+  .forgeBatchBtn {
+    min-height: 30px;
+    padding: 5px 9px;
+    font-size: 11px;
+  }
+
+  .forgeGroupList {
+    padding: 8px;
+    overflow: visible;
+  }
+
+  .forgeScrollHint {
+    display: flex;
+    justify-content: center;
+    min-height: 28px;
+    padding: 6px 10px;
+    border: 1px solid rgba(232, 189, 95, 0.2);
+    border-radius: 999px;
+    background:
+      linear-gradient(180deg, rgba(25, 31, 20, 0.1), rgba(10, 14, 9, 0.92)),
+      rgba(13, 16, 9, 0.88);
+    color: rgba(255, 247, 225, 0.76);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    pointer-events: none;
+    box-shadow: 0 -18px 32px rgba(13, 16, 9, 0.68);
+  }
+
+  .forgeNpcRow {
+    min-height: 54px;
+    padding: 9px 10px;
+    border-radius: 15px;
+  }
+
+  .forgePlaceholder {
+    min-height: 216px;
+    margin: 10px;
+    padding: 22px 18px;
+    text-align: left;
+  }
+
+  .forgePlaceholder strong {
+    font-size: 20px;
+  }
+
+  .forgePlaceholder p {
+    max-width: none;
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+
+  .placeholderActions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .placeholderActions button {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .placeholderSteps {
+    gap: 6px;
+    margin-top: 12px;
+  }
+
+  .forgeReceipt {
+    grid-template-columns: 1fr;
+  }
+
+  .receiptActions {
+    justify-content: flex-start;
+  }
+
+  .skillGrid,
+  .materialRows article,
+  .actionColumns,
+  .knowledgeForm,
+  .repoLine,
+  .collaborationSeedCard {
+    grid-template-columns: 1fr;
+  }
+
+  .collaborationSeedCard small {
+    max-width: 100%;
+  }
+
+  .collaborationSeedActions,
+  .collaborationSeedActions form,
+  .collaborationSeedActions button {
+    width: 100%;
+  }
+
+  .depositCard li {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .depositCard a {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .depositAuditGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .skillGrid .knowledgeEditorCard {
+    min-height: 382px;
+  }
+
+  .skillGrid .depositWideCard {
+    min-height: 292px;
+  }
+
+  .skillGrid .wideCard,
+  .skillGrid .closureCard,
+  .skillGrid .assetCard {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .skillGrid .wideCard {
+    min-height: 178px;
+  }
+
+  .skillGrid .closureCard {
+    min-height: 326px;
+  }
+
+  .skillGrid .assetCard {
+    min-height: 286px;
+  }
+
+  .skillGrid .gitCard,
+  .skillGrid .gitSourceCard,
+  .skillGrid .gitSafetyCard {
+    min-height: 190px;
+  }
+
+  .gitFlowChips span {
+    white-space: normal;
+  }
+}
