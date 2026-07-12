@@ -3,8 +3,8 @@ FROM node:20-alpine AS deps
 WORKDIR /app
 
 COPY package.json package-lock.json /app/
-COPY apps/web/package.json /app/apps/web/package.json
-COPY packages/shared/package.json /app/packages/shared/package.json
+COPY web/package.json /app/web/package.json
+COPY shared/package.json /app/shared/package.json
 
 RUN npm ci
 
@@ -17,7 +17,7 @@ ENV NODE_ENV=production
 COPY --from=deps /app/node_modules /app/node_modules
 COPY . /app
 
-RUN npm --workspace apps/web run build
+RUN npm --workspace web run build
 
 FROM node:20-alpine AS runner
 
@@ -30,4 +30,4 @@ COPY --from=builder /app /app
 
 EXPOSE 3000
 
-CMD ["npm", "--workspace", "apps/web", "run", "start", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+CMD ["npm", "--workspace", "web", "run", "start", "--", "--hostname", "0.0.0.0", "--port", "3000"]

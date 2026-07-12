@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 try {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const mobileRoot = path.resolve(here, "..");
-  const repoRoot = path.resolve(mobileRoot, "..", "..", "..");
-  const source = path.join(repoRoot, "apps", "web", "public", "rehab-arm-mobile");
+  const repoRoot = path.resolve(mobileRoot, "..", "..");
+  const source = path.join(repoRoot, "platform", "web", "public", "rehab-arm-mobile");
   const target = path.join(mobileRoot, "www");
 
   if (!fs.existsSync(source)) {

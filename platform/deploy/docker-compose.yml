@@ -20,7 +20,7 @@ services:
   api:
     build:
       context: ..
-      dockerfile: infra/api.Dockerfile
+      dockerfile: deploy/api.Dockerfile
     depends_on:
       - postgres
       - redis
@@ -30,12 +30,12 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ../apps/api/app:/app/app
+      - ../api/app:/app/app
 
   web:
     build:
       context: ..
-      dockerfile: infra/web.Dockerfile
+      dockerfile: deploy/web.Dockerfile
     depends_on:
       - api
     environment:
@@ -43,7 +43,7 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      - ../apps/web:/app
+      - ../web:/app
       - web_node_modules:/app/node_modules
 
 volumes:

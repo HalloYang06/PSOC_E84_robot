@@ -20,7 +20,8 @@ This folder contains both a local development stack and a formal public deployme
 From the repo root:
 
 ```powershell
-docker compose -f infra/docker-compose.yml up --build
+docker compose -f platform/deploy/docker-compose.yml config
+docker compose -f platform/deploy/docker-compose.yml up --build
 ```
 
 Open:
@@ -31,24 +32,24 @@ Open:
 ### Stop
 
 ```powershell
-docker compose -f infra/docker-compose.yml down
+docker compose -f platform/deploy/docker-compose.yml down
 ```
 
 ### Notes
 
-- The `api` service mounts `../apps/api/app` into the container for live reload.
-- The `web` service mounts `../apps/web` and uses a named volume for `node_modules`.
+- The `api` service mounts `../api/app` into the container for live reload.
+- The `web` service mounts `../web` and uses a named volume for `node_modules`.
 - This stack is intentionally minimal and stays local-first.
 
 ## Formal Public Deployment
 
 Use these files for a real public server:
 
-- `infra/docker-compose.public.yml`
-- `infra/api.prod.Dockerfile`
-- `infra/web.prod.Dockerfile`
-- `infra/Caddyfile`
-- `infra/.env.public.example`
+- `platform/deploy/docker-compose.public.yml`
+- `platform/deploy/api.prod.Dockerfile`
+- `platform/deploy/web.prod.Dockerfile`
+- `platform/deploy/Caddyfile`
+- `platform/deploy/.env.public.example`
 
 ### What this stack does
 
@@ -62,7 +63,7 @@ Use these files for a real public server:
 
 ### First-time setup
 
-1. Copy `infra/.env.public.example` to `infra/.env.public`
+1. Copy `platform/deploy/.env.public.example` to `platform/deploy/.env.public`
 2. Replace every placeholder secret and SMTP value
 3. Point `PUBLIC_APP_DOMAIN` at the server's real DNS name
 4. Make sure ports `80` and `443` are open on the server firewall
@@ -73,33 +74,22 @@ Use these files for a real public server:
 From the repo root:
 
 ```powershell
-docker compose --env-file infra/.env.public -f infra/docker-compose.public.yml up -d --build
-```
-
-Or use the repo helper:
-
-```powershell
-python scripts/deploy_public_stack.py --env-file infra/.env.public
+docker compose --env-file platform/deploy/.env.public -f platform/deploy/docker-compose.public.yml config
+docker compose --env-file platform/deploy/.env.public -f platform/deploy/docker-compose.public.yml up -d --build
 ```
 
 ### Preflight check before deploy
 
-Use the preflight helper before the first deploy or after editing secrets:
+Validate the resolved Compose configuration before the first deploy or after editing secrets:
 
 ```powershell
-python scripts/preflight_public_deployment.py --env-file infra/.env.public
+docker compose --env-file platform/deploy/.env.public -f platform/deploy/docker-compose.public.yml config
 ```
 
 ### Public health checks
 
 - App: `https://your-domain.example/login`
 - API: `https://your-domain.example/api/health`
-
-Or run the smoke checker:
-
-```powershell
-python scripts/smoke_public_deployment.py --base-url https://your-domain.example
-```
 
 ### Important production notes
 

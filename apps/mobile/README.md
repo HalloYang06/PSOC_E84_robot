@@ -1,17 +1,19 @@
 # 灵动康复 ArmControl Android Wrapper
 
-This directory wraps the Stitch-first mobile PWA from `apps/web/public/rehab-arm-mobile` with Capacitor.
+This directory wraps the Stitch-first mobile PWA from `platform/web/public/rehab-arm-mobile` with Capacitor.
 
-Load the Android toolchain in PowerShell:
+Prerequisites: install Node.js with npm, Android Studio with the Android SDK, and a compatible JDK. Make sure the Android SDK and Java tools are available in the current shell, then work from `apps/mobile`.
+
+Verify the local Android tooling:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File ..\..\..\scripts\use-android-build-env.ps1
+npm run doctor
 ```
 
 Install dependencies:
 
 ```powershell
-npm install
+npm ci
 ```
 
 Sync the latest PWA assets:
@@ -29,7 +31,7 @@ npm run build:debug
 Expected debug APK path:
 
 ```text
-apps/mobile/rehab-arm-android/android/app/build/outputs/apk/debug/app-debug.apk
+apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Safety boundary: this Android wrapper is a phone UI shell. It must not add CAN, motor-current, torque, raw setpoint, M33 override, or emergency-stop release paths.

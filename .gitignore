@@ -7,6 +7,10 @@ __pycache__/
 # Node
 node_modules/
 .next/
+platform/web/.next-prod/
+platform/web/.next-build-staging-*/
+platform/web/.next-build-backup-*/
+platform/web/next-env.d.ts
 coverage/
 
 # Android

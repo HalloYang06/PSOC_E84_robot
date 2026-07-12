@@ -29,7 +29,7 @@ services:
   api:
     build:
       context: ..
-      dockerfile: infra/api.prod.Dockerfile
+      dockerfile: deploy/api.prod.Dockerfile
     restart: unless-stopped
     depends_on:
       postgres:
@@ -81,7 +81,7 @@ services:
   web:
     build:
       context: ..
-      dockerfile: infra/web.prod.Dockerfile
+      dockerfile: deploy/web.prod.Dockerfile
     restart: unless-stopped
     depends_on:
       api:

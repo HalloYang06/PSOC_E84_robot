@@ -3,7 +3,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { buildEconomyBalance } from "../../../lib/game/economy-balance";
 import { loadCodexSeatAutonomyStatuses } from "../../../lib/codex-seat-bridge";
 import { loadLocalClaudeWorkstations } from "../../../lib/local-claude-sessions";
 import { readProjectCodexCommands, syncProjectCodexDispatchInboxFromRecords } from "../../../lib/local-agent-bridge";
@@ -871,24 +870,6 @@ export default async function ProjectDetailPage({
       : undefined;
 
   const tokenSpend = sumUsageCost(usage);
-  const economy = buildEconomyBalance({
-    projectName: String(project.name ?? `项目 ${params.id.slice(0, 8)}`),
-    requirementCount: requirements.length,
-    tasks,
-    config: {
-      nodes: asArray<AnyRecord>(config.nodes),
-      providers: asArray<AnyRecord>(config.providers),
-      workstations: asArray<AnyRecord>(config.workstations),
-    },
-    runnerCommandCount: relayCommands.length,
-    relayTimelineCount: relayTimeline.length,
-    tokenSpend,
-    activeTaskCount: activeTasks.length,
-    blockedTaskCount: blockedTasks.length,
-    pendingApprovalCount: pendingApprovals.length,
-    completedTaskCount: tasks.length - activeTasks.length,
-  });
-
   return (
     <ProjectPlayableShell
       project={{
@@ -905,7 +886,6 @@ export default async function ProjectDetailPage({
       config={config}
       tasks={tasks}
       requirements={requirements}
-      economy={economy}
       requirementCount={requirements.length}
       approvals={approvals.filter((item) => String(item.project_id ?? "") === String(project.id))}
       handoffs={handoffs.filter((item) => {

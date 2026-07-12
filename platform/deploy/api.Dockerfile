@@ -9,10 +9,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends libopus0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY apps/api/requirements.txt /app/requirements.txt
+COPY api/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY apps/api/app /app/app
+COPY api/app /app/app
 
 EXPOSE 8000
 
