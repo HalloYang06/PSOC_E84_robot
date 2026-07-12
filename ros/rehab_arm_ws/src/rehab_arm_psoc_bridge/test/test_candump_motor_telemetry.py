@@ -1,0 +1,294 @@
+from __future__ import annotations
+
+import json
+import math
+import struct
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+PACKAGE_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PACKAGE_DIR))
+
+from rehab_arm_psoc_bridge.candump_motor_telemetry import (  # noqa: E402
+    CONTROL_BOUNDARY,
+    decode_lingzu_engineering_values,
+    convert_candump_to_records,
+    decode_cansimple_encoder_estimate,
+    decode_cansimple_heartbeat,
+    decode_private_active_report,
+    parse_candump_line,
+)
+
+
+def candump_line(relative_time: float, can_id: str, data: bytes) -> str:
+    hex_data = ' '.join(f'{byte:02X}' for byte in data)
+    return f' ({relative_time:010.6f})  can0  {can_id}   [{len(data)}]  {hex_data}\n'
+
+
+class CandumpMotorTelemetryTests(unittest.TestCase):
+    def test_parse_candump_line(self) -> None:
+        frame = parse_candump_line(' (001.230000)  can0  069   [8]  00 00 80 3F 00 00 00 40')
+
+        self.assertEqual(frame['can_id'], 0x069)
+        self.assertEqual(frame['dlc'], 8)
+        self.assertEqual(frame['data'], b'\x00\x00\x80?\x00\x00\x00@')
+
+    def test_parse_candump_log_hash_line(self) -> None:
+        frame = parse_candump_line('(1779777167.168395) can0 180006FD#BE9B7FFF7FFF0136')
+
+        self.assertEqual(frame['can_id'], 0x180006FD)
+        self.assertEqual(frame['dlc'], 8)
+        self.assertEqual(frame['data'], bytes.fromhex('BE9B7FFF7FFF0136'))
+
+    def test_decode_cansimple_heartbeat(self) -> None:
+        frame = parse_candump_line(candump_line(0.1, '061', b'\x00\x00\x00\x00\x08\x80\xCE\x00'))
+
+        heartbeat = decode_cansimple_heartbeat(frame)
+
+        self.assertEqual(heartbeat['node_id'], 3)
+        self.assertEqual(heartbeat['axis_state'], 8)
+        self.assertIs(heartbeat['enabled'], True)
+        self.assertIs(heartbeat['fault'], False)
+        self.assertEqual(heartbeat['axis_error_u32'], 0)
+        self.assertEqual(heartbeat['heartbeat_byte5'], 0x80)
+        self.assertEqual(heartbeat['heartbeat_byte6'], 0xCE)
+        self.assertEqual(heartbeat['heartbeat_byte7'], 0x00)
+        self.assertEqual(heartbeat['heartbeat_extension_decode'], 'raw_only_vendor_fields_unconfirmed')
+
+    def test_decode_encoder_estimate_converts_turns_to_radians(self) -> None:
+        data = struct.pack('<ff', 0.25, 0.5)
+        frame = parse_candump_line(candump_line(0.2, '069', data))
+        heartbeat = {'enabled': True, 'fault': False, 'error_code': '0x00000000', 'axis_state': 8}
+
+        motor = decode_cansimple_encoder_estimate(frame, heartbeat)
+
+        self.assertEqual(motor['motor_id'], 3)
+        self.assertEqual(motor['vendor'], 'Sitaiwei')
+        self.assertEqual(motor['gear_ratio'], 48.0)
+        self.assertEqual(motor['execution_status'], 'command_sent_but_motion_not_visually_confirmed')
+        self.assertEqual(motor['protocol'], 'cansimple_encoder_estimate')
+        self.assertAlmostEqual(motor['position'], 0.25 * math.tau)
+        self.assertAlmostEqual(motor['velocity'], 0.5 * math.tau)
+        self.assertEqual(motor['raw_can_id'], '0x069')
+        self.assertIs(motor['enabled'], True)
+        self.assertEqual(motor['heartbeat_byte5'], None)
+        self.assertEqual(motor['heartbeat_extension_decode'], None)
+
+    def test_encoder_estimate_carries_raw_heartbeat_extension_bytes(self) -> None:
+        data = struct.pack('<ff', 0.25, 0.5)
+        frame = parse_candump_line(candump_line(0.2, '069', data))
+        heartbeat = decode_cansimple_heartbeat(
+            parse_candump_line(candump_line(0.1, '061', b'\x00\x00\x00\x00\x08\x80\xCE\x00'))
+        )
+
+        motor = decode_cansimple_encoder_estimate(frame, heartbeat)
+
+        self.assertEqual(motor['heartbeat_byte5'], 0x80)
+        self.assertEqual(motor['heartbeat_byte6'], 0xCE)
+        self.assertEqual(motor['heartbeat_byte7'], 0x00)
+        self.assertEqual(motor['heartbeat_extension_decode'], 'raw_only_vendor_fields_unconfirmed')
+
+    def test_decode_private_active_report_preserves_raw_fields_for_el05(self) -> None:
+        frame = parse_candump_line('(1779777167.170439) can0 180007FD#97BA7FCF7FFF0140')
+
+        motor = decode_private_active_report(frame)
+
+        self.assertEqual(motor['motor_id'], 7)
+        self.assertEqual(motor['vendor'], 'Lingzu')
+        self.assertEqual(motor['protocol'], 'lingzu_robstride_private_active_report')
+        self.assertEqual(motor['actuator_type'], 'EL05')
+        self.assertEqual(motor['gear_ratio'], 9.0)
+        self.assertEqual(motor['engineering_decode'], 'raw_only_actuator_type_confirmed_but_limits_not_in_local_reference')
+        self.assertIsNone(motor['position'])
+        self.assertIsNone(motor['velocity'])
+        self.assertIsNone(motor['torque'])
+        self.assertIsNone(motor['temperature'])
+        self.assertEqual(motor['raw_position_u16'], 0x97BA)
+        self.assertEqual(motor['raw_velocity_u16'], 0x7FCF)
+        self.assertEqual(motor['raw_torque_u16'], 0x7FFF)
+        self.assertEqual(motor['temperature_raw'], 0x0140)
+        self.assertEqual(motor['raw_temperature_u16'], 0x0140)
+        self.assertEqual(motor['status_raw'], '0x40')
+        self.assertEqual(motor['raw_can_id'], '0x180007FD')
+
+    def test_decode_private_active_report_decodes_confirmed_rs00_by_default(self) -> None:
+        frame = parse_candump_line('(1779777167.170439) can0 180004FD#80007FFF80000140')
+
+        motor = decode_private_active_report(frame)
+
+        self.assertEqual(motor['motor_id'], 4)
+        self.assertEqual(motor['actuator_type'], 'RS00')
+        self.assertEqual(motor['gear_ratio'], 10.0)
+        self.assertEqual(motor['engineering_decode'], 'lingzu_robstride_ros_sample_actuator_mapping')
+        self.assertAlmostEqual(motor['velocity'], 0.0, places=6)
+        self.assertAlmostEqual(motor['temperature'], 32.0)
+
+    def test_decode_lingzu_engineering_values_when_actuator_model_is_known(self) -> None:
+        values = decode_lingzu_engineering_values(
+            4,
+            0x8000,
+            0x7FFF,
+            0x8000,
+            0x0140,
+            actuator_type_by_id={4: 'RS00'},
+        )
+
+        self.assertEqual(values['actuator_type'], 'RS00')
+        self.assertEqual(values['gear_ratio'], 10.0)
+        self.assertEqual(values['engineering_decode'], 'lingzu_robstride_ros_sample_actuator_mapping')
+        self.assertAlmostEqual(values['position'], 0.0003835069, places=6)
+        self.assertAlmostEqual(values['velocity'], 0.0, places=6)
+        self.assertAlmostEqual(values['torque'], 0.0005188147, places=6)
+        self.assertAlmostEqual(values['temperature'], 32.0)
+
+    def test_decode_lingzu_engineering_values_keeps_el05_raw_until_limits_are_confirmed(self) -> None:
+        values = decode_lingzu_engineering_values(7, 0x8000, 0x7FFF, 0x8000, 0x0140)
+
+        self.assertEqual(values['actuator_type'], 'EL05')
+        self.assertEqual(values['gear_ratio'], 9.0)
+        self.assertEqual(values['engineering_decode'], 'raw_only_actuator_type_confirmed_but_limits_not_in_local_reference')
+        self.assertIsNone(values['position'])
+        self.assertIsNone(values['velocity'])
+        self.assertIsNone(values['torque'])
+
+    def test_convert_candump_to_motor_state_jsonl_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'capture.log'
+            source.write_text(
+                candump_line(0.0, '061', b'\x00\x00\x00\x00\x08\x80\xCE\x00')
+                + candump_line(0.01, '069', struct.pack('<ff', 0.25, 0.5))
+                + candump_line(0.02, '069', struct.pack('<ff', 0.30, 0.1)),
+                encoding='utf-8',
+            )
+
+            records, summary = convert_candump_to_records(source, 'rehab-arm-alpha', 'nanopi-m5', 's1')
+
+        self.assertIs(summary['ok'], True)
+        self.assertEqual(summary['motor_state_count'], 2)
+        self.assertEqual(records[0]['record_type'], 'session_metadata')
+        self.assertEqual(records[0]['control_boundary'], CONTROL_BOUNDARY)
+        self.assertEqual(records[1]['topic'], '/rehab_arm/motor_state')
+        payload = records[1]['payload']
+        self.assertEqual(payload['schema_version'], 'rehab_arm_motor_state_v1')
+        self.assertEqual(payload['motors'][0]['motor_id'], 3)
+        self.assertEqual(payload['control_boundary'], CONTROL_BOUNDARY)
+
+    def test_convert_candump_includes_private_active_report_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'capture.log'
+            source.write_text(
+                '(1779777167.168395) can0 180006FD#BE9B7FFF7FFF0136\n'
+                '(1779777167.170439) can0 180004FD#97BA7FCF7FFF0140\n',
+                encoding='utf-8',
+            )
+
+            records, summary = convert_candump_to_records(source, 'rehab-arm-alpha', 'nanopi-m5', 's1')
+
+        self.assertIs(summary['ok'], True)
+        self.assertEqual(summary['private_active_report_count'], 2)
+        self.assertEqual(summary['motor_state_count'], 2)
+        self.assertEqual(records[1]['payload']['source'], 'candump_private_active_report')
+        self.assertEqual(records[1]['payload']['motors'][0]['motor_id'], 6)
+        self.assertEqual(records[1]['payload']['motors'][0]['vendor'], 'Lingzu')
+
+    def test_convert_candump_includes_m33_motor_status_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'capture.log'
+            source.write_text(
+                candump_line(0.0, '330', bytes([0xB3, 1, 3, 1, 50, 0, 0, 0xFF]))
+                + candump_line(0.1, '331', bytes([0xB3, 2, 7, 1, 0xB0, 0xFF, 1, 34])),
+                encoding='utf-8',
+            )
+
+            records, summary = convert_candump_to_records(source, 'rehab-arm-alpha', 'nanopi-m5', 's1')
+
+        motor_records = [record for record in records if record.get('topic') == '/rehab_arm/motor_state']
+        self.assertIs(summary['ok'], True)
+        self.assertEqual(summary['m33_motor_status_count'], 2)
+        self.assertEqual(summary['motor_state_count'], 2)
+        self.assertEqual(motor_records[0]['payload']['source'], 'candump_m33_motor_status')
+        self.assertEqual(motor_records[0]['payload']['motors'][0]['motor_id'], 3)
+        self.assertEqual(motor_records[0]['payload']['motors'][0]['joint_name'], 'shoulder_lift_joint')
+        self.assertAlmostEqual(motor_records[1]['payload']['motors'][0]['position'], -0.08)
+
+    def test_convert_candump_includes_psoc_safety_state_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'capture.log'
+            source.write_text(
+                candump_line(0.0, '322', bytes([0xA5, 1, 7, 0, 1, 1, 10, 0]))
+                + candump_line(0.1, '330', bytes([0xB3, 2, 3, 1, 50, 0, 0, 0xFF])),
+                encoding='utf-8',
+            )
+
+            records, summary = convert_candump_to_records(source, 'rehab-arm-alpha', 'nanopi-m5', 's1')
+
+        safety_records = [record for record in records if record.get('topic') == '/rehab_arm/safety_state']
+        self.assertIs(summary['ok'], True)
+        self.assertEqual(summary['safety_state_count'], 1)
+        self.assertEqual(summary['motion_allowed_counts'], {'true': 0, 'false': 1})
+        self.assertEqual(safety_records[0]['payload']['protocol_version'], 2)
+        self.assertEqual(safety_records[0]['payload']['state'], 'limited')
+        self.assertEqual(safety_records[0]['payload']['detail'], 'logging_only_no_motor_output')
+        self.assertIs(safety_records[0]['payload']['motion_allowed'], False)
+        self.assertEqual(safety_records[0]['payload']['session_id'], 's1')
+
+    def test_convert_candump_includes_joint_states_from_m33_motor_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'capture.log'
+            source.write_text(
+                candump_line(0.0, '330', bytes([0xB3, 1, 3, 1, 50, 0, 2, 0xFF]))
+                + candump_line(0.1, '331', bytes([0xB3, 2, 7, 1, 0xB0, 0xFF, 0xFF, 34])),
+                encoding='utf-8',
+            )
+
+            records, summary = convert_candump_to_records(source, 'rehab-arm-alpha', 'nanopi-m5', 's1')
+
+        joint_records = [record for record in records if record.get('topic') == '/joint_states']
+        self.assertEqual(summary['joint_state_count'], 2)
+        self.assertEqual(len(joint_records), 2)
+        self.assertEqual(joint_records[0]['payload']['name'], ['shoulder_lift_joint'])
+        self.assertAlmostEqual(joint_records[0]['payload']['position'][0], 0.05)
+        self.assertAlmostEqual(joint_records[0]['payload']['velocity'][0], 0.2)
+        self.assertEqual(joint_records[1]['payload']['name'], ['elbow_lift_joint'])
+        self.assertAlmostEqual(joint_records[1]['payload']['position'][0], -0.08)
+        self.assertAlmostEqual(joint_records[1]['payload']['velocity'][0], -0.1)
+
+    def test_cli_writes_output_to_requested_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            source = Path(tmpdir) / 'capture.log'
+            output = Path(tmpdir) / 'converted.jsonl'
+            source.write_text(
+                candump_line(0.0, '061', b'\x00\x00\x00\x00\x08\x80\xCE\x00')
+                + candump_line(0.01, '069', struct.pack('<ff', 0.25, 0.5)),
+                encoding='utf-8',
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(PACKAGE_DIR / 'rehab_arm_psoc_bridge' / 'candump_motor_telemetry.py'),
+                    str(source),
+                    '--output',
+                    str(output),
+                    '--session-id',
+                    's1',
+                ],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0)
+            self.assertTrue(output.exists())
+            summary = json.loads(result.stdout)
+            self.assertEqual(summary['motor_state_count'], 1)
+            self.assertEqual(len(output.read_text(encoding='utf-8').splitlines()), 2)
+
+
+if __name__ == '__main__':
+    unittest.main()

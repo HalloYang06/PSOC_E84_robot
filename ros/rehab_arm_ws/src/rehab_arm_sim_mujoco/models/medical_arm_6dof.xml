@@ -1,0 +1,47 @@
+<mujoco model="medical_arm_6dof_shadow">
+  <compiler angle="radian"/>
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+  <visual>
+    <headlight ambient="0.45 0.45 0.45" diffuse="0.7 0.7 0.7" specular="0.2 0.2 0.2"/>
+  </visual>
+  <worldbody>
+    <geom name="floor" type="plane" pos="0 0 0" size="1.2 1.2 0.02" rgba="0.82 0.84 0.86 1"/>
+    <light name="key_light" pos="0.2 -0.8 1.8" dir="0 0 -1"/>
+    <body name="base" pos="0 0 1.15">
+      <geom type="cylinder" size="0.06 0.04" rgba="0.18 0.20 0.24 1" mass="0.5"/>
+      <body name="jian_hengxiang_body" pos="0 0 0">
+        <joint name="jian_hengxiang_joint" type="hinge" axis="0 0 1" range="-0.7854 1.5708" limited="true" damping="1.2"/>
+        <geom type="capsule" fromto="0 0 0 0.18 0 0" size="0.04" rgba="0.15 0.35 0.62 1" mass="0.25"/>
+        <body name="jian_zongxiang_body" pos="0.24 0 0">
+          <joint name="jian_zongxiang_joint" type="hinge" axis="0 1 0" range="-0.5236 1.7453" limited="true" damping="1.2"/>
+          <geom type="capsule" fromto="0 0 0 0.24 0 0" size="0.038" rgba="0.12 0.48 0.42 1" mass="0.25"/>
+          <body name="jian_xuanzhuan_body" pos="0.18 0 0">
+            <joint name="jian_xuanzhuan_joint" type="hinge" axis="1 0 0" range="-1.0472 1.0472" limited="true" damping="1.0"/>
+            <geom type="capsule" fromto="0 0 0 0.18 0 0" size="0.034" rgba="0.55 0.40 0.18 1" mass="0.20"/>
+            <body name="zhou_zongxiang_body" pos="0.28 0 0">
+              <joint name="zhou_zongxiang_joint" type="hinge" axis="0 1 0" range="0.0 2.3562" limited="true" damping="1.0"/>
+              <geom type="capsule" fromto="0 0 0 0.28 0 0" size="0.032" rgba="0.50 0.22 0.24 1" mass="0.20"/>
+              <body name="wanbu_zongxiang_body" pos="0.12 0 0">
+                <joint name="wanbu_zongxiang_joint" type="hinge" axis="0 1 0" range="-0.7854 0.7854" limited="true" damping="0.8"/>
+                <geom type="capsule" fromto="0 0 0 0.12 0 0" size="0.026" rgba="0.32 0.30 0.46 1" mass="0.12"/>
+                <body name="wanbu_hengxiang_body" pos="0.10 0 0">
+                  <joint name="wanbu_hengxiang_joint" type="hinge" axis="0 0 1" range="-0.3491 0.5236" limited="true" damping="0.8"/>
+                  <geom type="capsule" fromto="0 0 0 0.10 0 0" size="0.024" rgba="0.20 0.20 0.22 1" mass="0.10"/>
+                  <site name="medical_arm_end_effector" pos="0.10 0 0" size="0.015" rgba="0.95 0.25 0.18 1"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position name="jian_hengxiang_joint_pos" joint="jian_hengxiang_joint" kp="35" kv="4" ctrlrange="-0.7854 1.5708"/>
+    <position name="jian_zongxiang_joint_pos" joint="jian_zongxiang_joint" kp="35" kv="4" ctrlrange="-0.5236 1.7453"/>
+    <position name="jian_xuanzhuan_joint_pos" joint="jian_xuanzhuan_joint" kp="30" kv="4" ctrlrange="-1.0472 1.0472"/>
+    <position name="zhou_zongxiang_joint_pos" joint="zhou_zongxiang_joint" kp="30" kv="4" ctrlrange="0.0 2.3562"/>
+    <position name="wanbu_zongxiang_joint_pos" joint="wanbu_zongxiang_joint" kp="20" kv="3" ctrlrange="-0.7854 0.7854"/>
+    <position name="wanbu_hengxiang_joint_pos" joint="wanbu_hengxiang_joint" kp="20" kv="3" ctrlrange="-0.3491 0.5236"/>
+  </actuator>
+</mujoco>

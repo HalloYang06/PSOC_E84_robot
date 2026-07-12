@@ -1,0 +1,36 @@
+<mujoco model="rehab_arm_minimal">
+  <compiler angle="radian"/>
+  <option timestep="0.002" gravity="0 0 -9.81"/>
+  <worldbody>
+    <body name="base" pos="0 0 1.15">
+      <geom type="sphere" size="0.04" mass="0.5"/>
+        <body name="shoulder_lift_body" pos="0 0 0">
+          <joint name="shoulder_lift_joint" type="hinge" axis="0 1 0" range="-0.7 1.4" limited="true" damping="1.0"/>
+          <geom type="capsule" fromto="0 0 0 0.3 0 0" size="0.035" mass="0.2"/>
+            <body name="elbow_lift_body" pos="0.32 0 0">
+              <joint name="elbow_lift_joint" type="hinge" axis="0 1 0" range="0.0 1.8" limited="true" damping="1.0"/>
+              <geom type="capsule" fromto="0 0 0 0.32 0 0" size="0.03" mass="0.2"/>
+                <body name="shoulder_abduction_body" pos="0.22 0 0">
+                  <joint name="shoulder_abduction_joint" type="hinge" axis="0 0 1" range="-0.45 0.8" limited="true" damping="1.0"/>
+                  <geom type="capsule" fromto="0 0 0 0.22 0 0" size="0.028" mass="0.2"/>
+                    <body name="upper_arm_rotation_body" pos="0.2 0 0">
+                      <joint name="upper_arm_rotation_joint" type="hinge" axis="1 0 0" range="-1.2 1.2" limited="true" damping="1.0"/>
+                      <geom type="capsule" fromto="0 0 0 0.2 0 0" size="0.026" mass="0.2"/>
+                        <body name="forearm_rotation_body" pos="0.18 0 0">
+                          <joint name="forearm_rotation_joint" type="hinge" axis="1 0 0" range="-1.2 1.2" limited="true" damping="1.0"/>
+                          <geom type="capsule" fromto="0 0 0 0.18 0 0" size="0.024" mass="0.2"/>
+                        </body>
+                    </body>
+                </body>
+            </body>
+        </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position joint="shoulder_lift_joint" kp="35" kv="4" ctrlrange="-0.7 1.4"/>
+    <position joint="elbow_lift_joint" kp="35" kv="4" ctrlrange="0.0 1.8"/>
+    <position joint="shoulder_abduction_joint" kp="35" kv="4" ctrlrange="-0.45 0.8"/>
+    <position joint="upper_arm_rotation_joint" kp="35" kv="4" ctrlrange="-1.2 1.2"/>
+    <position joint="forearm_rotation_joint" kp="35" kv="4" ctrlrange="-1.2 1.2"/>
+  </actuator>
+</mujoco>

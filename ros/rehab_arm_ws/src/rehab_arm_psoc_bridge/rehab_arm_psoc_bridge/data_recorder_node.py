@@ -1,0 +1,136 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.node import Node
+from sensor_msgs.msg import JointState
+from std_msgs.msg import String
+
+from rehab_arm_psoc_bridge.data_recording import (
+    make_joint_state_payload,
+    make_default_session_id,
+    make_jsonl_record,
+    make_payload_record,
+    make_session_metadata,
+    session_log_path,
+    write_jsonl_record,
+)
+
+
+def is_shutdown_runtime_error(exc: RuntimeError) -> bool:
+    return 'Unable to convert call argument' in str(exc)
+
+
+class RehabArmDataRecorder(Node):
+    def __init__(self):
+        super().__init__('rehab_arm_data_recorder')
+        self.declare_parameter('output_dir', '~/rehab_arm_logs')
+        self.declare_parameter('session_id', '')
+        self.declare_parameter('device_id', 'nanopi')
+        self.declare_parameter('robot_id', 'rehab_arm')
+        self.declare_parameter('software_version', 'unknown')
+        self.declare_parameter('mode', 'logging_only')
+        self.declare_parameter('flush_every', 1)
+
+        output_dir = str(self.get_parameter('output_dir').value)
+        session_id = str(self.get_parameter('session_id').value)
+        device_id = str(self.get_parameter('device_id').value)
+        robot_id = str(self.get_parameter('robot_id').value)
+        if not session_id:
+            session_id = make_default_session_id(robot_id, device_id)
+        software_version = str(self.get_parameter('software_version').value)
+        mode = str(self.get_parameter('mode').value)
+        self.flush_every = max(1, int(self.get_parameter('flush_every').value))
+        self.write_count = 0
+
+        self.path = session_log_path(output_dir, session_id)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.log_handle = self.path.open('a', encoding='utf-8')
+        write_jsonl_record(
+            self.log_handle,
+            make_session_metadata(
+                session_id=session_id,
+                device_id=device_id,
+                robot_id=robot_id,
+                software_version=software_version,
+                mode=mode,
+            ),
+        )
+        self.log_handle.flush()
+
+        self.create_subscription(String, '/rehab_arm/safety_state', self.on_safety_state, 20)
+        self.create_subscription(String, '/rehab_arm/sensor_state', self.on_sensor_state, 50)
+        self.create_subscription(String, '/rehab_arm/motor_state', self.on_motor_state, 50)
+        self.create_subscription(String, '/rehab_arm/model_state', self.on_model_state, 20)
+        self.create_subscription(String, '/rehab_arm/camera_keyframe', self.on_camera_keyframe, 10)
+        self.create_subscription(JointState, '/joint_states', self.on_joint_states, 50)
+        self.get_logger().info(f'recording rehab arm data to {self.path}')
+
+    def destroy_node(self):
+        if hasattr(self, 'log_handle') and not self.log_handle.closed:
+            self.log_handle.flush()
+            self.log_handle.close()
+        super().destroy_node()
+
+    def on_safety_state(self, msg: String) -> None:
+        self.record('/rehab_arm/safety_state', msg.data)
+
+    def on_sensor_state(self, msg: String) -> None:
+        self.record('/rehab_arm/sensor_state', msg.data)
+
+    def on_motor_state(self, msg: String) -> None:
+        self.record('/rehab_arm/motor_state', msg.data)
+
+    def on_model_state(self, msg: String) -> None:
+        self.record('/rehab_arm/model_state', msg.data)
+
+    def on_camera_keyframe(self, msg: String) -> None:
+        self.record('/rehab_arm/camera_keyframe', msg.data)
+
+    def on_joint_states(self, msg: JointState) -> None:
+        payload = make_joint_state_payload(
+            names=list(msg.name),
+            positions=list(msg.position),
+            velocities=list(msg.velocity),
+            efforts=list(msg.effort),
+            stamp_sec=msg.header.stamp.sec,
+            stamp_nanosec=msg.header.stamp.nanosec,
+        )
+        write_jsonl_record(self.log_handle, make_payload_record('/joint_states', payload))
+        self.flush_if_needed()
+
+    def record(self, topic: str, text: str) -> None:
+        write_jsonl_record(self.log_handle, make_jsonl_record(topic, text))
+        self.flush_if_needed()
+
+    def flush_if_needed(self) -> None:
+        self.write_count += 1
+        if self.write_count % self.flush_every == 0:
+            self.log_handle.flush()
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = RehabArmDataRecorder()
+    try:
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+    except RuntimeError as exc:
+        if not is_shutdown_runtime_error(exc):
+            raise
+    finally:
+        try:
+            node.destroy_node()
+        except KeyboardInterrupt:
+            pass
+        if rclpy.ok():
+            try:
+                rclpy.shutdown()
+            except KeyboardInterrupt:
+                pass
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,232 @@
+from __future__ import annotations
+
+import sys
+import unittest
+from pathlib import Path
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from rehab_arm_psoc_bridge.psoc_motor_status import (  # noqa: E402
+    M33_MOTOR_STATUS_MARKER,
+    M33MotorStatusAggregator,
+    MOTOR_STATUS_FLAG_ENABLED,
+    MOTOR_STATUS_FLAG_FAULT,
+    MOTOR_STATUS_FLAG_LIMITED,
+    MOTOR_STATUS_FLAG_STALE,
+    is_m33_motor_status_id,
+    make_current_position_updates_from_m33_motor_state,
+    make_joint_state_fields_from_m33_motor_state,
+    make_m33_motor_state_payload,
+    parse_m33_motor_status_frame,
+)
+
+
+class PsocMotorStatusTests(unittest.TestCase):
+    def test_accepts_reserved_status_id_range(self) -> None:
+        self.assertIs(is_m33_motor_status_id(0x330), True)
+        self.assertIs(is_m33_motor_status_id(0x337), True)
+        self.assertIs(is_m33_motor_status_id(0x322), False)
+        self.assertIs(is_m33_motor_status_id(0x7C2), False)
+
+    def test_parse_m33_motor_status_frame(self) -> None:
+        data = bytes([
+            M33_MOTOR_STATUS_MARKER,
+            7,
+            4,
+            MOTOR_STATUS_FLAG_ENABLED | MOTOR_STATUS_FLAG_LIMITED,
+            *int(1234).to_bytes(2, 'little', signed=True),
+            12,
+            36,
+        ])
+
+        motor = parse_m33_motor_status_frame(0x330, data)
+
+        self.assertIs(motor['valid'], True)
+        self.assertEqual(motor['protocol'], 'm33_motor_status_v1')
+        self.assertEqual(motor['protocol_status'], 'proposed_firmware_pending')
+        self.assertEqual(motor['status_slot'], 0)
+        self.assertEqual(motor['joint_name'], 'shoulder_lift_joint')
+        self.assertEqual(motor['motor_id'], 4)
+        self.assertEqual(motor['vendor'], 'Lingzu')
+        self.assertAlmostEqual(motor['position'], 1.234)
+        self.assertAlmostEqual(motor['velocity'], 1.2)
+        self.assertEqual(motor['temperature'], 36.0)
+        self.assertIs(motor['enabled'], True)
+        self.assertIs(motor['limited'], True)
+        self.assertIs(motor['fault'], False)
+        self.assertIs(motor['stale'], False)
+        self.assertIs(motor['data_fresh'], True)
+        self.assertEqual(motor['raw_can_id'], '0x330')
+
+    def test_parse_stale_slot_keeps_motor_state_but_excludes_joint_state(self) -> None:
+        motor = parse_m33_motor_status_frame(
+            0x333,
+            bytes([M33_MOTOR_STATUS_MARKER, 10, 7, MOTOR_STATUS_FLAG_STALE, 0, 0, 0, 0xFF]),
+        )
+        payload = make_m33_motor_state_payload([motor], 'rehab-arm-alpha', 'nanopi-m5', now=10.0)
+        fields = make_joint_state_fields_from_m33_motor_state(payload)
+
+        self.assertIs(motor['valid'], True)
+        self.assertIs(motor['stale'], True)
+        self.assertIs(motor['data_fresh'], False)
+        self.assertEqual(payload['valid_motor_count'], 1)
+        self.assertEqual(payload['motors'][0]['motor_id'], 7)
+        self.assertEqual(fields['name'], [])
+
+    def test_parse_negative_position_and_velocity(self) -> None:
+        data = bytes([
+            M33_MOTOR_STATUS_MARKER,
+            8,
+            3,
+            MOTOR_STATUS_FLAG_ENABLED,
+            *int(-700).to_bytes(2, 'little', signed=True),
+            0xF6,
+            0xFF,
+        ])
+
+        motor = parse_m33_motor_status_frame(0x332, data)
+
+        self.assertIs(motor['valid'], True)
+        self.assertEqual(motor['joint_name'], 'shoulder_abduction_joint')
+        self.assertEqual(motor['motor_id'], 3)
+        self.assertEqual(motor['vendor'], 'Sitaiwei')
+        self.assertAlmostEqual(motor['position'], -0.7)
+        self.assertAlmostEqual(motor['velocity'], -1.0)
+        self.assertIsNone(motor['temperature'])
+
+    def test_fault_flag_is_preserved(self) -> None:
+        data = bytes([
+            M33_MOTOR_STATUS_MARKER,
+            9,
+            6,
+            MOTOR_STATUS_FLAG_FAULT,
+            0,
+            0,
+            0,
+            40,
+        ])
+
+        motor = parse_m33_motor_status_frame(0x334, data)
+
+        self.assertIs(motor['valid'], True)
+        self.assertIs(motor['enabled'], False)
+        self.assertIs(motor['fault'], True)
+        self.assertEqual(motor['joint_name'], 'forearm_rotation_joint')
+
+    def test_invalid_marker_is_rejected(self) -> None:
+        data = bytes([0x00, 1, 4, MOTOR_STATUS_FLAG_ENABLED, 0, 0, 0, 30])
+
+        motor = parse_m33_motor_status_frame(0x330, data)
+
+        self.assertIs(motor['valid'], False)
+        self.assertEqual(motor['detail'], 'invalid M33 motor status marker')
+
+    def test_invalid_length_is_rejected(self) -> None:
+        motor = parse_m33_motor_status_frame(0x330, b'\xB3\x01')
+
+        self.assertIs(motor['valid'], False)
+        self.assertEqual(motor['detail'], 'M33 motor status payload must be 8 bytes')
+
+    def test_make_motor_state_payload_keeps_only_valid_frames(self) -> None:
+        valid = parse_m33_motor_status_frame(
+            0x330,
+            bytes([M33_MOTOR_STATUS_MARKER, 1, 4, MOTOR_STATUS_FLAG_ENABLED, 0, 0, 0, 32]),
+        )
+        invalid = parse_m33_motor_status_frame(0x331, bytes([0, 1, 5, 0, 0, 0, 0, 32]))
+
+        payload = make_m33_motor_state_payload([valid, invalid], 'rehab-arm-alpha', 'nanopi-m5', now=10.0)
+
+        self.assertEqual(payload['schema_version'], 'rehab_arm_motor_state_v1')
+        self.assertEqual(payload['source'], 'm33_motor_status_v1')
+        self.assertEqual(payload['protocol_status'], 'proposed_firmware_pending')
+        self.assertEqual(payload['frame_count'], 2)
+        self.assertEqual(payload['valid_motor_count'], 1)
+        self.assertEqual(payload['motors'][0]['motor_id'], 4)
+
+    def test_aggregator_keeps_latest_valid_status_by_slot(self) -> None:
+        aggregator = M33MotorStatusAggregator('rehab-arm-alpha', 'nanopi-m5')
+
+        first = aggregator.accept_frame(
+            0x331,
+            bytes([M33_MOTOR_STATUS_MARKER, 1, 5, MOTOR_STATUS_FLAG_ENABLED, 10, 0, 1, 31]),
+            now=10.0,
+        )
+        second = aggregator.accept_frame(
+            0x330,
+            bytes([M33_MOTOR_STATUS_MARKER, 2, 4, MOTOR_STATUS_FLAG_ENABLED, 20, 0, 2, 32]),
+            now=11.0,
+        )
+
+        self.assertEqual(first['valid_motor_count'], 1)
+        self.assertEqual(second['source'], 'm33_motor_status_v1')
+        self.assertEqual(second['valid_motor_count'], 2)
+        self.assertEqual(second['motors'][0]['status_slot'], 0)
+        self.assertEqual(second['motors'][1]['status_slot'], 1)
+        self.assertEqual(second['aggregator_valid_frame_count'], 2)
+        self.assertEqual(second['aggregator_invalid_frame_count'], 0)
+
+    def test_aggregator_ignores_invalid_status_frames(self) -> None:
+        aggregator = M33MotorStatusAggregator('rehab-arm-alpha', 'nanopi-m5')
+
+        payload = aggregator.accept_frame(0x330, bytes([0, 1, 4, 0, 0, 0, 0, 32]), now=10.0)
+
+        self.assertIsNone(payload)
+        self.assertEqual(aggregator.valid_frame_count, 0)
+        self.assertEqual(aggregator.invalid_frame_count, 1)
+
+    def test_make_joint_state_fields_from_m33_motor_state(self) -> None:
+        motors = [
+            parse_m33_motor_status_frame(
+                0x330,
+                bytes([M33_MOTOR_STATUS_MARKER, 1, 4, MOTOR_STATUS_FLAG_ENABLED, 20, 0, 2, 32]),
+            ),
+            parse_m33_motor_status_frame(
+                0x331,
+                bytes([M33_MOTOR_STATUS_MARKER, 2, 7, MOTOR_STATUS_FLAG_ENABLED, 0xF0, 0xFF, 0xFF, 33]),
+            ),
+        ]
+        payload = make_m33_motor_state_payload(motors, 'rehab-arm-alpha', 'nanopi-m5', now=10.0)
+
+        fields = make_joint_state_fields_from_m33_motor_state(payload)
+
+        self.assertEqual(fields['name'], ['shoulder_lift_joint', 'elbow_lift_joint'])
+        self.assertEqual(fields['position'], [0.02, -0.016])
+        self.assertEqual(fields['velocity'], [0.2, -0.1])
+        self.assertEqual(fields['effort'], [0.0, 0.0])
+
+    def test_make_joint_state_fields_skips_invalid_entries(self) -> None:
+        fields = make_joint_state_fields_from_m33_motor_state(
+            {
+                'motors': [
+                    {'joint_name': 'ok_joint', 'position': 0.1, 'velocity': None},
+                    {'joint_name': 'missing_position'},
+                    {'position': 0.2},
+                    'not a motor',
+                ]
+            }
+        )
+
+        self.assertEqual(fields['name'], ['ok_joint'])
+        self.assertEqual(fields['position'], [0.1])
+        self.assertEqual(fields['velocity'], [0.0])
+
+    def test_make_current_position_updates_keeps_only_known_joints(self) -> None:
+        payload = {
+            'motors': [
+                {'joint_name': 'shoulder_lift_joint', 'position': 0.2},
+                {'joint_name': 'unknown_joint', 'position': 9.9},
+                {'joint_name': 'elbow_lift_joint'},
+            ]
+        }
+
+        updates = make_current_position_updates_from_m33_motor_state(
+            payload,
+            ['shoulder_lift_joint', 'elbow_lift_joint'],
+        )
+
+        self.assertEqual(updates, {'shoulder_lift_joint': 0.2})
+
+
+if __name__ == '__main__':
+    unittest.main()
