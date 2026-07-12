@@ -1,3 +1,4 @@
+import re
 import subprocess
 from pathlib import Path
 
@@ -151,3 +152,54 @@ def test_design_document_exists():
     design = ROOT / "docs/superpowers/specs/2026-07-13-monorepo-migration-design.md"
 
     assert design.is_file()
+
+
+def test_root_readme_explains_complete_product():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    required = [
+        "M33",
+        "M55",
+        "C8T6",
+        "NanoPi",
+        "ROS 2",
+        "MuJoCo",
+        "Android",
+        "VLA",
+        "JointTrajectory -> NanoPi -> M33",
+        "当前已验证",
+        "尚未完成",
+        "安全边界",
+        "目录结构",
+        "构建入口",
+    ]
+
+    assert [item for item in required if item not in text] == []
+
+
+def test_root_readme_relative_links_exist():
+    readme = ROOT / "README.md"
+    links = re.findall(r"\[[^]]+\]\(([^)]+)\)", readme.read_text(encoding="utf-8"))
+    relative_links = [
+        link.split("#", 1)[0]
+        for link in links
+        if not link.startswith(("http://", "https://", "#"))
+    ]
+    missing = [link for link in relative_links if not (readme.parent / link).exists()]
+
+    assert missing == []
+
+
+def test_root_readme_scopes_api_verification_to_rehab_subset():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    required = [
+        "platform/api/tests/test_rehab_arm_app_backend.py",
+        "platform/api/tests/test_rehab_arm_app_live_emg.py",
+        "platform/api/tests/test_rehab_arm_sync.py",
+        "platform/api/tests/test_rehab_arm_vla_closed_loop_status.py",
+        "55 passed",
+        "runner.logs",
+    ]
+
+    assert [item for item in required if item not in text] == []
+    assert "python -m pytest platform/api/tests -q" not in text
+    assert "python -m pytest platform/api/tests -v" not in text
