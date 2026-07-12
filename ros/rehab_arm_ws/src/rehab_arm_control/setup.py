@@ -10,12 +10,6 @@ setup(
     zip_safe=True,
     maintainer='HalloYang06',
     maintainer_email='2735283977@qq.com',
-    description='Trajectory generation and VLA task placeholder',
+    description='Reserved namespace for future checked motion-control nodes',
     license='MIT',
-    entry_points={
-        'console_scripts': [
-            'demo_trajectory_node = rehab_arm_control.demo_trajectory_node:main',
-            'vla_task_planner_node = rehab_arm_control.vla_task_planner_node:main',
-        ],
-    },
 )

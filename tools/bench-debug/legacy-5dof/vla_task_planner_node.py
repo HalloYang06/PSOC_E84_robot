@@ -7,7 +7,7 @@ from rclpy.node import Node
 from std_msgs.msg import String
 from trajectory_msgs.msg import JointTrajectory
 
-from rehab_arm_control.trajectory_utils import multijoint_demo_trajectory
+from trajectory_utils import multijoint_demo_trajectory
 
 
 class VlaTaskPlannerNode(Node):

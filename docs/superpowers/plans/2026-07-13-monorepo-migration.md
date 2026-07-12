@@ -324,25 +324,25 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[5]
-FORMAL_LAUNCH_ROOT = ROOT / "ros/rehab_arm_ws/src/rehab_arm_bringup/launch"
+ROS_SRC_ROOT = ROOT / "ros/rehab_arm_ws/src"
+SIM_DATA_COLLECTION_LAUNCH = (
+    ROS_SRC_ROOT / "rehab_arm_bringup/launch/sim_data_collection.launch.py"
+)
 
 
-def test_formal_launches_do_not_enable_legacy_motion_publishers() -> None:
+def test_formal_launches_do_not_reference_legacy_motion_publishers() -> None:
     offenders: list[str] = []
-    for path in FORMAL_LAUNCH_ROOT.glob("*.launch.py"):
+    for path in ROS_SRC_ROOT.glob("*/launch/**/*.launch.py"):
         text = path.read_text(encoding="utf-8")
-        if path.name == "sim_data_collection.launch.py":
-            continue
         if "demo_trajectory_node" in text or "vla_task_planner_node" in text:
             offenders.append(path.name)
     assert offenders == []
 
 
-def test_sim_data_collection_keeps_demo_disabled_by_default() -> None:
-    text = (FORMAL_LAUNCH_ROOT / "sim_data_collection.launch.py").read_text(
-        encoding="utf-8"
-    )
-    assert "DeclareLaunchArgument('enable_demo_trajectory', default_value='false')" in text
+def test_sim_data_collection_has_no_legacy_demo_switch_or_node() -> None:
+    text = SIM_DATA_COLLECTION_LAUNCH.read_text(encoding="utf-8")
+    assert "enable_demo_trajectory" not in text
+    assert "demo_trajectory_node" not in text
 ```
 
 - [ ] **Step 5: 运行边界测试并补充隔离说明**
@@ -353,17 +353,17 @@ Run:
 rtk python -m pytest ros/rehab_arm_ws/src/rehab_arm_bringup/test/test_mainline_boundaries.py -v
 ```
 
-Expected: 两项测试通过。若正式 launch 引用了 demo，先移除该引用再继续。
+Expected: 边界测试通过。若任何正式 launch 引用了 demo，先移除该引用再继续。
 
 Create `tools/bench-debug/legacy-5dof/README.md` with these exact rules:
 
 ```markdown
 # Legacy 5DOF ROS demos
 
-The historical `demo_trajectory_node` and `vla_task_planner_node` are retained
-inside the ROS package so their tests and history remain traceable. They are
-offline/demo publishers only. They must not be referenced by a real-device
-launch file or used as evidence of 6DOF hardware readiness.
+The historical `demo_trajectory_node` and `vla_task_planner_node` sources are
+archived in this directory for traceability. This directory is not a colcon
+package and must not be referenced by formal launch files. The code is retained
+for historical reference only, not as evidence of 6DOF hardware readiness.
 ```
 
 - [ ] **Step 6: 提交 ROS 边界守卫**

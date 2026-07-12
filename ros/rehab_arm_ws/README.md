@@ -27,7 +27,7 @@ NanoPi direct motor CAN control remains in `nanopi_can_ros_ws` as a debug tool o
 ```text
 rehab_arm_description   URDF and joint configuration
 rehab_arm_sim_mujoco    simulation/shadow node; current legacy baseline is 5-joint
-rehab_arm_control       experimental demo/VLA placeholder; not a real-device planner
+rehab_arm_control       reserved namespace; no runnable motion nodes are installed
 rehab_arm_psoc_bridge   formal NanoPi <-> M33 ROS/CAN bridge
 rehab_arm_bringup       launch files; real launch must keep safety gates explicit
 ```
@@ -47,17 +47,15 @@ real M33/CAN telemetry
 Demo/debug code is not mainline and must not be used as proof of real-device readiness:
 
 ```text
-rehab_arm_control/demo_trajectory_node.py      legacy 5-joint demo publisher
-rehab_arm_control/vla_task_planner_node.py     placeholder that emits demo trajectory
-sim_data_collection.launch.py enable_demo_trajectory:=true
+tools/bench-debug/legacy-5dof/                 archived 5-joint demo/VLA sources
 m33_motor_status_smoke.py                      synthetic telemetry only
 nanopi_can_master.py direct motor commands     bench/debug only
 ```
 
 Rules for future work:
 
-- Do not connect demo publishers to a live bridge unless the run is explicitly labelled `dry-run` or `bench-debug`.
-- Do not use `demo_trajectory_node.py` as the planner for the 6-joint `medical_arm.zip` model.
+- Do not copy archived demo publishers back into the ROS workspace or formal launches.
+- Do not use the archived `demo_trajectory_node.py` as the planner for the 6-joint `medical_arm.zip` model.
 - Do not treat synthetic/smoke/fallback data as fresh motor feedback.
 - Do not move demo scripts into real launch paths.
 - Keep `enable_target_tx:=false` until a separate safety review enables real target frames.
@@ -81,11 +79,11 @@ In another terminal:
 
 ```bash
 source rehab_arm_ros2_ws/install/setup.bash
-ros2 run rehab_arm_control demo_trajectory_node
 ros2 topic echo /joint_states
 ```
 
-This simulation command is a legacy 5-joint demo. It is useful for ROS topic smoke tests, but it is not the current 6-joint medical-arm MuJoCo contract.
+The historical five-joint trajectory publisher is not installed by this workspace.
+Its sources live under `../../tools/bench-debug/legacy-5dof/` for traceability only.
 
 ## Real NanoPi Bridge
 
@@ -112,16 +110,6 @@ ros2 run rehab_arm_psoc_bridge psoc_can_bridge_node.py --ros-args \
   -p enable_target_tx:=false
 ```
 
-Do not run `rehab_arm_control demo_trajectory_node` against a real NanoPi bridge as a normal workflow. It is a legacy demo publisher, not a clinically checked planner.
-
-## VLA Placeholder
-
-VLA publishes high-level task goals only:
-
-```bash
-ros2 topic pub --once /vla/task_goal std_msgs/msg/String "{data: '{\"task\":\"preset_reach\"}'}"
-```
-
-`rehab_arm_control` converts the task into `JointTrajectory`. It never accesses CAN.
-
-Current note: the VLA placeholder still emits the legacy demo trajectory. Treat it as a topic-contract smoke test only until it is replaced by a checked planner using the 6-joint schema.
+The workspace intentionally provides no demo trajectory or VLA placeholder
+console entry point. A checked six-joint planner must be implemented and safety
+reviewed before a replacement is added to a formal launch.

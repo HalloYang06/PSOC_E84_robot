@@ -1,6 +1,5 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -14,7 +13,6 @@ def generate_launch_description():
     flush_every = LaunchConfiguration('flush_every')
     sim_rate_hz = LaunchConfiguration('sim_rate_hz')
     joint_motor_map = LaunchConfiguration('joint_motor_map')
-    enable_demo_trajectory = LaunchConfiguration('enable_demo_trajectory')
 
     return LaunchDescription([
         DeclareLaunchArgument('output_dir', default_value='/home/pi/rehab_arm_logs'),
@@ -25,7 +23,6 @@ def generate_launch_description():
         DeclareLaunchArgument('flush_every', default_value='1'),
         DeclareLaunchArgument('sim_rate_hz', default_value='100.0'),
         DeclareLaunchArgument('joint_motor_map', default_value=''),
-        DeclareLaunchArgument('enable_demo_trajectory', default_value='false'),
         Node(
             package='rehab_arm_sim_mujoco',
             executable='mujoco_sim_node.py',
@@ -61,12 +58,5 @@ def generate_launch_description():
                 'mode': 'simulation_data_collection',
                 'flush_every': flush_every,
             }],
-        ),
-        Node(
-            package='rehab_arm_control',
-            executable='demo_trajectory_node.py',
-            name='rehab_arm_demo_trajectory',
-            output='screen',
-            condition=IfCondition(enable_demo_trajectory),
         ),
     ])

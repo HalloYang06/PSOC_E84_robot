@@ -14,7 +14,6 @@ class SimDataCollectionLaunchTests(unittest.TestCase):
 
         self.assertEqual(package_xml.findtext('name'), 'rehab_arm_bringup')
         exec_depends = {element.text for element in package_xml.findall('exec_depend')}
-        self.assertIn('rehab_arm_control', exec_depends)
         self.assertIn('rehab_arm_sim_mujoco', exec_depends)
         self.assertIn('rehab_arm_psoc_bridge', exec_depends)
 
@@ -25,9 +24,9 @@ class SimDataCollectionLaunchTests(unittest.TestCase):
         self.assertIn("executable='mujoco_sim_node.py'", text)
         self.assertIn("executable='joint_state_motor_state_node.py'", text)
         self.assertIn("executable='data_recorder_node.py'", text)
-        self.assertIn("executable='demo_trajectory_node.py'", text)
-        self.assertIn("DeclareLaunchArgument('enable_demo_trajectory'", text)
-        self.assertIn('IfCondition(enable_demo_trajectory)', text)
+        self.assertNotIn("demo_trajectory_node", text)
+        self.assertNotIn("enable_demo_trajectory", text)
+        self.assertNotIn("IfCondition", text)
         self.assertIn("'mode': 'simulation_data_collection'", text)
         self.assertIn("'source': 'simulation_joint_state_bridge'", text)
 

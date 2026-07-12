@@ -3,13 +3,10 @@
 <package format="3">
   <name>rehab_arm_control</name>
   <version>0.1.0</version>
-  <description>Trajectory generation and VLA task placeholder for the rehabilitation arm.</description>
+  <description>Reserved namespace for future checked motion-control nodes.</description>
   <maintainer email="2735283977@qq.com">HalloYang06</maintainer>
   <license>MIT</license>
   <buildtool_depend>ament_cmake</buildtool_depend>
   <buildtool_depend>ament_cmake_python</buildtool_depend>
-  <depend>rclpy</depend>
-  <depend>std_msgs</depend>
-  <depend>trajectory_msgs</depend>
   <export><build_type>ament_cmake</build_type></export>
 </package>

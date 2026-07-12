@@ -4,7 +4,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from trajectory_msgs.msg import JointTrajectory
 
-from rehab_arm_control.trajectory_utils import multijoint_demo_trajectory
+from trajectory_utils import multijoint_demo_trajectory
 
 
 class DemoTrajectoryNode(Node):
