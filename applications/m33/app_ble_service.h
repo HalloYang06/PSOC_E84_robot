@@ -10,6 +10,8 @@
 extern "C" {
 #endif
 
+#define APP_BLE_COMMAND_QUEUE_DEPTH 8U
+
 typedef enum
 {
     APP_BLE_CMD_NONE = 0,
@@ -36,6 +38,7 @@ typedef struct
     rt_bool_t connected;
     rt_uint32_t uplink_packets;
     rt_uint32_t downlink_packets;
+    rt_uint32_t dropped_commands;
     rt_tick_t last_command_tick;
 } app_ble_runtime_t;
 

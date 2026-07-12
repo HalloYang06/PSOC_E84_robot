@@ -44,6 +44,7 @@ void *app_bt_alloc_buffer(int len);
 void app_bt_send_message(void);
 void app_bt_gatt_increment_notify_value(void);
 rt_err_t bt_app_gatt_send(const uint8_t *data, uint16_t len);
+rt_err_t bt_app_gatt_send_frame(const uint8_t *data, uint16_t len, uint16_t chunk_size);
 
 rt_err_t bt_app_gatt_init(bt_app_gatt_adv_restart_t adv_restart_cb);
 uint16_t bt_app_gatt_current_conn_id(void);

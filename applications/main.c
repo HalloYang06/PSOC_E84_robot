@@ -5,6 +5,7 @@
 #include <finsh.h>
 
 #include "common/m33_m55_comm.h"
+#include "control/control_layer.h"
 #include "m33/audio_capture.h"
 #include "m33/audio_playback.h"
 #include "m33/bt_board_bridge.h"
@@ -40,6 +41,11 @@ __attribute__((weak)) struct _reent _impure_data;
 #define M33_IPC_INIT_STACK_SIZE 4096U
 #define M33_IPC_INIT_DELAY_MS 1000U
 #define M33_IPC_INIT_RETRY_MS 2000U
+#define M33_BT_M55_READY_TIMEOUT_MS 20000U
+#define M33_BT_M55_READY_POLL_MS 100U
+#define M33_BLE_WORKER_STACK_SIZE 4096U
+#define M33_BLE_WORKER_PERIOD_MS 100U
+#define M33_BLE_TELEMETRY_FRESH_MS 1000U
 #define M33_ENABLE_LED_HEARTBEAT 1
 #define M33_XIAOZHI_MINIMAL_FRAMEWORK 1
 #define M33_AUTO_START_EMG_M55_INFERENCE 1
@@ -47,7 +53,7 @@ __attribute__((weak)) struct _reent _impure_data;
 #define M33_AUTO_EMG_MANAGE_F103 1
 
 #ifndef M33_ENABLE_BT_HCI
-#define M33_ENABLE_BT_HCI 0
+#define M33_ENABLE_BT_HCI 1
 #endif
 
 typedef enum
@@ -78,6 +84,7 @@ static rt_tick_t g_cm55_tx_pending_since_tick = 0U;
 static rt_tick_t g_cm55_last_watchdog_log_tick = 0U;
 static rt_thread_t g_ipc_pump_thread = RT_NULL;
 static rt_thread_t g_ipc_init_thread = RT_NULL;
+static rt_thread_t g_ble_worker_thread = RT_NULL;
 static rt_bool_t g_m55_bridge_started = RT_FALSE;
 static sensor_data_t g_main_sensor;
 static control_status_t g_main_control;
@@ -906,7 +913,6 @@ static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
     const app_ble_runtime_t *runtime;
     const char *payload;
     uint16_t payload_len;
-    uint16_t offset;
     const uint16_t chunk_size = 20;
 
     (void)app_ble_service_update_telemetry(sensor, control, safety);
@@ -924,56 +930,155 @@ static void m33_publish_ble_telemetry(const sensor_data_t *sensor,
 
     payload_len = (uint16_t)rt_strlen(payload);
 
-    for (offset = 0; offset < payload_len; offset += chunk_size)
+    if (bt_app_gatt_send_frame((const uint8_t *)payload, payload_len, chunk_size) != RT_EOK)
     {
-        uint16_t send_len = (payload_len - offset) > chunk_size ? chunk_size : (payload_len - offset);
-        rt_err_t ret = bt_app_gatt_send((const uint8_t *)(payload + offset), send_len);
-        if (ret != RT_EOK)
-        {
-            rt_kprintf("[ble] Send failed at offset %u\n", offset);
-            break;
-        }
-
-        if (offset + chunk_size < payload_len)
-        {
-            rt_thread_mdelay(5);
-        }
+        rt_kprintf("[ble] Telemetry send failed\n");
     }
 }
 
-static void m33_init_framework(void)
+static rt_bool_t m33_ble_sample_is_fresh(rt_tick_t timestamp, rt_tick_t now)
+{
+    rt_tick_t fresh_ticks = rt_tick_from_millisecond(M33_BLE_TELEMETRY_FRESH_MS);
+
+    return ((timestamp != 0U) && ((rt_tick_t)(now - timestamp) <= fresh_ticks)) ? RT_TRUE : RT_FALSE;
+}
+
+static void m33_build_ble_telemetry_snapshot(sensor_data_t *sensor,
+                                             control_status_t *control,
+                                             safety_monitor_t *safety)
+{
+    control_motor_feedback_t motor;
+    control_emg_report_t emg;
+    control_heart_report_t heart;
+    rt_tick_t now = rt_tick_get();
+
+    rt_memset(sensor, 0, sizeof(*sensor));
+    rt_memset(control, 0, sizeof(*control));
+    rt_memset(safety, 0, sizeof(*safety));
+    control->mode = CONTROL_MODE_PASSIVE;
+    control->motion_enabled = RT_FALSE;
+    safety->safety_state = SAFETY_STATE_WARNING;
+    safety->hardware_ok = RT_FALSE;
+
+    if ((control_get_motor_feedback(1U, &motor) == RT_EOK) &&
+        m33_ble_sample_is_fresh(motor.timestamp, now))
+    {
+        sensor->shoulder_angle = motor.pos_rad * 57.2957795f;
+        sensor->shoulder_torque = motor.torque_nm;
+    }
+    if ((control_get_motor_feedback(2U, &motor) == RT_EOK) &&
+        m33_ble_sample_is_fresh(motor.timestamp, now))
+    {
+        sensor->elbow_angle = motor.pos_rad * 57.2957795f;
+        sensor->elbow_torque = motor.torque_nm;
+    }
+    if ((control_get_motor_feedback(3U, &motor) == RT_EOK) &&
+        m33_ble_sample_is_fresh(motor.timestamp, now))
+    {
+        sensor->lateral_position = motor.pos_rad * 57.2957795f;
+    }
+    if ((control_get_emg_report(&emg) == RT_EOK) &&
+        m33_ble_sample_is_fresh(emg.timestamp, now))
+    {
+        sensor->emg_ch1 = (float)emg.ch1_raw;
+        sensor->emg_ch2 = (float)emg.ch2_raw;
+    }
+    if ((control_get_heart_report(&heart) == RT_EOK) &&
+        m33_ble_sample_is_fresh(heart.timestamp, now))
+    {
+        sensor->heart_rate = heart.bpm;
+    }
+    sensor->timestamp = now;
+}
+
+static void m33_ble_worker_entry(void *parameter)
+{
+    app_ble_command_t cmd;
+    sensor_data_t sensor;
+    control_status_t control;
+    safety_monitor_t safety;
+
+    RT_UNUSED(parameter);
+    rt_kprintf("[m33] BLE worker started period=%ums\n", (unsigned)M33_BLE_WORKER_PERIOD_MS);
+
+    while (1)
+    {
+        while (app_ble_service_peek_command(&cmd) == RT_EOK)
+        {
+            if ((cmd.type != APP_BLE_CMD_START_STREAM) &&
+                (cmd.type != APP_BLE_CMD_STOP_STREAM) &&
+                (cmd.type != APP_BLE_CMD_HEARTBEAT))
+            {
+                rt_kprintf("[m33] BLE motion command ignored type=%d\n", cmd.type);
+            }
+        }
+
+        if (app_ble_service_get_runtime()->connected &&
+            app_ble_service_get_runtime()->streaming_enabled)
+        {
+            m33_build_ble_telemetry_snapshot(&sensor, &control, &safety);
+            m33_publish_ble_telemetry(&sensor, &control, &safety);
+        }
+        rt_thread_mdelay(M33_BLE_WORKER_PERIOD_MS);
+    }
+}
+
+static void m33_start_ble_worker(void)
+{
+    if (g_ble_worker_thread != RT_NULL)
+    {
+        return;
+    }
+
+    g_ble_worker_thread = rt_thread_create("ble_work",
+                                           m33_ble_worker_entry,
+                                           RT_NULL,
+                                           M33_BLE_WORKER_STACK_SIZE,
+                                           14,
+                                           10);
+    if (g_ble_worker_thread == RT_NULL)
+    {
+        rt_kprintf("[m33] WARN: failed to start BLE worker\n");
+        return;
+    }
+    rt_thread_startup(g_ble_worker_thread);
+}
+
+static rt_bool_t m33_wait_for_m55_runtime_ready(void)
+{
+    rt_uint32_t start_ms = rt_tick_get_millisecond();
+    rt_uint32_t voice_status_seq;
+    rt_tick_t voice_status_timestamp;
+
+    while ((rt_uint32_t)(rt_tick_get_millisecond() - start_ms) < M33_BT_M55_READY_TIMEOUT_MS)
+    {
+        if (m33_m55_comm_is_ready() &&
+            m55_model_bridge_get_voice_status(RT_NULL,
+                                              &voice_status_seq,
+                                              &voice_status_timestamp))
+        {
+            rt_kprintf("[m33] M55 runtime ready for BT seq=%lu\n",
+                       (unsigned long)voice_status_seq);
+            return RT_TRUE;
+        }
+        rt_thread_mdelay(M33_BT_M55_READY_POLL_MS);
+    }
+
+    rt_kprintf("[m33] BT startup skipped: M55 runtime timeout ipc_ready=%d\n",
+               m33_m55_comm_is_ready() ? 1 : 0);
+    return RT_FALSE;
+}
+
+static void m33_start_bt_hci(void)
 {
 #if M33_ENABLE_BT_HCI
     rt_err_t bt_err;
-#endif
 
-    m33_start_ipc_init_async();
-#if M33_XIAOZHI_MINIMAL_FRAMEWORK
-    return;
-#endif
-    rt_kprintf("[m33] init step2 bt_board_bridge\n");
-    bt_board_bridge_init();
-    rt_kprintf("[m33] init step3 app_ble_service_init\n");
-    app_ble_service_init();
-    rt_kprintf("[m33] init step4 app_ble_service_start\n");
-    app_ble_service_start();
-    rt_kprintf("[m33] init step5 sensor_manager_init\n");
-    sensor_manager_init();
-    rt_kprintf("[m33] init step6 input_buffer_init\n");
-    input_buffer_init();
-    rt_kprintf("[m33] init step7 control_manager_init\n");
-    control_manager_init();
-    rt_kprintf("[m33] init step8 can_driver_init\n");
-    can_driver_init();
-    rt_kprintf("[m33] init step9 safety_system_init\n");
-    safety_system_init();
-    rt_kprintf("[m33] init step10 http_server_init\n");
-    http_server_init();
-    rt_kprintf("[m33] init step11 http_server_start\n");
-    http_server_start();
-    rt_kprintf("[m33] init step12 openclaw_integration_init\n");
-    openclaw_integration_init();
-#if M33_ENABLE_BT_HCI
+    if (!m33_wait_for_m55_runtime_ready())
+    {
+        return;
+    }
+
     rt_kprintf("[m33] init step13 bt_hci_transport_init\n");
     bt_err = bt_hci_transport_init();
     rt_kprintf("[m33] bt_hci_transport_init ret=%d state=%d\n",
@@ -993,9 +1098,45 @@ static void m33_init_framework(void)
                    bt_hci_transport_get_runtime()->state,
                    bt_err);
     }
+    else
+    {
+        m33_start_ble_worker();
+    }
 #else
     rt_kprintf("[m33] init step13 bt_hci_transport skipped for M55 WiFi bring-up\n");
 #endif
+}
+
+static void m33_init_framework(void)
+{
+    m33_start_ipc_init_async();
+    rt_kprintf("[m33] init step2 bt_board_bridge\n");
+    bt_board_bridge_init();
+    rt_kprintf("[m33] init step3 app_ble_service_init\n");
+    app_ble_service_init();
+    rt_kprintf("[m33] init step4 app_ble_service_start\n");
+    app_ble_service_start();
+#if M33_XIAOZHI_MINIMAL_FRAMEWORK
+    m33_start_bt_hci();
+    return;
+#endif
+    rt_kprintf("[m33] init step5 sensor_manager_init\n");
+    sensor_manager_init();
+    rt_kprintf("[m33] init step6 input_buffer_init\n");
+    input_buffer_init();
+    rt_kprintf("[m33] init step7 control_manager_init\n");
+    control_manager_init();
+    rt_kprintf("[m33] init step8 can_driver_init\n");
+    can_driver_init();
+    rt_kprintf("[m33] init step9 safety_system_init\n");
+    safety_system_init();
+    rt_kprintf("[m33] init step10 http_server_init\n");
+    http_server_init();
+    rt_kprintf("[m33] init step11 http_server_start\n");
+    http_server_start();
+    rt_kprintf("[m33] init step12 openclaw_integration_init\n");
+    openclaw_integration_init();
+    m33_start_bt_hci();
 }
 
 #ifdef __cplusplus

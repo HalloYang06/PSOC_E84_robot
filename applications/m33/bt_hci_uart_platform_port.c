@@ -445,6 +445,7 @@ cybt_result_t cybt_platform_hci_open(void *p_arg)
     }
 
     memset(&g_hci_uart_cb, 0, sizeof(g_hci_uart_cb));
+    BT_HCI_LOG("open stage1 mutex init");
 
     if (cy_rtos_mutex_init(&g_hci_uart_cb.tx_atomic, false) != CY_RSLT_SUCCESS)
     {
@@ -456,6 +457,7 @@ cybt_result_t cybt_platform_hci_open(void *p_arg)
         cy_rtos_mutex_deinit(&g_hci_uart_cb.tx_atomic);
         return CYBT_ERR_HCI_GET_RX_MUTEX_FAILED;
     }
+    BT_HCI_LOG("open stage2 mutex ready");
 
     if ((CYBT_SLEEP_MODE_ENABLED == cfg->controller_config.sleep_mode.sleep_mode_enabled) &&
         (NC != cfg->controller_config.sleep_mode.device_wakeup_pin))
@@ -478,11 +480,14 @@ cybt_result_t cybt_platform_hci_open(void *p_arg)
     {
         return CYBT_ERR_GPIO_POWER_INIT_FAILED;
     }
+    BT_HCI_LOG("open stage3 power gpio ready pin=0x%02x", cfg->controller_config.bt_power_pin);
 
 #ifdef COMPONENT_55500
     cybt_enter_autobaud_mode();
 #else
+    BT_HCI_LOG("open stage4 delay start");
     rt_thread_mdelay(30);
+    BT_HCI_LOG("open stage5 delay done");
 #endif
 
     bt_uart_cfg.data_bits = cfg->hci_config.hci.hci_uart.data_bits;
@@ -585,19 +590,25 @@ static void cybt_enter_autobaud_mode(void)
         return;
     }
 
-
+    BT_HCI_LOG("autobaud stage1 rts init pin=0x%02x", cfg->hci_config.hci.hci_uart.uart_rts_pin);
     cyhal_gpio_init(cfg->hci_config.hci.hci_uart.uart_rts_pin,
                     CYHAL_GPIO_DIR_OUTPUT,
                     CYHAL_GPIO_DRIVE_STRONG,
                     true);
     cyhal_gpio_write(cfg->hci_config.hci.hci_uart.uart_rts_pin, false);
+    BT_HCI_LOG("autobaud stage2 rts low");
 
     cyhal_gpio_write(cfg->controller_config.bt_power_pin, false);
+    BT_HCI_LOG("autobaud stage3 power low");
     rt_thread_mdelay(100);
+    BT_HCI_LOG("autobaud stage4 low delay done");
     cyhal_gpio_write(cfg->controller_config.bt_power_pin, true);
+    BT_HCI_LOG("autobaud stage5 power high");
     rt_thread_mdelay(100);
+    BT_HCI_LOG("autobaud stage6 high delay done");
 
     cyhal_gpio_free(cfg->hci_config.hci.hci_uart.uart_rts_pin);
+    BT_HCI_LOG("autobaud stage7 rts free");
 }
 #endif
 

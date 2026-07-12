@@ -7,9 +7,13 @@
 #include "app_bt_utils.h"
 #include "cycfg_gap.h"
 
+#define M33_BT_GATT_VERBOSE_EVENTS 0
+
 static rt_bool_t g_bt_app_gatt_ready = RT_FALSE;
 static bt_app_gatt_adv_restart_t g_bt_app_adv_restart_cb = RT_NULL;
 static uint32_t g_bt_app_gatt_event_count = 0u;
+static struct rt_mutex g_nus_tx_lock;
+static rt_bool_t g_nus_tx_lock_ready = RT_FALSE;
 
 static void app_bt_nus_notify(void)
 {
@@ -26,7 +30,7 @@ static void app_bt_nus_notify(void)
                                                  NULL);
 }
 
-rt_err_t bt_app_gatt_send(const uint8_t *data, uint16_t len)
+static rt_err_t bt_app_gatt_send_unlocked(const uint8_t *data, uint16_t len)
 {
     if ((data == RT_NULL) || (len == 0u))
     {
@@ -51,6 +55,56 @@ rt_err_t bt_app_gatt_send(const uint8_t *data, uint16_t len)
     return RT_EOK;
 }
 
+static rt_bool_t app_bt_command_is_readonly_safe(app_ble_cmd_type_t type)
+{
+    return ((type == APP_BLE_CMD_START_STREAM) ||
+            (type == APP_BLE_CMD_STOP_STREAM) ||
+            (type == APP_BLE_CMD_HEARTBEAT)) ? RT_TRUE : RT_FALSE;
+}
+
+rt_err_t bt_app_gatt_send(const uint8_t *data, uint16_t len)
+{
+    rt_err_t result;
+
+    if (!g_nus_tx_lock_ready)
+    {
+        return -RT_ERROR;
+    }
+
+    rt_mutex_take(&g_nus_tx_lock, RT_WAITING_FOREVER);
+    result = bt_app_gatt_send_unlocked(data, len);
+    rt_mutex_release(&g_nus_tx_lock);
+    return result;
+}
+
+rt_err_t bt_app_gatt_send_frame(const uint8_t *data, uint16_t len, uint16_t chunk_size)
+{
+    rt_err_t result = RT_EOK;
+    uint16_t offset;
+
+    if ((data == RT_NULL) || (len == 0U) || (chunk_size == 0U) || !g_nus_tx_lock_ready)
+    {
+        return -RT_ERROR;
+    }
+
+    rt_mutex_take(&g_nus_tx_lock, RT_WAITING_FOREVER);
+    for (offset = 0U; offset < len; offset = (uint16_t)(offset + chunk_size))
+    {
+        uint16_t send_len = (uint16_t)(((len - offset) > chunk_size) ? chunk_size : (len - offset));
+        result = bt_app_gatt_send_unlocked(data + offset, send_len);
+        if (result != RT_EOK)
+        {
+            break;
+        }
+        if ((uint16_t)(offset + send_len) < len)
+        {
+            rt_thread_mdelay(5U);
+        }
+    }
+    rt_mutex_release(&g_nus_tx_lock);
+    return result;
+}
+
 wiced_bt_gatt_status_t app_bt_gatt_callback(wiced_bt_gatt_evt_t event,
                                             wiced_bt_gatt_event_data_t *p_event_data)
 {
@@ -59,7 +113,9 @@ wiced_bt_gatt_status_t app_bt_gatt_callback(wiced_bt_gatt_evt_t event,
     wiced_bt_gatt_attribute_request_t *p_attr_req = &p_event_data->attribute_request;
 
     g_bt_app_gatt_event_count++;
+#if M33_BT_GATT_VERBOSE_EVENTS
     rt_kprintf("[bt] GATT evt=0x%02X\n", (unsigned int)event);
+#endif
 
     switch (event)
     {
@@ -68,9 +124,13 @@ wiced_bt_gatt_status_t app_bt_gatt_callback(wiced_bt_gatt_evt_t event,
         break;
 
     case GATT_ATTRIBUTE_REQUEST_EVT:
+#if M33_BT_GATT_VERBOSE_EVENTS
         rt_kprintf("[bt] GATT req opcode=0x%02X conn_id=%u\n", p_attr_req->opcode, p_attr_req->conn_id);
+#endif
         gatt_status = app_bt_gatt_req_cb(p_attr_req, &error_handle);
+#if M33_BT_GATT_VERBOSE_EVENTS
         rt_kprintf("[bt] GATT req status=0x%04X err_handle=0x%04X\n", gatt_status, error_handle);
+#endif
         if (gatt_status != WICED_BT_GATT_SUCCESS)
         {
             wiced_bt_gatt_server_send_error_rsp(p_attr_req->conn_id,
@@ -90,7 +150,9 @@ wiced_bt_gatt_status_t app_bt_gatt_callback(wiced_bt_gatt_evt_t event,
         break;
 
     case GATT_APP_BUFFER_TRANSMITTED_EVT:
+#if M33_BT_GATT_VERBOSE_EVENTS
         rt_kprintf("[bt] GATT app-buffer-transmitted\n");
+#endif
         if (p_event_data->buffer_xmitted.p_app_ctxt != RT_NULL)
         {
             ((pfn_free_buffer_t)p_event_data->buffer_xmitted.p_app_ctxt)(p_event_data->buffer_xmitted.p_app_data);
@@ -395,6 +457,7 @@ wiced_bt_gatt_status_t app_bt_set_value(uint16_t attr_handle,
     case HDLC_NUS_RX_VALUE:
     {
         app_ble_command_t cmd;
+        rt_err_t submit_ret;
         char frame[MAX_LEN_NUS_RX + 1u];
         char response[64];
 
@@ -406,22 +469,33 @@ wiced_bt_gatt_status_t app_bt_set_value(uint16_t attr_handle,
         memcpy(frame, p_val, len);
         if (app_ble_service_parse_ascii_frame(frame, &cmd) == RT_EOK)
         {
-            (void)app_ble_service_submit_command(&cmd);
-            app_ble_service_set_link_state(RT_TRUE, app_ble_service_get_runtime()->streaming_enabled);
-
-            rt_snprintf(response, sizeof(response), "OK:%s\n", frame);
-            memcpy(app_nus_tx, response, rt_strlen(response));
-            app_nus_tx_len = (uint16_t)rt_strlen(response);
-            rt_kprintf("[bt] Command accepted: %s\n", frame);
+            if (!app_bt_command_is_readonly_safe(cmd.type))
+            {
+                rt_snprintf(response, sizeof(response), "ERR:readonly\n");
+                rt_kprintf("[bt] Readonly command rejected: %s\n", frame);
+            }
+            else
+            {
+                submit_ret = app_ble_service_submit_command(&cmd);
+                if (submit_ret == RT_EOK)
+                {
+                    app_ble_service_set_link_state(RT_TRUE, app_ble_service_get_runtime()->streaming_enabled);
+                    rt_snprintf(response, sizeof(response), "OK:%s\n", frame);
+                    rt_kprintf("[bt] Command accepted: %s\n", frame);
+                }
+                else
+                {
+                    rt_snprintf(response, sizeof(response), "ERR:busy\n");
+                    rt_kprintf("[bt] Command queue full: %s\n", frame);
+                }
+            }
         }
         else
         {
             rt_snprintf(response, sizeof(response), "ERR:invalid\n");
-            memcpy(app_nus_tx, response, rt_strlen(response));
-            app_nus_tx_len = (uint16_t)rt_strlen(response);
             rt_kprintf("[bt] NUS cmd parse failed: %s\n", frame);
         }
-        app_bt_nus_notify();
+        (void)bt_app_gatt_send((const uint8_t *)response, (uint16_t)rt_strlen(response));
         return WICED_BT_GATT_SUCCESS;
     }
 
@@ -457,9 +531,7 @@ void app_bt_gatt_increment_notify_value(void)
         return;
     }
 
-    memcpy(app_nus_tx, ping, sizeof(ping) - 1u);
-    app_nus_tx_len = (uint16_t)(sizeof(ping) - 1u);
-    app_bt_nus_notify();
+    (void)bt_app_gatt_send(ping, (uint16_t)(sizeof(ping) - 1U));
 }
 
 rt_err_t bt_app_gatt_init(bt_app_gatt_adv_restart_t adv_restart_cb)
@@ -470,6 +542,15 @@ rt_err_t bt_app_gatt_init(bt_app_gatt_adv_restart_t adv_restart_cb)
     if (g_bt_app_gatt_ready)
     {
         return RT_EOK;
+    }
+
+    if (!g_nus_tx_lock_ready)
+    {
+        if (rt_mutex_init(&g_nus_tx_lock, "nustx", RT_IPC_FLAG_PRIO) != RT_EOK)
+        {
+            return -RT_ERROR;
+        }
+        g_nus_tx_lock_ready = RT_TRUE;
     }
 
     status = wiced_bt_gatt_register(app_bt_gatt_callback);
