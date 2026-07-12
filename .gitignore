@@ -22,10 +22,22 @@ ros/**/log/
 
 # Firmware
 firmware/**/build/
-*.elf
-*.hex
-*.bin
-*.map
+/firmware/*/*.elf
+/firmware/*/*.hex
+/firmware/*/*.bin
+/firmware/*/*.map
+firmware/**/out/**/*.elf
+firmware/**/out/**/*.hex
+firmware/**/out/**/*.bin
+firmware/**/out/**/*.map
+firmware/**/output/**/*.elf
+firmware/**/output/**/*.hex
+firmware/**/output/**/*.bin
+firmware/**/output/**/*.map
+firmware/**/outputs/**/*.elf
+firmware/**/outputs/**/*.hex
+firmware/**/outputs/**/*.bin
+firmware/**/outputs/**/*.map
 .sconsign.dblite
 
 # Runtime and migration state
