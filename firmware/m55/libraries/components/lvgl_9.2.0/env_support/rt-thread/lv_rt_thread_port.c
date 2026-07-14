@@ -34,12 +34,16 @@
     #define PKG_LVGL_DISP_REFR_PERIOD 33
 #endif /* PKG_LVGL_DISP_REFR_PERIOD */
 
-extern void lv_port_disp_init(void);
+extern rt_err_t lv_port_disp_init(void);
+extern rt_err_t lv_port_disp_smif0_init_begin(void);
+extern void lv_port_disp_smif0_init_end(rt_bool_t success);
+extern rt_err_t lv_port_disp_smif0_render_begin(void);
+extern void lv_port_disp_smif0_render_end(void);
 extern void lv_port_indev_init(void);
 extern void lv_user_gui_init(void);
 
 static struct rt_thread lvgl_thread;
-static rt_bool_t lvgl_thread_started = RT_FALSE;
+static volatile rt_bool_t lvgl_thread_started = RT_FALSE;
 
 #ifdef rt_align
     rt_align(RT_ALIGN_SIZE)
@@ -69,14 +73,35 @@ rt_weak void lv_user_gui_init(void)
 
 static void lvgl_thread_entry(void *parameter)
 {
+    rt_err_t status;
+
 #if LV_USE_LOG
     lv_log_register_print_cb(lv_rt_log);
 #endif /* LV_USE_LOG */
+
+    while ((status = lv_port_disp_smif0_init_begin()) != RT_EOK)
+    {
+        LOG_E("LVGL/GPU lifecycle gate unavailable: %d", status);
+        rt_thread_mdelay(1000U);
+    }
+
     lv_init();
     lv_tick_set_cb(&rt_tick_get_millisecond);
-    lv_port_disp_init();
-    lv_port_indev_init();
-    lv_user_gui_init();
+    status = lv_port_disp_init();
+    if (status == RT_EOK)
+    {
+        lv_port_indev_init();
+        lv_user_gui_init();
+    }
+    lv_port_disp_smif0_init_end((status == RT_EOK) ? RT_TRUE : RT_FALSE);
+    if (status != RT_EOK)
+    {
+        LOG_E("LVGL/GPU initialization failed: %d", status);
+        for (;;)
+        {
+            rt_thread_mdelay(1000U);
+        }
+    }
 
 
 #ifdef PKG_USING_CPU_USAGE
@@ -86,7 +111,11 @@ static void lvgl_thread_entry(void *parameter)
     /* handle the tasks of LVGL */
     while (1)
     {
-        lv_timer_handler();
+        if (lv_port_disp_smif0_render_begin() == RT_EOK)
+        {
+            lv_timer_handler();
+            lv_port_disp_smif0_render_end();
+        }
         rt_thread_mdelay(PKG_LVGL_DISP_REFR_PERIOD);
     }
 }
@@ -95,21 +124,36 @@ int lvgl_thread_init(void)
 {
     rt_err_t err;
 
+    rt_enter_critical();
     if (lvgl_thread_started)
     {
+        rt_exit_critical();
         LOG_I("LVGL thread already started");
         return 0;
     }
+    lvgl_thread_started = RT_TRUE;
+    rt_exit_critical();
 
     err = rt_thread_init(&lvgl_thread, "LVGL", lvgl_thread_entry, RT_NULL,
                          &lvgl_thread_stack[0], sizeof(lvgl_thread_stack), PKG_LVGL_THREAD_PRIO, 10);
     if (err != RT_EOK)
     {
+        rt_enter_critical();
+        lvgl_thread_started = RT_FALSE;
+        rt_exit_critical();
         LOG_E("Failed to create LVGL thread");
         return -1;
     }
-    rt_thread_startup(&lvgl_thread);
-    lvgl_thread_started = RT_TRUE;
+    err = rt_thread_startup(&lvgl_thread);
+    if (err != RT_EOK)
+    {
+        (void)rt_thread_detach(&lvgl_thread);
+        rt_enter_critical();
+        lvgl_thread_started = RT_FALSE;
+        rt_exit_critical();
+        LOG_E("Failed to start LVGL thread");
+        return -1;
+    }
 
     return 0;
 }

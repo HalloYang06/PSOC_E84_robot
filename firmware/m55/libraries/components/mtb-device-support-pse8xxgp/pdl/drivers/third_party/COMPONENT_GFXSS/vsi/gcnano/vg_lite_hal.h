@@ -275,6 +275,10 @@ vg_lite_error_t vg_lite_hal_unmap_memory(vg_lite_kernel_unmap_memory_t *node);
  */
 int32_t vg_lite_hal_wait_interrupt(uint32_t timeout, uint32_t mask, uint32_t *value);
 
+/* Scope a finite wait to a caller that can safely fail-stop on timeout. */
+void vg_lite_hal_set_wait_timeout_override(uint32_t timeout_ms);
+void vg_lite_hal_clear_wait_timeout_override(void);
+
 /*!
  @brief After call vg_lite_hal_map(), flush cpu cache according the direction 
  spicified by parameter cache_op.
@@ -282,7 +286,7 @@ int32_t vg_lite_hal_wait_interrupt(uint32_t timeout, uint32_t mask, uint32_t *va
 vg_lite_error_t vg_lite_hal_operation_cache(void *handle, vg_lite_cache_op_t cache_op);
 
 /*!
- @brief export memory to dma buf, and get the dma buf fd 
+ @brief export memory to dma buf, and get the dma buf fd
  */
 vg_lite_error_t vg_lite_hal_memory_export(int32_t *fd);
 

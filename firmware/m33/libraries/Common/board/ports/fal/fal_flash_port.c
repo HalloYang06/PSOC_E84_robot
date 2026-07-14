@@ -27,7 +27,7 @@ static cy_stc_smif_context_t smif_context;
 
 /* Flash device configuration */
 #define SMIF_BASE_ADDRESS      0x60000000
-#define FLASH_START_ADDRESS    0x60E00000
+#define FLASH_START_ADDRESS    0x60DC0000
 #define FLASH_SIZE             (2 * 1024 * 1024) /* 2MB */
 #define FLASH_SECTOR_SIZE      4096 /* 4KB sectors */
 #define FLASH_END_ADDRESS      (FLASH_START_ADDRESS + FLASH_SIZE)

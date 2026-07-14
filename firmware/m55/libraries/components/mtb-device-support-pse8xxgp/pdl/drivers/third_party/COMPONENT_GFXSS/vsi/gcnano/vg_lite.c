@@ -26,6 +26,7 @@
 *****************************************************************************/
 
 #include "vg_lite_context.h"
+#include "vg_lite_hal.h"
 #include "cy_pdl.h"
 
 static float offsetTable[7] = {0, 0.000575f, -0.000575f, 0.0001f, -0.0001f, 0.0000375f, -0.0000375f};
@@ -6173,6 +6174,21 @@ vg_lite_error_t vg_lite_finish()
 #endif
 
     return VG_LITE_SUCCESS;
+}
+
+vg_lite_error_t vg_lite_finish_timeout(vg_lite_uint32_t timeout_ms)
+{
+    vg_lite_error_t error;
+
+    if (timeout_ms == 0U)
+    {
+        return VG_LITE_INVALID_ARGUMENT;
+    }
+
+    vg_lite_hal_set_wait_timeout_override(timeout_ms);
+    error = vg_lite_finish();
+    vg_lite_hal_clear_wait_timeout_override();
+    return error;
 }
 
 vg_lite_error_t vg_lite_flush(void)

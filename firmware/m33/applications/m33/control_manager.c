@@ -1,4 +1,5 @@
 #include "control_manager.h"
+#include "smif0_guard.h"
 
 static control_status_t g_control_status;
 static struct rt_mutex g_control_lock;
@@ -15,7 +16,21 @@ rt_err_t control_manager_init(void)
 rt_err_t control_set_mode(control_mode_t mode)
 {
     rt_mutex_take(&g_control_lock, RT_WAITING_FOREVER);
+
+    /* Close the erase gate before publishing any non-passive mode. */
+    if (mode != CONTROL_MODE_PASSIVE)
+    {
+        smif0_guard_set_safe_to_block(false);
+    }
+
     g_control_status.mode = mode;
+
+    /* Open the gate only after the passive mode is visible. */
+    if (mode == CONTROL_MODE_PASSIVE)
+    {
+        smif0_guard_set_safe_to_block(true);
+    }
+
     rt_mutex_release(&g_control_lock);
     return RT_EOK;
 }

@@ -46,21 +46,23 @@ CY_MISRA_DEVIATE_BLOCK_START('MISRA C-2012 Rule 18.3', 1, \
 // Initial Setup
 //----------------------------------------------------------------
 
+#define SECURE_FAULT_RAMFUNC __attribute__((section(".cy_ramfunc"), noinline))
+
 extern unsigned int __INITIAL_SP;
 extern unsigned int __STACK_LIMIT;
 
-void SysLib_FaultHandler(uint32_t const *faultStackAddr);
-void S_NMIException_Handler(void);
-void S_HardFault_Handler(void);
-void S_MemManage_Handler(void);
-void S_BusFault_Handler(void);
-void S_UsageFault_Handler(void);
-void S_SecureFault_Handler(void);
-void S_SVC_Handler(void);
-void S_DebugMon_Handler(void);
-void S_PendSV_Handler(void);
-void S_SysTick_Handler(void);
-void S_InterruptHandler(void);
+SECURE_FAULT_RAMFUNC void SysLib_FaultHandler(uint32_t const *faultStackAddr);
+SECURE_FAULT_RAMFUNC void S_NMIException_Handler(void);
+SECURE_FAULT_RAMFUNC void S_HardFault_Handler(void);
+SECURE_FAULT_RAMFUNC void S_MemManage_Handler(void);
+SECURE_FAULT_RAMFUNC void S_BusFault_Handler(void);
+SECURE_FAULT_RAMFUNC void S_UsageFault_Handler(void);
+SECURE_FAULT_RAMFUNC void S_SecureFault_Handler(void);
+SECURE_FAULT_RAMFUNC void S_SVC_Handler(void);
+SECURE_FAULT_RAMFUNC void S_DebugMon_Handler(void);
+SECURE_FAULT_RAMFUNC void S_PendSV_Handler(void);
+SECURE_FAULT_RAMFUNC void S_SysTick_Handler(void);
+SECURE_FAULT_RAMFUNC void S_InterruptHandler(void);
 
 
 #if defined(__llvm__) && !defined(__ARMCC_VERSION)
@@ -105,15 +107,15 @@ void Cy_RuntimeInit(void)
 
 __asm(".global SysLib_FaultHandler\n");
 
-void SysLib_FaultHandler(uint32_t const *faultStackAddr)
+SECURE_FAULT_RAMFUNC void SysLib_FaultHandler(uint32_t const *faultStackAddr)
 {
     Cy_SysLib_FaultHandler(faultStackAddr);
 }
 // Exception Vector Table & Handlers
 //----------------------------------------------------------------
 void S_Reset_Handler(void);
-void S_NMIException_Handler(void) {while(true){}}
-void S_HardFault_Handler(void)
+SECURE_FAULT_RAMFUNC void S_NMIException_Handler(void) {while(true){}}
+SECURE_FAULT_RAMFUNC void S_HardFault_Handler(void)
 {
     __asm (
         "TST LR, #0x40\n"
@@ -134,15 +136,15 @@ void S_HardFault_Handler(void)
     );
 }
 
-void S_MemManage_Handler(void)         {Cy_SysLib_ProcessingFault();}
-void S_BusFault_Handler(void)          {Cy_SysLib_ProcessingFault();}
-void S_UsageFault_Handler(void)        {Cy_SysLib_ProcessingFault();}
-void S_SecureFault_Handler(void)       {Cy_SysLib_ProcessingFault();}
-__WEAK void S_SVC_Handler(void)        {Cy_SysLib_ProcessingFault();}
-void S_DebugMon_Handler(void)          {Cy_SysLib_ProcessingFault();}
-void S_PendSV_Handler(void)            {Cy_SysLib_ProcessingFault();}
-void S_SysTick_Handler(void)           {Cy_SysLib_ProcessingFault();}
-void S_InterruptHandler(void)          {Cy_SysLib_ProcessingFault();}
+SECURE_FAULT_RAMFUNC void S_MemManage_Handler(void)   {Cy_SysLib_ProcessingFault();}
+SECURE_FAULT_RAMFUNC void S_BusFault_Handler(void)    {Cy_SysLib_ProcessingFault();}
+SECURE_FAULT_RAMFUNC void S_UsageFault_Handler(void)  {Cy_SysLib_ProcessingFault();}
+SECURE_FAULT_RAMFUNC void S_SecureFault_Handler(void) {Cy_SysLib_ProcessingFault();}
+__WEAK SECURE_FAULT_RAMFUNC void S_SVC_Handler(void)  {Cy_SysLib_ProcessingFault();}
+SECURE_FAULT_RAMFUNC void S_DebugMon_Handler(void)    {Cy_SysLib_ProcessingFault();}
+SECURE_FAULT_RAMFUNC void S_PendSV_Handler(void)      {Cy_SysLib_ProcessingFault();}
+SECURE_FAULT_RAMFUNC void S_SysTick_Handler(void)     {Cy_SysLib_ProcessingFault();}
+SECURE_FAULT_RAMFUNC void S_InterruptHandler(void)    {Cy_SysLib_ProcessingFault();}
 
 ExecFuncPtr __s_vector_table[] __VECTOR_TABLE_ATTRIBUTE = {
     (ExecFuncPtr)&__INITIAL_SP,            // initial SP
@@ -421,18 +423,37 @@ ExecFuncPtr __s_vector_table[] __VECTOR_TABLE_ATTRIBUTE = {
 // Reset Handler
 void S_Reset_Handler(void)
 {
+    uint32_t cache_invalidate_timeout = 1000000UL;
+
+    __disable_irq();
+
     /* Disable I cache */
     ICACHE0->CTL = ICACHE0->CTL & (~ICACHE_CTL_CA_EN_Msk);
+    __DSB();
+    __ISB();
+
+    /* Invalidate both I-cache lines and the C-AHB prefetch buffer. */
+    ICACHE0->CMD = ICACHE_CMD_INV_Msk | ICACHE_CMD_BUFF_INV_Msk;
+    __DSB();
+    while ((ICACHE0->CMD & (ICACHE_CMD_INV_Msk | ICACHE_CMD_BUFF_INV_Msk)) != 0U)
+    {
+        if (cache_invalidate_timeout == 0U)
+        {
+            DEAD_LOOP();
+        }
+        cache_invalidate_timeout--;
+    }
+    __DSB();
+    __ISB();
 
 #if defined(ICACHE_ECC_PRESENT) && (ICACHE_ECC_PRESENT == 1u)
     /* Enable ECC */
     ICACHE0->CTL = ICACHE0->CTL | ICACHE_CTL_ECC_EN_Msk;
 #endif
 
-    /* Enable I cache */
     ICACHE0->CTL = ICACHE0->CTL | ICACHE_CTL_CA_EN_Msk;
-
-    __disable_irq();
+    __DSB();
+    __ISB();
 
     uint32_t reverse_count = VECTORTABLE_SIZE;
 

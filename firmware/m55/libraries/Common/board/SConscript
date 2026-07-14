@@ -11,7 +11,7 @@ src = []
 path =  [cwd]
 
 if GetDepend(['BSP_USING_FLASH']):
-    src += Glob('ports/fal/fal_flash_port.c')
+    src += Glob('ports/fal/*.c')
     path += [cwd + '/ports/fal']
 
 if GetDepend(['BSP_USING_HYPERAM']):

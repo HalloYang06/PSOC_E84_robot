@@ -72,6 +72,7 @@
  *  STATIC PROTOTYPES
  **********************/
 static void image_dsc_free_cb(void * dsc, void * user_data);
+extern void lv_port_disp_smif0_gpu_fault(void);
 
 /**********************
  *   GLOBAL FUNCTIONS
@@ -1187,6 +1188,8 @@ void lv_vg_lite_disable_scissor(void)
 
 void lv_vg_lite_flush(struct lv_draw_vg_lite_unit_t * u)
 {
+    vg_lite_error_t error;
+
     LV_ASSERT_NULL(u);
     LV_PROFILER_BEGIN;
 
@@ -1208,17 +1211,31 @@ void lv_vg_lite_flush(struct lv_draw_vg_lite_unit_t * u)
     }
 #endif
 
-    LV_VG_LITE_CHECK_ERROR(vg_lite_flush());
+    error = vg_lite_flush();
+    if(error != VG_LITE_SUCCESS) {
+        LV_LOG_ERROR("vg_lite_flush failed: %d", error);
+        lv_port_disp_smif0_gpu_fault();
+        LV_PROFILER_END;
+        return;
+    }
     u->flush_count = 0;
     LV_PROFILER_END;
 }
 
 void lv_vg_lite_finish(struct lv_draw_vg_lite_unit_t * u)
 {
+    vg_lite_error_t error;
+
     LV_ASSERT_NULL(u);
     LV_PROFILER_BEGIN;
 
-    LV_VG_LITE_CHECK_ERROR(vg_lite_finish());
+    error = vg_lite_finish();
+    if(error != VG_LITE_SUCCESS) {
+        LV_LOG_ERROR("vg_lite_finish failed: %d", error);
+        lv_port_disp_smif0_gpu_fault();
+        LV_PROFILER_END;
+        return;
+    }
 
     /* Clear all gradient caches reference */
     if(u->grad_pending) {

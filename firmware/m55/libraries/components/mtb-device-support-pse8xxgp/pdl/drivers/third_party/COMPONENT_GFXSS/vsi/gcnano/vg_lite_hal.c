@@ -574,24 +574,73 @@ void vg_lite_IRQHandler(void)
 #endif
 }
 
+static volatile uint32_t g_wait_timeout_override_ms = 0U;
+
+void vg_lite_hal_set_wait_timeout_override(uint32_t timeout_ms)
+{
+    g_wait_timeout_override_ms = timeout_ms;
+}
+
+void vg_lite_hal_clear_wait_timeout_override(void)
+{
+    g_wait_timeout_override_ms = 0U;
+}
+
 int32_t vg_lite_hal_wait_interrupt(uint32_t timeout, uint32_t mask, uint32_t *value)
 {
 #if _BAREMETAL
-    uint32_t int_status=0;
-    int_status = vg_lite_hal_peek(VG_LITE_INTR_STATUS);
-    (void)value;
+    uint32_t int_status = 0U;
+    uint32_t elapsed_us = 0U;
+    uint32_t timeout_us;
+    const uint32_t override_ms = g_wait_timeout_override_ms;
 
-    while (int_status==0){
-        int_status = vg_lite_hal_peek(VG_LITE_INTR_STATUS);
-        Cy_SysLib_DelayUs(1);
+    (void)timeout;
+
+    if (override_ms == 0U)
+    {
+        /* Preserve the vendor bare-metal behavior outside the SMIF0 guard. */
+        while ((int_status & mask) == 0U)
+        {
+            int_status = vg_lite_hal_peek(VG_LITE_INTR_STATUS);
+            Cy_SysLib_DelayUs(1);
+        }
+    }
+    else
+    {
+        timeout_us = (override_ms > (0xFFFFFFFFU / 1000U)) ?
+                     0xFFFFFFFFU : (override_ms * 1000U);
+
+        while ((int_status & mask) == 0U)
+        {
+            int_status = vg_lite_hal_peek(VG_LITE_INTR_STATUS);
+            if ((int_status & mask) != 0U)
+            {
+                break;
+            }
+            if (elapsed_us >= timeout_us)
+            {
+                return 0;
+            }
+            Cy_SysLib_DelayUs(1);
+            ++elapsed_us;
+        }
     }
 
-    if (IS_AXI_BUS_ERR(*value))
+    if (value != NULL)
+    {
+        *value = int_status & mask;
+    }
+
+    if ((value != NULL) && IS_AXI_BUS_ERR(*value))
     {
         vg_lite_bus_error_handler();
     }
     return 1;
 #else /*for rt500*/
+    if (g_wait_timeout_override_ms != 0U)
+    {
+        timeout = g_wait_timeout_override_ms;
+    }
     if(device->int_queue) {
         if (xSemaphoreTake(device->int_queue, timeout / portTICK_PERIOD_MS) == pdTRUE) {
             if (value != NULL) {

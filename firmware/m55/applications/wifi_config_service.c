@@ -3,6 +3,7 @@
 #include <netdev_ipaddr.h>
 #include <netdev.h>
 #include <wlan_mgnt.h>
+#include <errno.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -13,6 +14,7 @@
 #define WIFI_CONFIG_FAL_MAGIC      0x57494649U
 #define WIFI_CONFIG_FAL_VERSION    1U
 #define WIFI_CONFIG_FAL_RECORD_MAGIC_EMPTY 0xFFFFFFFFU
+#define WIFI_CONFIG_FAL_ERASE_SIZE (64U * 1024U)
 #define WIFI_CONFIG_AUTO_DELAY_MS  3500U
 #define WIFI_CONFIG_SAVE_RETRIES   8U
 #define WIFI_CONFIG_SAVE_RETRY_MS  250U
@@ -692,7 +694,8 @@ rt_err_t wifi_config_forget(void)
 
         (void)fal_init();
         part = fal_partition_find(WIFI_CONFIG_FAL_PART);
-        if ((part == RT_NULL) || (fal_partition_erase(part, 0, 4096) < 0))
+        if ((part == RT_NULL) ||
+            (fal_partition_erase(part, 0, WIFI_CONFIG_FAL_ERASE_SIZE) < 0))
         {
             ret = -RT_ERROR;
         }
@@ -700,9 +703,12 @@ rt_err_t wifi_config_forget(void)
 #endif
 
 #ifdef RT_USING_DFS
-    if (ret != RT_EOK && remove(WIFI_CONFIG_FILE_PATH) != 0)
+    if (remove(WIFI_CONFIG_FILE_PATH) != 0)
     {
-        if (ret == RT_EOK)
+        const int remove_errno = errno;
+
+        /* RT-Thread's DFS POSIX wrapper may expose errno with either sign. */
+        if ((remove_errno != ENOENT) && (remove_errno != -ENOENT))
         {
             ret = -RT_ERROR;
         }

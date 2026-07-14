@@ -30,7 +30,7 @@ def main():
     ble_service_c = (ROOT / "applications/m33/app_ble_service.c").read_text(encoding="utf-8")
     ble_service_h = (ROOT / "applications/m33/app_ble_service.h").read_text(encoding="utf-8")
 
-    require(main_c, "#define M33_XIAOZHI_MINIMAL_FRAMEWORK 1", "BLE startup policy")
+    require(main_c, "#define M33_XIAOZHI_MINIMAL_FRAMEWORK 0", "default framework policy")
     require(main_c, "#define M33_ENABLE_BT_HCI 1", "BLE startup policy")
 
     framework_start = main_c.index("static void m33_init_framework(void)")

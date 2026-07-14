@@ -10,6 +10,7 @@
  */
 
 #include "board.h"
+#include "smif0_guard.h"
 #define ES8388_CTRL             GET_PIN(16, 2)
 #define SPEAKER_OE_CTRL         GET_PIN(21, 6)
 #define WIFI_OE_CTRL            GET_PIN(16, 3)
@@ -29,6 +30,9 @@ void cy_bsp_all_init(void)
         CY_ASSERT(0);
     }
 
+    /* Install the SRAM-resident SMIF0 park ISR before CM55 can run. */
+    smif0_guard_early_init();
+
     if (CY_SYSLIB_RESET_HIB_WAKEUP == (Cy_SysLib_GetResetReason() &
                                        CY_SYSLIB_RESET_HIB_WAKEUP))
     {
@@ -37,16 +41,6 @@ void cy_bsp_all_init(void)
         Cy_SysPm_TriggerXRes();
 
     }
-#ifdef SOC_Enable_CM55
-    Cy_SysEnableCM55(MXCM55, CY_CM55_APP_BOOT_ADDR, 10);
-#ifdef SOC_Enable_CM33_DeepSleep
-    while (1)
-    {
-        Cy_SysPm_CpuEnterDeepSleep(CY_SYSPM_WAIT_FOR_INTERRUPT);
-    }
-#endif
-#endif
-
 }
 
 void _start(void)

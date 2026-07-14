@@ -41,9 +41,18 @@ extern rt_sem_t flush_sem;
 * Function Prototypes
 *******************************************************************************/
 /* Initialize low level display driver */
-void lv_port_disp_init(void);
+rt_err_t lv_port_disp_init(void);
 rt_uint32_t lv_port_disp_get_flush_count(void);
 rt_int32_t lv_port_disp_get_last_flush_status(void);
+rt_err_t lv_port_disp_smif0_hw_init_begin(void);
+void lv_port_disp_smif0_hw_init_end(rt_bool_t success);
+rt_err_t lv_port_disp_smif0_init_begin(void);
+void lv_port_disp_smif0_init_end(rt_bool_t success);
+rt_err_t lv_port_disp_smif0_render_begin(void);
+void lv_port_disp_smif0_render_end(void);
+void lv_port_disp_smif0_gpu_fault(void);
+rt_err_t lv_port_disp_smif0_quiesce(void);
+void lv_port_disp_smif0_resume(void);
 
 
 #ifdef __cplusplus

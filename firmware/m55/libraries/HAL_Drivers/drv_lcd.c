@@ -60,6 +60,7 @@ static cy_stc_gfx_context_t lcd_gfx_context;
 static volatile rt_int32_t g_lcd_init_result = -RT_ERROR;
 static volatile rt_int32_t g_lcd_gfx_status = -1;
 static volatile rt_int32_t g_lcd_mipi_status = -1;
+static volatile rt_int32_t g_lcd_vglite_status = VG_LITE_NO_CONTEXT;
 static volatile rt_uint32_t g_lcd_frame_updates = 0;
 static volatile rt_int32_t g_lcd_last_frame_status = -1;
 
@@ -249,6 +250,11 @@ rt_int32_t drv_lcd_get_mipi_status(void)
     return g_lcd_mipi_status;
 }
 
+rt_int32_t drv_lcd_get_vglite_status(void)
+{
+    return g_lcd_vglite_status;
+}
+
 rt_uint32_t drv_lcd_get_frame_updates(void)
 {
     return g_lcd_frame_updates;
@@ -403,17 +409,34 @@ __exit:
     //Allocate GPU memory for LVGL
     vg_lite_error_t vglite_status = VG_LITE_SUCCESS;
     vg_module_parameters_t vg_params;
-    vg_params.register_mem_base = (uint32_t)GFXSS_GFXSS_GPU_GCNANO;
-    vg_params.gpu_mem_base[VG_PARAMS_POS] = GPU_MEM_BASE;
-    vg_params.contiguous_mem_base[VG_PARAMS_POS] = (volatile void *) vglite_heap_base;
-    vg_params.contiguous_mem_size[VG_PARAMS_POS] = VGLITE_HEAP_SIZE;
-    vg_lite_init_mem(&vg_params);
+    const rt_err_t gate_status = lv_port_disp_smif0_hw_init_begin();
 
-    vglite_status = vg_lite_init((MY_DISP_HOR_RES) / 4,
-                                 (MY_DISP_VER_RES) / 4);
+    if (gate_status == RT_EOK)
+    {
+        vg_params.register_mem_base = (uint32_t)GFXSS_GFXSS_GPU_GCNANO;
+        vg_params.gpu_mem_base[VG_PARAMS_POS] = GPU_MEM_BASE;
+        vg_params.contiguous_mem_base[VG_PARAMS_POS] = (volatile void *) vglite_heap_base;
+        vg_params.contiguous_mem_size[VG_PARAMS_POS] = VGLITE_HEAP_SIZE;
+        vg_lite_init_mem(&vg_params);
+
+        vglite_status = vg_lite_init((MY_DISP_HOR_RES) / 4,
+                                     (MY_DISP_VER_RES) / 4);
+        lv_port_disp_smif0_hw_init_end((vglite_status == VG_LITE_SUCCESS) ?
+                                      RT_TRUE : RT_FALSE);
+    }
+    else
+    {
+        vglite_status = VG_LITE_NO_CONTEXT;
+    }
+    g_lcd_vglite_status = (rt_int32_t)vglite_status;
     if (vglite_status == VG_LITE_SUCCESS)
     {
         LOG_I("Allocate GPU memory success\n");
+    }
+    else
+    {
+        LOG_E("Allocate GPU memory failed: %d\n", vglite_status);
+        result = -RT_ERROR;
     }
 #endif
 

@@ -2,12 +2,6 @@
 
 #include <string.h>
 
-#if !defined(XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM) && !defined(XIAOZHI_WAKE_USE_IFX_DEEPCRAFT) && defined(__has_include)
-#if __has_include("ifx_deepcraft/source/ifx_deepcraft_wake_adapter.c")
-#define XIAOZHI_WAKE_USE_IFX_DEEPCRAFT
-#endif
-#endif
-
 #ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
 extern int xiaozhi_edge_impulse_wake_init(void);
 extern int xiaozhi_edge_impulse_wake_process(const int16_t *pcm,

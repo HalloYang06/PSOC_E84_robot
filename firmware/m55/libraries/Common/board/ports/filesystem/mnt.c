@@ -114,47 +114,27 @@ static void _sdcard_mount(void)
 static void _fal_mount(void)
 {
     struct rt_device *flash_dev = fal_mtd_nor_device_create("filesystem");
+
     if (flash_dev == NULL)
     {
         LOG_E("Can't create block device for filesystem");
         return;
     }
-    else
+
+    LOG_I("Block device created for filesystem");
+    if (dfs_mount("filesystem", "/flash", "lfs", 0, 0) != 0)
     {
-        LOG_I("Block device created for filesystem");
-
-        /* Try to mount filesystem */
-        if (dfs_mount("filesystem", "/flash", "lfs", 0, 0) != 0)
-        {
-            LOG_W("Mount filesystem failed, try to mkfs");
-
-            /* Format filesystem */
-            if (dfs_mkfs("lfs", "filesystem") != 0)
-            {
-                LOG_E("mkfs failed");
-                return;
-            }
-            else
-            {
-                LOG_I("Filesystem formatted");
-
-                /* Mount after format */
-                if (dfs_mount("filesystem", "/flash", "lfs", 0, 0) != 0)
-                {
-                    LOG_E("Mount filesystem failed after mkfs");
-                    return;
-                }
-                else
-                {
-                    LOG_I("Filesystem mounted successfully");
-                }
-            }
-        }
-        else
-        {
-            LOG_I("Filesystem mounted successfully");
-        }
+        LOG_E("Mount filesystem failed; keep flash unchanged (manual migration/format required)");
+        return;
     }
+
+    LOG_I("Filesystem mounted successfully");
+}
+
+static void fal_mount_thread(void *parameter)
+{
+    RT_UNUSED(parameter);
+    _fal_mount();
 }
 #endif /* BSP_USING_FLASH */
 
@@ -173,9 +153,26 @@ int mnt_init(void)
     }
 
 #ifdef BSP_USING_FLASH
-    fal_init();
-    /* Mount FAL filesystem to /flash */
-    _fal_mount();
+    if (fal_init() <= 0)
+    {
+        LOG_E("FAL initialization failed");
+    }
+    else
+    {
+        rt_thread_t fal_tid;
+
+        /* Keep slow flash probing/mount work out of the board init chain. */
+        fal_tid = rt_thread_create("fal_mount", fal_mount_thread, RT_NULL,
+                                   4096, 16, 20);
+        if (fal_tid != RT_NULL)
+        {
+            rt_thread_startup(fal_tid);
+        }
+        else
+        {
+            LOG_E("create fal_mount thread err!");
+        }
+    }
 #endif
 
 #ifdef BSP_USING_SDCARD

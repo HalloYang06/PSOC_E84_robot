@@ -385,6 +385,37 @@ SECTIONS
         . = ALIGN(4);
     } > m33_m55_shared
 
+    /* Dedicated CM33/CM55 SMIF0 guard slot at the end of shared SRAM. */
+    .smif0_guard_shared 0x261FFF00 (NOLOAD) : ALIGN(32)
+    {
+        __smif0_guard_shared_start__ = .;
+        KEEP(*(.smif0_guard_shared))
+        __smif0_guard_shared_payload_end__ = .;
+        . = __smif0_guard_shared_start__ + 0x100;
+        __smif0_guard_shared_end__ = .;
+    } > m33_m55_shared
+
+    ASSERT(
+        ADDR(.smif0_guard_shared) == 0x261FFF00,
+        "SMIF0 guard mailbox address changed"
+    )
+    ASSERT(
+        (__smif0_guard_shared_payload_end__ - __smif0_guard_shared_start__) <= 0x80,
+        "SMIF0 guard mailbox exceeds 128 bytes"
+    )
+    ASSERT(
+        (ADDR(.ipc_stream_shared) + SIZEOF(.ipc_stream_shared)) <= ADDR(.smif0_guard_shared),
+        "SMIF0 guard mailbox overlaps shared data"
+    )
+    ASSERT(
+        (ADDR(.cy_shared_socmem) + SIZEOF(.cy_shared_socmem)) <= ADDR(.smif0_guard_shared),
+        "SMIF0 guard mailbox overlaps shared data"
+    )
+    ASSERT(
+        __smif0_guard_shared_end__ <= (ORIGIN(m33_m55_shared) + LENGTH(m33_m55_shared)),
+        "SMIF0 guard mailbox outside shared SRAM"
+    )
+
 
     /* Reserve a trail space for the signature for the bootloader - do not place any code here */
     .cy_trailer(NOLOAD) :

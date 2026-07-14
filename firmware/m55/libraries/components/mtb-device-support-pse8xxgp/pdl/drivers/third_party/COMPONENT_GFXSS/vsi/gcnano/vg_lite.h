@@ -1088,6 +1088,9 @@ typedef unsigned int        vg_lite_color_t;
     /* Flush command buffer and wait for GPU to complete. */
     vg_lite_error_t vg_lite_finish(void);
 
+    /* Guard-specific bounded finish; normal rendering keeps vendor wait semantics. */
+    vg_lite_error_t vg_lite_finish_timeout(vg_lite_uint32_t timeout_ms);
+
     /* Flush the command buffer without waiting for GPU to complete. */
     vg_lite_error_t vg_lite_flush(void);
 

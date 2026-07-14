@@ -33,7 +33,9 @@ extern struct fal_flash_dev nor_flash0;
     {FAL_PART_MAGIC_WORD, "whd_clm",        NOR_FLASH_DEV_NAME,  0x60000,   64*1024, 0},    \
     {FAL_PART_MAGIC_WORD, "whd_nvram",      NOR_FLASH_DEV_NAME,  0x70000,   64*1024, 0},    \
     {FAL_PART_MAGIC_WORD, "bt_image",       NOR_FLASH_DEV_NAME,  0x80000,  512*1024, 0},    \
-    {FAL_PART_MAGIC_WORD, "filesystem",     NOR_FLASH_DEV_NAME, 0x100000, 1024*1024, 0},    \
+    {FAL_PART_MAGIC_WORD, "filesystem",     NOR_FLASH_DEV_NAME, 0x100000,  512*1024, 0},    \
+    {FAL_PART_MAGIC_WORD, "wifi_cfg",       NOR_FLASH_DEV_NAME, 0x180000,  256*1024, 0},    \
+    {FAL_PART_MAGIC_WORD, "xiaozhi_cfg",    NOR_FLASH_DEV_NAME, 0x1C0000,  256*1024, 0},    \
 }
 #endif /* FAL_PART_HAS_TABLE_CFG */
 
