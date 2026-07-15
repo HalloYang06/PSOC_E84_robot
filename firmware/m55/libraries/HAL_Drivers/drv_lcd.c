@@ -225,6 +225,13 @@ rt_err_t psoc_lcd_init(struct drv_lcd_device *lcd)
         LOG_E("[%s: %d] Display initialization failed. Error type: %u\r\n", __func__, __LINE__, status);
         return -RT_ERROR;
     }
+
+    Cy_GPIO_Pin_FastInit(CYBSP_DISP_BACKLIGHT_PWM_PORT,
+                         CYBSP_DISP_BACKLIGHT_PWM_PIN,
+                         CY_GPIO_DM_STRONG_IN_OFF,
+                         1U,
+                         HSIOM_SEL_GPIO);
+
     LOG_I("init screen success");
     g_lcd_init_result = RT_EOK;
     return RT_EOK;
