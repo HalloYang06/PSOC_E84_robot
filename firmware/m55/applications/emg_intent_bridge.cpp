@@ -253,6 +253,12 @@ extern "C" rt_err_t emg_intent_bridge_handle_stream(const sensor_stream_msg_t *s
     rt_err_t ret;
     const rt_uint8_t *raw;
 
+    if (stream == RT_NULL)
+    {
+        g_emg_intent_error_count++;
+        return -RT_EINVAL;
+    }
+
     if (!emg_stream_is_valid(stream))
     {
         g_emg_intent_error_count++;
@@ -265,6 +271,7 @@ extern "C" rt_err_t emg_intent_bridge_handle_stream(const sensor_stream_msg_t *s
         return -RT_EINVAL;
     }
 
+    m33_m55_shared_pcm_invalidate_header(&g_m33_m55_pcm_shared);
     if (stream->chunk_index != g_m33_m55_pcm_shared.seq)
     {
         g_emg_intent_error_count++;
@@ -288,7 +295,7 @@ extern "C" rt_err_t emg_intent_bridge_handle_stream(const sensor_stream_msg_t *s
     }
 
     raw = (const rt_uint8_t *)(const void *)g_m33_m55_pcm_shared.data;
-    rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, (void *)raw, (int)expected_len);
+    m33_m55_shared_pcm_invalidate_payload(&g_m33_m55_pcm_shared, expected_len);
     emg_build_quantized_input(raw, stream->frame_samples, stream->channels, stale_count, input);
 
     ret = (rt_err_t)intent_tflm_runtime_infer_int8(input, sizeof(input), &result);

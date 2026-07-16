@@ -2,6 +2,9 @@
 #define M33_M55_COMM_H
 
 #include <rtthread.h>
+#include <rthw.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -156,6 +159,48 @@ typedef struct
     volatile rt_uint32_t crc32;
     rt_uint8_t data[M33_M55_PCM_SHARED_CAPACITY];
 } m33_m55_pcm_shared_t;
+
+#define M33_M55_PCM_SHARED_HEADER_SIZE ((rt_uint32_t)offsetof(m33_m55_pcm_shared_t, data))
+
+static inline void m33_m55_shared_pcm_dsb(void)
+{
+#if defined(__GNUC__) || defined(__clang__)
+    __asm volatile ("dsb 0xF" ::: "memory");
+#else
+    __DSB();
+#endif
+}
+
+static inline void m33_m55_shared_pcm_invalidate_header(volatile m33_m55_pcm_shared_t *shared)
+{
+    if (shared == RT_NULL)
+    {
+        return;
+    }
+
+    rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE,
+                         (void *)(uintptr_t)shared,
+                         (int)M33_M55_PCM_SHARED_HEADER_SIZE);
+    m33_m55_shared_pcm_dsb();
+}
+
+static inline void m33_m55_shared_pcm_invalidate_payload(volatile m33_m55_pcm_shared_t *shared,
+                                                         rt_uint32_t payload_len)
+{
+    if ((shared == RT_NULL) || (payload_len == 0U))
+    {
+        return;
+    }
+    if (payload_len > M33_M55_PCM_SHARED_CAPACITY)
+    {
+        payload_len = M33_M55_PCM_SHARED_CAPACITY;
+    }
+
+    rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE,
+                         (void *)(uintptr_t)&shared->data[0],
+                         (int)payload_len);
+    m33_m55_shared_pcm_dsb();
+}
 
 typedef struct
 {
