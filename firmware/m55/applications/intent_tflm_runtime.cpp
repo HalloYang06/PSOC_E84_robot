@@ -27,8 +27,7 @@ static bool g_resolver_ready = false;
 static bool g_ready = false;
 
 static const char *const kIntentLabels[] = {
-    "elbow_extend",
-    "elbow_flex",
+    "elbow_curl",
     "rest",
     "shoulder_flex",
 };

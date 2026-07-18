@@ -9,8 +9,8 @@
 extern "C" {
 #endif
 
-#define INTENT_TFLM_FEATURE_COUNT 20
-#define INTENT_TFLM_CLASS_COUNT 4
+#define INTENT_TFLM_FEATURE_COUNT 21
+#define INTENT_TFLM_CLASS_COUNT 3
 
 typedef struct
 {

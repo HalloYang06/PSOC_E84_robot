@@ -10,10 +10,10 @@
 #define EMG_INTENT_PHYSICAL_CHANNELS 4U
 #define EMG_INTENT_MODEL_CHANNELS 3U
 #define EMG_INTENT_BYTES_PER_SAMPLE 2U
-#define EMG_INTENT_REST_INDEX 2
+#define EMG_INTENT_REST_INDEX 1
 #define EMG_INTENT_DETECTED_CONFIDENCE 400U
-#define EMG_INTENT_INPUT_SCALE 0.013371267355978489f
-#define EMG_INTENT_INPUT_ZERO_POINT 86
+#define EMG_INTENT_INPUT_SCALE 0.05868540704250336f
+#define EMG_INTENT_INPUT_ZERO_POINT -47
 
 typedef struct
 {
@@ -26,49 +26,51 @@ typedef struct
 } emg_channel_features_t;
 
 static const float kFeatureMeans[INTENT_TFLM_FEATURE_COUNT] = {
-    12.74388625592417f,
-    196.10409020994803f,
-    29.773846919178915f,
-    155.80170616113745f,
-    243.07943127962085f,
-    196.10409020994803f,
-    199.10957490599228f,
-    9.983190791830603f,
-    5.867714494464262f,
-    3.0502369668246447f,
-    19.918104265402842f,
-    9.983190791830603f,
-    11.961568995303216f,
-    2.659369173743581f,
-    1.7965597346664994f,
-    0.9391469194312796f,
-    5.793554502369668f,
-    2.659369173743581f,
-    3.418221287895922f,
-    12.74388625592417f,
+    14.824007703006313f,
+    66.07682380117653f,
+    20.284824699792935f,
+    36.619129132341925f,
+    105.17267572483149f,
+    66.07682380117653f,
+    70.48601249420804f,
+    3.378661093195168f,
+    3.495710555813804f,
+    0.2908954744837916f,
+    11.771691451802717f,
+    3.378661093195168f,
+    5.063158951460208f,
+    51.0093492123582f,
+    17.206955290189292f,
+    26.3894297635605f,
+    84.20284583288756f,
+    51.0093492123582f,
+    55.015025679892005f,
+    14.824007703006313f,
+    323.47073927463356f,
 };
 
 static const float kFeatureStds[INTENT_TFLM_FEATURE_COUNT] = {
-    4.105965844125915f,
-    173.14602903577338f,
-    30.432535182033934f,
-    143.34624544227543f,
-    211.09328129126143f,
-    173.14602903577338f,
-    174.9410183652073f,
-    19.20778183939813f,
-    9.343079568289546f,
-    9.902210842266479f,
-    32.84575072185167f,
-    19.20778183939813f,
-    21.14821642490308f,
-    15.236399932583645f,
-    8.85260531501158f,
-    9.328968958652142f,
-    28.107816055049f,
-    15.236399932583645f,
-    17.58215397152647f,
-    4.105965844125915f,
+    0.5970123425713738f,
+    117.031946284698f,
+    29.185581407396917f,
+    80.8248029689966f,
+    164.0962701851204f,
+    117.031946284698f,
+    119.82327575513715f,
+    16.669337205936774f,
+    12.76114023471683f,
+    4.954700705219328f,
+    42.877063558387256f,
+    16.669337205936774f,
+    20.945483223842892f,
+    76.95630161575073f,
+    20.919422397549834f,
+    52.482338932488624f,
+    109.77286498810477f,
+    76.95630161575073f,
+    78.93842257537969f,
+    0.5970123425713738f,
+    206.08876507283696f,
 };
 
 static rt_uint32_t g_emg_intent_window_count;
@@ -190,6 +192,11 @@ static void emg_build_quantized_input(const rt_uint8_t *raw,
         features[cursor++] = channels[channel].rms;
     }
     features[cursor++] = (float)stale_count;
+    if (cursor < INTENT_TFLM_FEATURE_COUNT)
+    {
+        int placeholder_index = cursor;
+        features[cursor++] = kFeatureMeans[placeholder_index];
+    }
 
     for (int i = 0; i < INTENT_TFLM_FEATURE_COUNT; i++)
     {
@@ -323,7 +330,7 @@ extern "C" rt_err_t emg_intent_bridge_handle_stream(const sensor_stream_msg_t *s
                                window_ms);
     g_emg_intent_window_count++;
     g_emg_intent_last_seq = stream->chunk_index;
-    rt_kprintf("[emg_intent] seq=%lu label=%s idx=%d conf=%u detected=%d win=%u ret=%d out=[%d,%d,%d,%d]\n",
+    rt_kprintf("[emg_intent] seq=%lu label=%s idx=%d conf=%u detected=%d win=%u ret=%d out=[%d,%d,%d]\n",
                (unsigned long)stream->chunk_index,
                result.label,
                result.predicted_index,
@@ -333,8 +340,7 @@ extern "C" rt_err_t emg_intent_bridge_handle_stream(const sensor_stream_msg_t *s
                ret,
                result.output_int8[0],
                result.output_int8[1],
-               result.output_int8[2],
-               result.output_int8[3]);
+               result.output_int8[2]);
     return ret;
 }
 

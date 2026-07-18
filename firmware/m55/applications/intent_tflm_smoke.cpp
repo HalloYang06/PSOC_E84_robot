@@ -29,8 +29,7 @@ static bool g_resolver_ready = false;
 static bool g_ready = false;
 
 static const char *const kIntentLabels[] = {
-    "elbow_extend",
-    "elbow_flex",
+    "elbow_curl",
     "rest",
     "shoulder_flex",
 };
@@ -200,7 +199,7 @@ static int run_one_sample(int sample_index, bool verbose)
 
     if ((predicted_index != expected_index) || (mismatches != 0) || verbose)
     {
-        rt_kprintf("[intent_tflm] sample=%d pred=%d/%s expected=%d/%s score=[%d,%d,%d,%d] mismatch=%d\n",
+        rt_kprintf("[intent_tflm] sample=%d pred=%d/%s expected=%d/%s score=[%d,%d,%d] mismatch=%d\n",
                    sample_index,
                    predicted_index,
                    label_for(predicted_index),
@@ -209,7 +208,6 @@ static int run_one_sample(int sample_index, bool verbose)
                    g_output->data.int8[0],
                    g_output->data.int8[1],
                    g_output->data.int8[2],
-                   g_output->data.int8[3],
                    mismatches);
     }
 

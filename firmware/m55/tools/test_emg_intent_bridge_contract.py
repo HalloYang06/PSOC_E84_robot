@@ -19,7 +19,8 @@ class EmgIntentBridgeContractTest(unittest.TestCase):
             "#define EMG_INTENT_PHYSICAL_CHANNELS 4U",
             "#define EMG_INTENT_MODEL_CHANNELS 3U",
             "g_m33_m55_pcm_shared",
-            "RT_HW_CACHE_INVALIDATE",
+            "m33_m55_shared_pcm_invalidate_header",
+            "m33_m55_shared_pcm_invalidate_payload",
             "intent_tflm_runtime_infer_int8",
             "model_result_publish",
             "MODEL_CODE_EMG_INTENT",
@@ -36,8 +37,8 @@ class EmgIntentBridgeContractTest(unittest.TestCase):
     def test_emg_bridge_uses_training_preprocess_and_quantization_contract(self):
         text = (APP_DIR / "emg_intent_bridge.cpp").read_text(encoding="utf-8")
 
-        self.assertIn("#define EMG_INTENT_INPUT_SCALE 0.013371267355978489f", text)
-        self.assertIn("#define EMG_INTENT_INPUT_ZERO_POINT 86", text)
+        self.assertIn("#define EMG_INTENT_INPUT_SCALE 0.05868540704250336f", text)
+        self.assertIn("#define EMG_INTENT_INPUT_ZERO_POINT -47", text)
         self.assertRegex(text, r"kFeatureMeans\[INTENT_TFLM_FEATURE_COUNT\]")
         self.assertRegex(text, r"kFeatureStds\[INTENT_TFLM_FEATURE_COUNT\]")
         self.assertIn("features[cursor++] = (float)frame_samples", text)
@@ -50,8 +51,8 @@ class EmgIntentBridgeContractTest(unittest.TestCase):
         header = (APP_DIR / "intent_tflm_runtime.h").read_text(encoding="utf-8")
         source = (APP_DIR / "intent_tflm_runtime.cpp").read_text(encoding="utf-8")
 
-        self.assertIn("#define INTENT_TFLM_FEATURE_COUNT 20", header)
-        self.assertIn("#define INTENT_TFLM_CLASS_COUNT 4", header)
+        self.assertIn("#define INTENT_TFLM_FEATURE_COUNT 21", header)
+        self.assertIn("#define INTENT_TFLM_CLASS_COUNT 3", header)
         self.assertIn("intent_tflm_runtime_infer_int8", header)
         self.assertIn('#include "intent_model_int8.h"', source)
         self.assertIn("tflite::MicroInterpreter", source)
