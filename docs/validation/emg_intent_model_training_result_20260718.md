@@ -1,174 +1,178 @@
-# EMG Intent Model Training Result - 2026-07-18
+# 肌电动作意图模型训练结果记录（2026-07-18）
 
-## Summary
+## 结论概述
 
-This document records the training result for the edge-AI EMG intent recognition model used by the rehabilitation assist project. The model classifies three high-level user intents from windowed EMG and motor-state features:
+本文记录康复助力项目中边缘 AI 肌电动作意图识别模型的训练、量化和部署结果。当前模型采用 3 类动作意图：
 
-- `rest`: relaxed / no assist intent
-- `elbow_curl`: forearm curl intent, merged from the original `elbow_flex` and `elbow_extend` labels
-- `shoulder_flex`: upper-arm forward lift intent
+- `rest`：静止/放松状态。
+- `elbow_curl`：小臂弯举意图，由原始 `elbow_flex` 和 `elbow_extend` 合并得到。
+- `shoulder_flex`：大臂前抬意图。
 
-The original four-class experiment showed that `elbow_flex` and `elbow_extend` were the main confusion pair. For the current assist-control design, merging them into `elbow_curl` is more robust: the edge-AI model detects the user's movement intent, while the M33 control strategy determines assist direction and magnitude from joint position, velocity, torque estimate, safety limits, and control mode.
+前一版 4 类实验中，主要混淆集中在 `elbow_flex` 和 `elbow_extend`。结合当前助力控制逻辑，将二者合并为 `elbow_curl` 更适合比赛展示和嵌入式部署：边缘 AI 负责识别“用户是否有小臂运动意图”，M33 控制策略再根据关节位置、速度、力矩估计、限流和康复模式决定助力方向与大小。
 
-## Data Source
+## 数据来源
 
-Training used the cleaned window-level dataset generated from the 2026-07-14 and 2026-07-18 acquisition sessions:
+训练数据来自 2026-07-14 和 2026-07-18 两批窗口数据：
 
 ```text
 data/sensor_capture/S01_day4_clean3_20260714_windows.csv
 data/sensor_capture/S01_day4_clean4_20260714_windows.csv
 ```
 
-The generated cleaned dataset is:
+清洗合并后的训练输入文件为：
 
 ```text
 data/sensor_capture/S01_day4_20260714_20260718_windows_elbow_curl_cleaned.csv
 ```
 
-The dataset itself and trained model binaries are not committed to Git because they are generated artifacts.
+数据集 CSV 和模型二进制文件属于生成产物，未直接提交到 Git 仓库。
 
-## Cleaning Rules
+## 数据清洗规则
 
-The cleaning step used `tools/prepare_clean_intent_windows.py` with these rules:
+清洗脚本：
 
-- Dropped known bad trials: `435`, `492`, `536`, `545`
-- Dropped short windows with `sample_count < 12`
-- Dropped invalid manual labels such as `11` and `44`
-- Merged `elbow_flex` and `elbow_extend` into `elbow_curl`
-- Prefixed `trial_id` with the source session name to avoid duplicate trial IDs across sessions
+```text
+tools/prepare_clean_intent_windows.py
+```
 
-Final cleaned dataset:
+主要规则：
 
-| Label | Windows |
+- 删除已确认的脏 trial：`435`、`492`、`536`、`545`。
+- 删除有效采样点不足的窗口：`sample_count < 12`。
+- 删除误输入标签，例如 `11`、`44`。
+- 将 `elbow_flex` 和 `elbow_extend` 合并为 `elbow_curl`。
+- 对不同采集文件的 `trial_id` 增加来源前缀，避免多次采集后 trial 编号重复。
+
+清洗后窗口数量：
+
+| 标签 | 窗口数量 |
 |---|---:|
 | `elbow_curl` | 8053 |
 | `rest` | 2954 |
 | `shoulder_flex` | 2414 |
-| **Total** | **13421** |
+| **总计** | **13421** |
 
-Train / validation / test split:
+训练、验证、测试集划分：
 
-| Split | Rows |
+| 数据集 | 行数 |
 |---|---:|
-| Train | 9347 |
-| Validation | 2056 |
-| Test | 2018 |
+| 训练集 | 9347 |
+| 验证集 | 2056 |
+| 测试集 | 2018 |
 
-The split is grouped by `trial_id`, so windows from the same trial do not cross train/validation/test boundaries.
+划分方式按 `trial_id` 分组，同一次动作采集产生的窗口不会同时出现在训练集和测试集中，避免数据泄漏。
 
-## Model Configuration
+## 模型配置
 
-Training script:
+训练脚本：
 
 ```text
 tools/train_intent_tf.py
 ```
 
-Main configuration:
+核心配置：
 
-| Item | Value |
-|---|---:|
-| Input features | 21 |
-| Window length | 300 ms |
-| Sliding step | 100 ms |
-| Classes | 3 |
-| Hidden layers | `128,64,32` |
-| Dropout | 0.25 |
-| Batch size | 32 |
-| Class weighting | balanced |
-| Epochs ran | 423 |
+| 指标类别 | 指标名称 | 当前结果 / 设计值 | 说明 |
+|---|---|---:|---|
+| 推理窗口 | 窗口长度 | 300 ms | 用于捕获稳定肌肉激活特征 |
+| 推理窗口 | 滑动步长 | 100 ms | 每 100 ms 更新一次动作意图 |
+| 模型输入 | 输入特征数 | 21 | 肌电窗口统计量及采集状态特征 |
+| 模型输出 | 动作类别数 | 3 | `rest` / `elbow_curl` / `shoulder_flex` |
+| 模型结构 | 隐藏层 | `128,64,32` | 轻量全连接网络，适合 TFLite Micro |
+| 训练策略 | Dropout | 0.25 | 抑制过拟合 |
+| 训练策略 | Batch size | 32 | 兼顾收敛稳定性与训练速度 |
+| 训练策略 | 类别权重 | balanced | 缓解不同动作样本数量不均衡 |
+| 训练过程 | 实际训练轮数 | 423 | 早停后得到最优验证集模型 |
 
-Generated training directory:
+模型输出目录：
 
 ```text
 artifacts/intent_model/S01_day4_20260714_20260718_elbow_curl_cleaned
 ```
 
-## Float Model Result
+## 浮点模型结果
 
-Float / default TFLite model test-set result:
+Float / 默认 TFLite 模型在测试集上的结果：
 
-| Metric | Result |
+| 指标名称 | 结果 |
 |---|---:|
-| Test accuracy | 98.81% |
-| Macro F1 | 98.51% |
-| Weighted F1 | 98.83% |
+| 测试集准确率 | 98.81% |
+| 宏平均 F1 | 98.51% |
+| 加权 F1 | 98.83% |
 
-Per-class result:
+分类结果：
 
-| Class | Precision | Recall | F1 |
+| 类别 | Precision | Recall | F1 |
 |---|---:|---:|---:|
 | `elbow_curl` | 100.00% | 98.00% | 98.99% |
 | `rest` | 100.00% | 100.00% | 100.00% |
 | `shoulder_flex` | 93.30% | 100.00% | 96.53% |
 
-## Full-Int8 Quantization Result
+## Int8 量化结果
 
-Full-int8 export used:
+全 int8 量化脚本：
 
 ```text
 tools/quantize_intent_tflite_int8.py
 ```
 
-Quantization settings:
+量化设置：
 
-- Representative calibration rows: `512`
-- Input dtype: `int8`
-- Output dtype: `int8`
-- Supported ops: int8 TFLite builtins
+- 代表性校准样本：`512` 行。
+- 输入张量类型：`int8`。
+- 输出张量类型：`int8`。
+- 算子集合：TFLite int8 内置算子。
 
-Full-int8 model:
+全 int8 模型文件：
 
 ```text
 intent_model_full_int8.tflite
 ```
 
-Full-int8 evaluation:
+量化后测试集结果：
 
-| Metric | Result |
-|---|---:|
-| Test accuracy | 98.56% |
-| Macro F1 | 98.21% |
-| Weighted F1 | 98.58% |
-| Model size | 22296 bytes |
-| Accuracy loss vs float | about 0.25 percentage points |
+| 指标类别 | 指标名称 | 当前结果 / 设计值 | 说明 |
+|---|---|---:|---|
+| 模型性能 | int8 模型准确率 | 98.56% | 量化后模型在测试集上的整体准确率 |
+| 模型性能 | 宏平均 F1 | 98.21% | 衡量多类别整体识别能力 |
+| 模型性能 | 加权 F1 | 98.58% | 考虑样本数量后的综合 F1 |
+| 量化部署 | int8 TFLite 大小 | 22.2 KB | 模型可直接转为 C 数组部署到 M55 |
+| 量化部署 | 量化精度损失 | 约 0.25 个百分点 | Float 98.81%，int8 98.56% |
 
-Per-class result:
+分类结果：
 
-| Class | Precision | Recall | F1 |
+| 类别 | Precision | Recall | F1 |
 |---|---:|---:|---:|
 | `elbow_curl` | 100.00% | 97.58% | 98.78% |
 | `rest` | 100.00% | 100.00% | 100.00% |
 | `shoulder_flex` | 92.01% | 100.00% | 95.84% |
 
-Quantization parameters:
+量化参数：
 
-| Tensor | dtype | scale | zero point | shape |
+| 张量 | 类型 | scale | zero point | shape |
 |---|---|---:|---:|---|
-| Input | `int8` | 0.058685407 | -47 | `[1, 21]` |
-| Output | `int8` | 0.00390625 | -128 | `[1, 3]` |
+| 输入 | `int8` | 0.058685407 | -47 | `[1, 21]` |
+| 输出 | `int8` | 0.00390625 | -128 | `[1, 3]` |
 
-Observed PC-side TFLite runtime metadata:
+PC 端 TFLite 模型算子检查结果：
 
 ```text
-ops = FULLY_CONNECTED, FULLY_CONNECTED, FULLY_CONNECTED, FULLY_CONNECTED, SOFTMAX
+FULLY_CONNECTED, FULLY_CONNECTED, FULLY_CONNECTED, FULLY_CONNECTED, SOFTMAX
 ```
 
-## Deployment Interpretation
+## 边缘 AI 部署说明
 
-The model is intended to run as an edge-AI intent recognizer, not as the final motor authority.
+本模型在系统中的定位是“动作意图识别器”，不是直接控制电机的最终决策器。推荐的控制职责划分如下：
 
-Recommended control responsibility split:
+- M55 边缘 AI：根据肌电窗口和关节状态识别高层动作意图。
+- M33 康复控制策略：根据动作意图、关节位置、关节速度、力矩估计、助力模式和安全限制，计算电机控制目标。
+- 电机安全层：执行电流限制、位置限制、速度限制、故障保护和康复模式约束。
 
-- Edge-AI model: classify high-level intent from EMG and aligned joint state
-- M33 control strategy: decide assist direction, velocity/current command, ramping, saturation, and safety gating
-- Motor safety layer: enforce current limit, position/velocity limits, fault handling, and rehabilitation mode constraints
+这样设计的好处是：AI 负责处理肌电信号中非线性、个体差异大的部分；M33 控制环节负责确定性、安全性和实时性更强的电机输出。对于 `elbow_curl`，AI 只判断“小臂弯举相关意图”，具体是助力抬起还是助力放下，由关节轨迹和控制模式共同决定。
 
-This split is important because `elbow_curl` covers both raising and lowering the forearm. Direction should be inferred by the controller from joint trajectory and assist mode rather than forced into the intent classifier.
+## 复现命令
 
-## Reproduction Commands
-
-Clean and merge the window datasets:
+清洗并合并窗口数据：
 
 ```powershell
 C:\Users\ASUS\.conda\envs\edgi-ai\python.exe tools\prepare_clean_intent_windows.py `
@@ -183,7 +187,7 @@ C:\Users\ASUS\.conda\envs\edgi-ai\python.exe tools\prepare_clean_intent_windows.
   --merge-elbow-curl
 ```
 
-Train:
+训练模型：
 
 ```powershell
 C:\Users\ASUS\.conda\envs\edgi-ai\python.exe tools\train_intent_tf.py `
@@ -200,7 +204,7 @@ C:\Users\ASUS\.conda\envs\edgi-ai\python.exe tools\train_intent_tf.py `
   --class-weight balanced
 ```
 
-Export full-int8:
+导出全 int8 模型：
 
 ```powershell
 C:\Users\ASUS\.conda\envs\edgi-ai\python.exe tools\quantize_intent_tflite_int8.py `
@@ -209,7 +213,7 @@ C:\Users\ASUS\.conda\envs\edgi-ai\python.exe tools\quantize_intent_tflite_int8.p
   --representative-rows 512
 ```
 
-Evaluate full-int8:
+评估全 int8 模型：
 
 ```powershell
 C:\Users\ASUS\.conda\envs\edgi-ai\python.exe tools\eval_tflite_intent.py `
@@ -220,6 +224,10 @@ C:\Users\ASUS\.conda\envs\edgi-ai\python.exe tools\eval_tflite_intent.py `
   --batch-size 256
 ```
 
-## Conclusion
+## 注意事项
 
-The three-class design is the recommended competition-report version for the current hardware and data condition. It gives high recognition performance after int8 quantization, keeps the embedded model small, and cleanly separates AI intent recognition from deterministic rehabilitation motor control.
+当前模型的第 21 个特征为 `trial_index_from_id`，它来自采集批次编号，不是传感器物理特征。M55 部署时该维度应固定为训练均值，使标准化后接近 0，避免运行时依赖采集编号。后续正式版建议重新训练一个只包含肌电统计量和关节状态的模型，进一步提高工程一致性。
+
+## 总结
+
+当前 3 类方案是适合比赛报告和嵌入式演示的版本：模型准确率高，int8 量化后体积小，精度损失很低，并且能够清晰体现“双核协同 + 边缘 AI + 康复控制”的系统设计思路。
