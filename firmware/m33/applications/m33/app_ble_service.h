@@ -10,8 +10,6 @@
 extern "C" {
 #endif
 
-#define APP_BLE_COMMAND_QUEUE_DEPTH 8U
-
 typedef enum
 {
     APP_BLE_CMD_NONE = 0,
@@ -38,21 +36,28 @@ typedef struct
     rt_bool_t connected;
     rt_uint32_t uplink_packets;
     rt_uint32_t downlink_packets;
-    rt_uint32_t dropped_commands;
     rt_tick_t last_command_tick;
 } app_ble_runtime_t;
 
 rt_err_t app_ble_service_init(void);
 rt_err_t app_ble_service_start(void);
+rt_err_t app_ble_service_begin_rx_session(rt_uint16_t conn_id);
+void app_ble_service_reset_rx_session(rt_uint16_t conn_id);
+rt_err_t app_ble_service_enqueue_rx(rt_uint16_t conn_id,
+                                    const rt_uint8_t *data,
+                                    rt_uint16_t length);
 rt_err_t app_ble_service_set_link_state(rt_bool_t connected, rt_bool_t streaming_enabled);
 rt_err_t app_ble_service_parse_ascii_frame(const char *frame, app_ble_command_t *cmd);
 rt_err_t app_ble_service_submit_command(const app_ble_command_t *cmd);
+rt_err_t app_ble_service_submit_rx_command(const app_ble_command_t *cmd,
+                                           rt_uint32_t generation,
+                                           rt_uint16_t conn_id);
 rt_err_t app_ble_service_peek_command(app_ble_command_t *cmd);
 rt_err_t app_ble_service_update_telemetry(const sensor_data_t *sensor,
                                           const control_status_t *control,
                                           const safety_monitor_t *safety);
 const char *app_ble_service_get_last_payload(void);
-const app_ble_runtime_t *app_ble_service_get_runtime(void);
+rt_err_t app_ble_service_get_runtime_snapshot(app_ble_runtime_t *runtime);
 
 #ifdef __cplusplus
 }

@@ -19,6 +19,7 @@
 #include "m33_m55_comm.h"
 #include "model_result_publisher.h"
 #include "openclaw_integration.h"
+#include "rehab_wifi_panel.h"
 #include "voice_service.h"
 #include "websocket_client.h"
 #include "wifi_config_service.h"
@@ -730,10 +731,99 @@ static void wake_off(int argc, char **argv)
 }
 MSH_CMD_EXPORT(wake_off, Stop wake listening from CM55 mic0);
 
+static const char *wake_cpu_run_reason(const xiaozhi_wake_cpu_diag_t *diag)
+{
+    if (!diag->run_complete)
+        return "incomplete";
+    if (!diag->timer_ready)
+        return "timer_not_ready";
+    if (!diag->timer_progressed)
+        return "timer_not_progressed";
+    if (diag->core_hz == 0U)
+        return "core_hz_invalid";
+    if (diag->fail_count != 0U)
+        return "invoke_failed";
+    if (diag->discarded_reset_count != 0U)
+        return "reset_discarded";
+    if (diag->sample_dropped_count != 0U)
+        return "sample_overflow";
+    return "none";
+}
+
+static void wake_diag_dump_cpu_samples(void)
+{
+    xiaozhi_wake_cpu_diag_t diag;
+    xiaozhi_wake_cpu_sample_snapshot_t snapshot;
+    rt_uint32_t samples[16];
+    rt_size_t offset = 0U;
+    rt_err_t ret;
+
+    rt_memset(&diag, 0, sizeof(diag));
+    ret = xiaozhi_wake_engine_cpu_diag_get(&diag);
+    if ((ret != RT_EOK) || !diag.run_complete)
+    {
+        rt_kprintf("wake_diag samples refused complete=%d valid=%d reason=%s ret=%d\n",
+                   diag.run_complete ? 1 : 0,
+                   diag.run_valid ? 1 : 0,
+                   (ret == RT_EOK) ? wake_cpu_run_reason(&diag) : "unavailable",
+                   ret);
+        return;
+    }
+
+    ret = xiaozhi_wake_engine_cpu_samples_snapshot(&snapshot);
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("wake_diag samples unavailable ret=%d\n", ret);
+        return;
+    }
+    if (snapshot.sample_count != diag.sample_count)
+    {
+        rt_kprintf("wake_diag samples aborted: reset before snapshot\n");
+        return;
+    }
+
+    rt_kprintf("wake_diag samples generation=%lu count=%lu policy=stop_at_1000 complete=%d valid=%d reason=%s\n",
+               (unsigned long)snapshot.generation,
+               (unsigned long)snapshot.sample_count,
+               diag.run_complete ? 1 : 0,
+               diag.run_valid ? 1 : 0,
+               wake_cpu_run_reason(&diag));
+    rt_kprintf("index,invoke_us\n");
+    while (offset < snapshot.sample_count)
+    {
+        rt_size_t count = xiaozhi_wake_engine_cpu_samples_read(&snapshot,
+                                                                offset,
+                                                                samples,
+                                                                sizeof(samples) / sizeof(samples[0]));
+        if (count == 0U)
+        {
+            rt_kprintf("wake_diag samples aborted: reset during dump\n");
+            return;
+        }
+        for (rt_size_t i = 0U; i < count; i++)
+        {
+            rt_kprintf("%lu,%lu\n",
+                       (unsigned long)(offset + i),
+                       (unsigned long)samples[i]);
+        }
+        offset += count;
+    }
+}
+
 static void wake_diag(int argc, char **argv)
 {
-    RT_UNUSED(argc);
-    RT_UNUSED(argv);
+    xiaozhi_wake_cpu_diag_t cpu_diag;
+    rt_err_t cpu_ret;
+
+    if ((argc >= 2) && (rt_strcmp(argv[1], "samples") == 0))
+    {
+        wake_diag_dump_cpu_samples();
+        return;
+    }
+    if ((argc >= 2) && (rt_strcmp(argv[1], "reset") == 0))
+    {
+        rt_kprintf("wake_cpu reset ret=%d\n", xiaozhi_wake_engine_cpu_diag_reset());
+    }
 
     rt_kprintf("wake_diag backend=%s ready=%d stage=%d err=%d threshold=%d/1000 noise=%d/1000 xiaorui=%d/1000 feature_src=%d feature_ret=%d alloc_src=%d alloc_size=%d alloc_fail_src=%d alloc_fail_size=%d alloc_diag=%d\n",
                xiaozhi_wake_engine_backend_name(),
@@ -750,8 +840,34 @@ static void wake_diag(int argc, char **argv)
                xiaozhi_wake_engine_last_alloc_fail_source(),
                xiaozhi_wake_engine_last_alloc_fail_size(),
                xiaozhi_wake_engine_alloc_diag());
+
+    cpu_ret = xiaozhi_wake_engine_cpu_diag_get(&cpu_diag);
+    rt_kprintf("wake_cpu backend=%s model=%s timer=%s resolution_us=%lu core_hz=%lu timer_ready=%d timer_progressed=%d run_complete=%d run_valid=%d reason=%s completed=%lu fail=%lu warmup=%lu benchmark=%lu reset_discard=%lu samples=%lu sample_dropped=%lu last_us=%lu min_us=%lu max_us=%lu total_us=0x%08lx%08lx ret=%d\n",
+               cpu_diag.backend,
+               cpu_diag.model_id,
+               cpu_diag.timer,
+               (unsigned long)cpu_diag.timer_resolution_us,
+               (unsigned long)cpu_diag.core_hz,
+               cpu_diag.timer_ready ? 1 : 0,
+               cpu_diag.timer_progressed ? 1 : 0,
+               cpu_diag.run_complete ? 1 : 0,
+               cpu_diag.run_valid ? 1 : 0,
+               wake_cpu_run_reason(&cpu_diag),
+               (unsigned long)cpu_diag.invoke_count,
+               (unsigned long)cpu_diag.fail_count,
+               (unsigned long)cpu_diag.warmup_count,
+               (unsigned long)cpu_diag.benchmark_count,
+               (unsigned long)cpu_diag.discarded_reset_count,
+               (unsigned long)cpu_diag.sample_count,
+               (unsigned long)cpu_diag.sample_dropped_count,
+               (unsigned long)cpu_diag.last_us,
+               (unsigned long)cpu_diag.min_us,
+               (unsigned long)cpu_diag.max_us,
+               (unsigned long)(cpu_diag.total_us >> 32),
+               (unsigned long)(cpu_diag.total_us & 0xFFFFFFFFULL),
+               cpu_ret);
 }
-MSH_CMD_EXPORT(wake_diag, Show XiaoZhi local wake model diagnostics);
+MSH_CMD_EXPORT(wake_diag, Show XiaoZhi wake diagnostics; optional reset clears CPU counters);
 
 static void wake_threshold(int argc, char **argv)
 {
@@ -1861,6 +1977,19 @@ static void xiaozhi_bridge_thread_entry(void *parameter)
                 g_xz_bridge_phase = 21;
                 xiaozhi_bridge_publish_ack(msg.payload.voice_control.cmd, ret);
                 xiaozhi_bridge_publish_status();
+            }
+            else if (msg.type == MSG_TYPE_APP_BLE_STATUS)
+            {
+                const app_ble_status_msg_t *ble_status = &msg.payload.app_ble_status;
+
+                if ((ble_status->version == APP_BLE_STATUS_PROTOCOL_VERSION) &&
+                    (ble_status->connected <= 1U))
+                {
+                    rehab_wifi_panel_note_ble_status(
+                        ble_status->connected ? RT_TRUE : RT_FALSE,
+                        ble_status->link_seq);
+                    ret = RT_EOK;
+                }
             }
             else
             {

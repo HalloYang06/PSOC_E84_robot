@@ -48,7 +48,7 @@ uint32_t ml_create_model(mtb_ml_model_16x8_t **mtb_ml_model_obj)
 
     /* AM NN model target for U55 */
     int32_t am_predict_sz = sizeof(mtb_ml_model_16x8_t);
-    *mtb_ml_model_obj = (mtb_ml_model_16x8_t *)malloc(am_predict_sz);
+    *mtb_ml_model_obj = (mtb_ml_model_16x8_t *)calloc(1u, am_predict_sz);
     if (*mtb_ml_model_obj == NULL)
     {
         return MTB_VA_RSLT_ML_INIT_ERROR;
@@ -103,7 +103,12 @@ uint32_t ml_inference_init(const mtb_ml_model_bin_t *am_model_bin,
     mtb_ml_model_obj->profiling = MTB_ML_PROFILE_DISABLE;
 
     /* Set the priority of NPU interrupt handler */
-    mtb_ml_init(NPU_PRIORITY);
+    result = mtb_ml_init(NPU_PRIORITY);
+    if (MTB_ML_RESULT_SUCCESS != result)
+    {
+        g_ifx_wwd_debug_detail = (int)result;
+        return MTB_VA_RSLT_ML_INIT_ERROR;
+    }
 
     CY_VA_PRINTF_TRACE("ML inference initialized\n\r");
     return MTB_VA_RSLT_SUCCESS;
@@ -126,6 +131,7 @@ void ml_destroy_model(mtb_ml_model_16x8_t **mtb_ml_model_obj)
 {
     if (mtb_ml_model_obj != NULL && *mtb_ml_model_obj != NULL)
     {
+        mtb_ml_model_16x8_deinit(*mtb_ml_model_obj);
         free(*mtb_ml_model_obj);
         *mtb_ml_model_obj = NULL;
     }

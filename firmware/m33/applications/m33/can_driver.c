@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define rt_kprintf(...) do { } while (0)
+
 static cy_stc_canfd_context_t s_can_min_ctx;
 static rt_bool_t s_can_min_ready = RT_FALSE;
 static rt_uint8_t s_can_min_tx_index = 0U;

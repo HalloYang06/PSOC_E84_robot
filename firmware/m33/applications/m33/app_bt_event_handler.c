@@ -6,26 +6,14 @@
 #include "app_bt_bonding.h"
 #include "app_bt_utils.h"
 #include "bt_app_gatt_handler.h"
+#include "bt_hci_transport.h"
 #include "cycfg_gap.h"
-#include "cy_syslib.h"
 
 hello_sensor_state_t hello_sensor_state;
 uint8_t bondindex = 0u;
-static wiced_bt_device_address_t g_local_bda;
+static wiced_bt_device_address_t g_local_bda = {0x00, 0xA0, 0x50, 0x11, 0x44, 0x77};
 static rt_bool_t g_bt_app_initialized = RT_FALSE;
 static rt_timer_t g_bt_alive_timer = RT_NULL;
-
-static void app_bt_init_local_bda(void)
-{
-    uint64_t unique_id = Cy_SysLib_GetUniqueId();
-    uint8_t i;
-
-    g_local_bda[0] = 0xC0U;
-    for (i = 1U; i < BD_ADDR_LEN; ++i)
-    {
-        g_local_bda[i] = (uint8_t)(unique_id >> ((i - 1U) * 8U));
-    }
-}
 
 static void app_bt_alive_timer_cb(void *parameter)
 {
@@ -112,9 +100,9 @@ wiced_result_t app_bt_management_callback(wiced_bt_management_evt_t event,
     case BTM_ENABLED_EVT:
         if ((p_event_data != RT_NULL) && (p_event_data->enabled.status == WICED_BT_SUCCESS))
         {
-            app_bt_init_local_bda();
+            bt_hci_transport_report_enabled(RT_EOK);
             memcpy(cy_bt_device_address, g_local_bda, sizeof(g_local_bda));
-            wiced_bt_set_local_bdaddr(g_local_bda, BLE_ADDR_RANDOM);
+            wiced_bt_set_local_bdaddr(g_local_bda, BLE_ADDR_PUBLIC);
             wiced_bt_dev_read_local_addr(cy_bt_device_address);
             rt_kprintf("[bt] Bluetooth stack ready\n");
             rt_kprintf("[bt] Local addr %02X:%02X:%02X:%02X:%02X:%02X\n",
@@ -125,12 +113,14 @@ wiced_result_t app_bt_management_callback(wiced_bt_management_evt_t event,
         }
         else
         {
+            bt_hci_transport_report_enabled(-RT_ERROR);
             rt_kprintf("[bt] BTSTACK enable failed status=0x%02X\n",
                        (p_event_data != RT_NULL) ? p_event_data->enabled.status : 0xFFu);
         }
         break;
 
     case BTM_DISABLED_EVT:
+        bt_hci_transport_report_disabled();
         rt_kprintf("[bt] BTSTACK disabled\n");
         break;
 

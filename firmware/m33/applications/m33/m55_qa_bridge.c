@@ -321,6 +321,73 @@ static void m55qa_status(int argc, char **argv)
 }
 MSH_CMD_EXPORT(m55qa_status, Show CM55 IPC and latest AI/wake state);
 
+static void m55qa_print_latency_ms(const char *label, rt_uint32_t value)
+{
+    if (value == VOICE_LATENCY_MS_UNAVAILABLE)
+    {
+        rt_kprintf("%s=NA", label);
+    }
+    else
+    {
+        rt_kprintf("%s=%lu", label, (unsigned long)value);
+    }
+}
+
+static void m55qa_xz_latency(int argc, char **argv)
+{
+    m55_voice_latency_snapshot_t snapshot;
+    const char *source;
+    rt_bool_t has_latest;
+
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+    rt_memset(&snapshot, 0, sizeof(snapshot));
+    has_latest = m55_model_bridge_get_voice_latency(&snapshot);
+
+    rt_kprintf("[m55qa] xz_latency received_count=%lu accepted_count=%lu invalid_count=%lu stale_count=%lu dropped_count=%lu\n",
+               (unsigned long)snapshot.received_count,
+               (unsigned long)snapshot.accepted_count,
+               (unsigned long)snapshot.invalid_count,
+               (unsigned long)snapshot.stale_count,
+               (unsigned long)snapshot.dropped_count);
+    if (!has_latest)
+    {
+        rt_kprintf("[m55qa] xz_latency latest=unavailable\n");
+        return;
+    }
+
+    source = ((snapshot.latency.flags & VOICE_LATENCY_FLAG_REAL_WAKE) != 0U) ?
+        "real_wake" : "manual";
+    rt_kprintf("[m55qa] xz_latency ipc_seq=%lu turn_seq=%lu flags=0x%lx source=%s qa_text=%u age_ticks=%lu\n",
+               (unsigned long)snapshot.ipc_seq,
+               (unsigned long)snapshot.latency.turn_seq,
+               (unsigned long)snapshot.latency.flags,
+               source,
+               ((snapshot.latency.flags & VOICE_LATENCY_FLAG_QA_TEXT) != 0U) ? 1U : 0U,
+               (unsigned long)(rt_tick_get() - snapshot.received_tick));
+
+    rt_kprintf("[m55qa] xz_latency capture ");
+    m55qa_print_latency_ms("wake_listen_ms", snapshot.latency.wake_to_listen_ms);
+    rt_kprintf(" ");
+    m55qa_print_latency_ms("voice_stop_ms", snapshot.latency.last_voice_to_stop_ms);
+    rt_kprintf("\n[m55qa] xz_latency cloud ");
+    m55qa_print_latency_ms("stop_stt_ms", snapshot.latency.stop_to_stt_ms);
+    rt_kprintf(" ");
+    m55qa_print_latency_ms("stt_llm_ms", snapshot.latency.stt_to_llm_ms);
+    rt_kprintf("\n[m55qa] xz_latency playback ");
+    m55qa_print_latency_ms("llm_tts_ms", snapshot.latency.llm_to_tts_start_ms);
+    rt_kprintf(" ");
+    m55qa_print_latency_ms("tts_packet_ms", snapshot.latency.tts_start_to_first_packet_ms);
+    rt_kprintf(" ");
+    m55qa_print_latency_ms("packet_write_ms", snapshot.latency.first_packet_to_first_write_ms);
+    rt_kprintf("\n[m55qa] xz_latency total ");
+    m55qa_print_latency_ms("speech_audio_ms", snapshot.latency.speech_end_to_first_write_ms);
+    rt_kprintf(" ");
+    m55qa_print_latency_ms("wake_audio_ms", snapshot.latency.wake_to_first_write_ms);
+    rt_kprintf("\n");
+}
+MSH_CMD_EXPORT(m55qa_xz_latency, Show latest CM55 XiaoZhi latency without starting an action);
+
 static void m55qa_wake_on(int argc, char **argv)
 {
     rt_err_t ret;

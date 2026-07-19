@@ -5,9 +5,6 @@
 #include "cy_sysint.h"
 #include "mtb_ipc.h"
 
-#include <stddef.h>
-#include <stdint.h>
-
 #define M33_M55_IPC_INTERNAL_CHANNEL     MTB_IPC_CHAN_1
 #define M33_M55_IPC_QUEUE_CHANNEL        MTB_IPC_CHAN_0
 #define M33_M55_IPC_INSTANCE_SEMA        (5UL)
@@ -44,40 +41,6 @@ static mtb_ipc_queue_t g_tx_queue_handle _MTB_IPC_DATA_ALIGN;
 static mtb_ipc_queue_t g_rx_queue_handle _MTB_IPC_DATA_ALIGN;
 __attribute__((section(".ipc_stream_shared"), aligned(32)))
 volatile m33_m55_pcm_shared_t g_m33_m55_pcm_shared;
-
-static void m33_m55_shared_pcm_dsb(void)
-{
-    __DSB();
-}
-
-void m33_m55_shared_pcm_invalidate_header(volatile m33_m55_pcm_shared_t *shared)
-{
-    if (shared == RT_NULL)
-    {
-        return;
-    }
-
-    SCB_InvalidateDCache_by_Addr((void *)(uintptr_t)shared,
-                                (int32_t)offsetof(m33_m55_pcm_shared_t, data));
-    m33_m55_shared_pcm_dsb();
-}
-
-void m33_m55_shared_pcm_invalidate_payload(volatile m33_m55_pcm_shared_t *shared,
-                                           rt_uint32_t payload_len)
-{
-    if ((shared == RT_NULL) || (payload_len == 0U))
-    {
-        return;
-    }
-    if (payload_len > M33_M55_PCM_SHARED_CAPACITY)
-    {
-        payload_len = M33_M55_PCM_SHARED_CAPACITY;
-    }
-
-    SCB_InvalidateDCache_by_Addr((void *)(uintptr_t)&shared->data[0],
-                                (int32_t)payload_len);
-    m33_m55_shared_pcm_dsb();
-}
 
 static const mtb_ipc_config_t g_ipc_config = {
     .internal_channel_index = M33_M55_IPC_INTERNAL_CHANNEL,
@@ -336,6 +299,31 @@ rt_err_t m33_m55_comm_init(void)
         }
     }
     return RT_EOK;
+}
+
+rt_err_t m33_m55_comm_try_publish(const m33_m55_message_t *msg)
+{
+    m33_m55_message_t local;
+    cy_rslt_t result;
+
+    if (msg == RT_NULL)
+    {
+        return -RT_ERROR;
+    }
+    if (!g_comm_runtime.runtime_ready || !g_comm_runtime.initialized)
+    {
+        return -RT_EBUSY;
+    }
+    if (rt_mutex_take(&g_comm_runtime.lock, RT_WAITING_NO) != RT_EOK)
+    {
+        return -RT_EBUSY;
+    }
+    local = *msg;
+    local.seq = ++g_comm_runtime.seq;
+    rt_mutex_release(&g_comm_runtime.lock);
+
+    result = mtb_ipc_queue_put(&g_tx_queue_handle, &local, 0);
+    return m33_m55_result_to_rt(result);
 }
 
 rt_err_t m33_m55_comm_publish(const m33_m55_message_t *msg)

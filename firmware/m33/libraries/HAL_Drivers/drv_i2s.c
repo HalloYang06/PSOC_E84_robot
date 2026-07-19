@@ -13,7 +13,7 @@
 #include <rtdbg.h>
 
 #ifndef M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA
-#define M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA 1
+#define M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA 0
 #endif
 
 typedef enum
@@ -96,6 +96,7 @@ struct sound_device
     rt_thread_t playback_thread;
 };
 static struct sound_device snd_dev = {0};
+static rt_bool_t sound_hw_initialized = RT_FALSE;
 
 static char msg_pool[512];
 
@@ -109,6 +110,34 @@ typedef struct
 } music_player_q_data_t;
 
 void i2s_playback_task(void *arg);
+void ifx_i2s_init(void);
+void ifx_set_samplerate(struct rt_audio_configure audio_config);
+
+static rt_err_t sound_hw_init_once(struct sound_device *snd_dev)
+{
+    if (sound_hw_initialized)
+    {
+        return RT_EOK;
+    }
+
+    ifx_i2s_init();
+
+    if (es8388_init("i2c0", RT_NULL) != RT_EOK)
+    {
+        LOG_E("ES8388 init failed.");
+        return -RT_ERROR;
+    }
+
+    es8388_start(ES_MODE_DAC);
+    es8388_volume_set(snd_dev->volume);
+    ifx_set_samplerate(snd_dev->audio_config);
+
+    rt_thread_startup(snd_dev->playback_thread);
+    sound_hw_initialized = RT_TRUE;
+
+    LOG_I("ES8388 init success.");
+    return RT_EOK;
+}
 
 void ifx_i2s_init(void)
 {
@@ -327,7 +356,10 @@ static rt_err_t sound_configure(struct rt_audio_device *audio, struct rt_audio_c
         {
             rt_uint8_t volume = caps->udata.value;
             snd_dev->volume = volume;
-            es8388_volume_set(snd_dev->volume);
+            if (sound_hw_initialized)
+            {
+                es8388_volume_set(snd_dev->volume);
+            }
             LOG_D("set volume %d", volume);
             break;
         }
@@ -350,7 +382,10 @@ static rt_err_t sound_configure(struct rt_audio_device *audio, struct rt_audio_c
             snd_dev->audio_config.samplerate = caps->udata.config.samplerate;
             snd_dev->audio_config.channels   = caps->udata.config.channels;
             snd_dev->audio_config.samplebits = caps->udata.config.samplebits;
-            ifx_set_samplerate(snd_dev->audio_config);
+            if (sound_hw_initialized)
+            {
+                ifx_set_samplerate(snd_dev->audio_config);
+            }
             LOG_D("set samplerate %d", snd_dev->audio_config.samplerate);
             break;
         }
@@ -358,7 +393,10 @@ static rt_err_t sound_configure(struct rt_audio_device *audio, struct rt_audio_c
         case AUDIO_DSP_SAMPLERATE:
         {
             snd_dev->audio_config.samplerate = caps->udata.config.samplerate;
-            ifx_set_samplerate(snd_dev->audio_config);
+            if (sound_hw_initialized)
+            {
+                ifx_set_samplerate(snd_dev->audio_config);
+            }
             LOG_D("set samplerate %d", snd_dev->audio_config.samplerate);
             break;
         }
@@ -397,28 +435,9 @@ static rt_err_t sound_init(struct rt_audio_device *audio)
 {
     rt_err_t result = RT_EOK;
 
-    struct sound_device *snd_dev;
-
     RT_ASSERT(audio != RT_NULL);
 
-    snd_dev = (struct sound_device *)audio->parent.user_data;
-
-    ifx_i2s_init();
-
-    if (es8388_init("i2c0", RT_NULL) != RT_EOK)
-    {
-        LOG_E("ES8388 init failed.");
-        RT_ASSERT(0);
-    }
-
-    es8388_start(ES_MODE_DAC);
-
-    es8388_volume_set(20);
-    ifx_set_samplerate(snd_dev->audio_config);
-
-    rt_thread_startup(snd_dev->playback_thread);
-
-    LOG_I("ES8388 init success.");
+    LOG_I("sound0 registered; ES8388 init deferred until replay start.");
     return result;
 }
 
@@ -428,6 +447,11 @@ static rt_err_t sound_start(struct rt_audio_device *audio, int stream)
 
     if (stream == AUDIO_STREAM_REPLAY)
     {
+        struct sound_device *snd_dev = (struct sound_device *)audio->parent.user_data;
+        if (sound_hw_init_once(snd_dev) != RT_EOK)
+        {
+            return -RT_ERROR;
+        }
         music_player_active = true;
         LOG_I("Ready for I2S output \r\n");
         rt_audio_tx_complete(audio);
@@ -506,12 +530,13 @@ static struct rt_audio_ops snd_ops =
     .buffer_info = sound_buffer_info,
 };
 
-int rt_hw_sound_init(void)
+static int rt_hw_sound_init_body(void)
 {
     rt_err_t ret = RT_EOK;
     rt_uint8_t *tx_buff;
 
 #if M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA
+    LOG_W("sound0 init skipped for Xiaozhi M55 QA");
     return RT_EOK;
 #endif
 
@@ -561,7 +586,25 @@ int rt_hw_sound_init(void)
 
     return RT_EOK;
 }
+
+int rt_hw_sound_init(void)
+{
+#if M33_SKIP_SOUND0_INIT_FOR_XIAOZHI_QA
+    LOG_W("sound0 init skipped for Xiaozhi M55 QA");
+    return RT_EOK;
+#endif
+
+    return RT_EOK;
+}
 INIT_DEVICE_EXPORT(rt_hw_sound_init);
+
+static int cmd_sound0_init(int argc, char **argv)
+{
+    RT_UNUSED(argc);
+    RT_UNUSED(argv);
+    return rt_hw_sound_init_body();
+}
+MSH_CMD_EXPORT(cmd_sound0_init, register sound0 audio device on demand);
 
 void i2s_write_32_samples(void)
 {
@@ -593,7 +636,6 @@ void i2s_playback_task(void *arg)
     struct sound_device *snd_dev;
     RT_ASSERT(audio != RT_NULL);
     snd_dev = (struct sound_device *)audio->parent.user_data;
-    static int count = 0;
     int16_t *temp_buffer_ptr;
 
     // int32_t* asrc_out_ptr = NULL;

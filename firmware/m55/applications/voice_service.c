@@ -6,6 +6,8 @@
 #include "m33_m55_comm.h"
 #include "model_result_publisher.h"
 #include "official_voice_service.h"
+#include "voice_mode_intent.h"
+#include "voice_rehab_ipc_sender.h"
 #include "websocket_client.h"
 #include "wifi_config_service.h"
 #include "xiaozhi_opus_decoder.h"
@@ -162,6 +164,7 @@ typedef struct
     volatile rt_uint32_t server_text_pending_write_index;
     volatile rt_uint32_t server_text_pending_count;
     rt_uint32_t server_text_drop_count;
+    rt_uint32_t server_text_oversize_drop_count;
     rt_uint32_t tts_pending_high_water;
     rt_uint32_t tts_largest_payload_len;
     rt_uint32_t tts_oversize_drop_count;
@@ -296,6 +299,224 @@ static void voice_service_flush_xiaozhi_tail_frame(void);
 static void voice_service_start_async_reconnect(void);
 
 static voice_service_t g_service;
+static rt_uint32_t g_fixed_level_event_seq;
+
+typedef struct
+{
+    rt_uint32_t turn_seq;
+    rt_uint32_t flags;
+    rt_tick_t wake_tick;
+    rt_tick_t listen_tick;
+    rt_tick_t last_voice_tick;
+    rt_tick_t stop_tick;
+    rt_tick_t stt_tick;
+    rt_tick_t llm_tick;
+    rt_tick_t tts_start_tick;
+    rt_tick_t first_packet_tick;
+} voice_latency_snapshot_t;
+
+typedef struct
+{
+    rt_uint32_t turn_seq;
+    rt_uint32_t flags;
+    rt_tick_t wake_tick;
+    rt_tick_t listen_tick;
+    rt_tick_t last_voice_tick;
+    rt_tick_t stop_tick;
+    rt_tick_t stt_tick;
+    rt_tick_t llm_tick;
+    rt_tick_t tts_start_tick;
+    rt_tick_t first_packet_tick;
+    rt_uint32_t tts_turn_seq;
+    rt_uint32_t first_packet_turn_seq;
+    rt_uint32_t publish_fail_count;
+    rt_uint32_t drop_count;
+    rt_bool_t active;
+    rt_bool_t first_write_seen;
+    rt_bool_t publish_claimed;
+} voice_latency_tracker_t;
+
+typedef enum
+{
+    VOICE_LATENCY_STAGE_LAST_VOICE = 0,
+    VOICE_LATENCY_STAGE_STOP,
+    VOICE_LATENCY_STAGE_STT,
+    VOICE_LATENCY_STAGE_LLM,
+    VOICE_LATENCY_STAGE_TTS_START,
+    VOICE_LATENCY_STAGE_FIRST_PACKET
+} voice_latency_stage_t;
+
+static voice_latency_tracker_t g_voice_latency;
+
+static rt_uint32_t voice_service_latency_delta_ms(rt_tick_t start, rt_tick_t end)
+{
+    if ((start == 0U) || (end == 0U) || ((rt_int32_t)(end - start) < 0))
+    {
+        return VOICE_LATENCY_MS_UNAVAILABLE;
+    }
+
+    return (rt_uint32_t)((end - start) * 1000U / RT_TICK_PER_SECOND);
+}
+
+static void voice_service_latency_begin_turn(rt_tick_t wake_tick, rt_uint32_t source_flag)
+{
+    rt_tick_t now = rt_tick_get();
+    rt_base_t level = rt_hw_interrupt_disable();
+
+    if (g_voice_latency.active && !g_voice_latency.first_write_seen)
+    {
+        g_voice_latency.drop_count++;
+    }
+    g_voice_latency.turn_seq++;
+    g_voice_latency.flags = source_flag;
+    g_voice_latency.wake_tick = (wake_tick != 0U) ? wake_tick : now;
+    g_voice_latency.listen_tick = now;
+    g_voice_latency.last_voice_tick = 0U;
+    g_voice_latency.stop_tick = 0U;
+    g_voice_latency.stt_tick = 0U;
+    g_voice_latency.llm_tick = 0U;
+    g_voice_latency.tts_start_tick = 0U;
+    g_voice_latency.first_packet_tick = 0U;
+    g_voice_latency.tts_turn_seq = 0U;
+    g_voice_latency.first_packet_turn_seq = 0U;
+    g_voice_latency.active = RT_TRUE;
+    g_voice_latency.first_write_seen = RT_FALSE;
+    g_voice_latency.publish_claimed = RT_FALSE;
+    rt_hw_interrupt_enable(level);
+}
+
+static void voice_service_latency_mark_stage(voice_latency_stage_t stage)
+{
+    rt_tick_t now = rt_tick_get();
+    rt_base_t level = rt_hw_interrupt_disable();
+
+    if (g_voice_latency.active)
+    {
+        switch (stage)
+        {
+        case VOICE_LATENCY_STAGE_LAST_VOICE:
+            g_voice_latency.last_voice_tick = now;
+            break;
+        case VOICE_LATENCY_STAGE_STOP:
+            if (g_voice_latency.stop_tick == 0U)
+            {
+                g_voice_latency.stop_tick = now;
+            }
+            break;
+        case VOICE_LATENCY_STAGE_STT:
+            if (g_voice_latency.stt_tick == 0U)
+            {
+                g_voice_latency.stt_tick = now;
+            }
+            break;
+        case VOICE_LATENCY_STAGE_LLM:
+            if (g_voice_latency.llm_tick == 0U)
+            {
+                g_voice_latency.llm_tick = now;
+            }
+            break;
+        case VOICE_LATENCY_STAGE_TTS_START:
+            if (g_voice_latency.tts_start_tick == 0U)
+            {
+                g_voice_latency.tts_start_tick = now;
+                g_voice_latency.tts_turn_seq = g_voice_latency.turn_seq;
+            }
+            break;
+        case VOICE_LATENCY_STAGE_FIRST_PACKET:
+            if (g_voice_latency.first_packet_tick == 0U)
+            {
+                g_voice_latency.first_packet_tick = now;
+                g_voice_latency.first_packet_turn_seq = g_voice_latency.turn_seq;
+            }
+            break;
+        default:
+            break;
+        }
+    }
+    rt_hw_interrupt_enable(level);
+}
+
+static void voice_service_latency_mark_stop_before_send(void)
+{
+    voice_service_latency_mark_stage(VOICE_LATENCY_STAGE_STOP);
+}
+
+static void voice_service_latency_publish_first_write(rt_tick_t first_write_tick)
+{
+    voice_latency_snapshot_t snapshot;
+    m33_m55_message_t msg;
+    rt_err_t ret;
+    rt_base_t level;
+
+    if (first_write_tick == 0U)
+    {
+        return;
+    }
+
+    level = rt_hw_interrupt_disable();
+    if (!g_voice_latency.active || g_voice_latency.first_write_seen)
+    {
+        rt_hw_interrupt_enable(level);
+        return;
+    }
+    g_voice_latency.first_write_seen = RT_TRUE;
+    if ((g_voice_latency.tts_turn_seq != g_voice_latency.turn_seq) ||
+        (g_voice_latency.first_packet_turn_seq != g_voice_latency.turn_seq) ||
+        (g_voice_latency.tts_start_tick == 0U) ||
+        (g_voice_latency.first_packet_tick == 0U) ||
+        ((rt_int32_t)(g_voice_latency.first_packet_tick - g_voice_latency.tts_start_tick) < 0) ||
+        ((rt_int32_t)(first_write_tick - g_voice_latency.first_packet_tick) < 0))
+    {
+        g_voice_latency.drop_count++;
+        g_voice_latency.active = RT_FALSE;
+        rt_hw_interrupt_enable(level);
+        return;
+    }
+    snapshot.turn_seq = g_voice_latency.turn_seq;
+    snapshot.flags = g_voice_latency.flags;
+    snapshot.wake_tick = g_voice_latency.wake_tick;
+    snapshot.listen_tick = g_voice_latency.listen_tick;
+    snapshot.last_voice_tick = g_voice_latency.last_voice_tick;
+    snapshot.stop_tick = g_voice_latency.stop_tick;
+    snapshot.stt_tick = g_voice_latency.stt_tick;
+    snapshot.llm_tick = g_voice_latency.llm_tick;
+    snapshot.tts_start_tick = g_voice_latency.tts_start_tick;
+    snapshot.first_packet_tick = g_voice_latency.first_packet_tick;
+    g_voice_latency.publish_claimed = RT_TRUE;
+    g_voice_latency.active = RT_FALSE;
+    rt_hw_interrupt_enable(level);
+
+    rt_memset(&msg, 0, sizeof(msg));
+    msg.type = MSG_TYPE_VOICE_LATENCY;
+    msg.payload.voice_latency.turn_seq = snapshot.turn_seq;
+    msg.payload.voice_latency.flags = snapshot.flags | VOICE_LATENCY_FLAG_VALID;
+    msg.payload.voice_latency.wake_to_listen_ms =
+        voice_service_latency_delta_ms(snapshot.wake_tick, snapshot.listen_tick);
+    msg.payload.voice_latency.last_voice_to_stop_ms =
+        voice_service_latency_delta_ms(snapshot.last_voice_tick, snapshot.stop_tick);
+    msg.payload.voice_latency.stop_to_stt_ms =
+        voice_service_latency_delta_ms(snapshot.stop_tick, snapshot.stt_tick);
+    msg.payload.voice_latency.stt_to_llm_ms =
+        voice_service_latency_delta_ms(snapshot.stt_tick, snapshot.llm_tick);
+    msg.payload.voice_latency.llm_to_tts_start_ms =
+        voice_service_latency_delta_ms(snapshot.llm_tick, snapshot.tts_start_tick);
+    msg.payload.voice_latency.tts_start_to_first_packet_ms =
+        voice_service_latency_delta_ms(snapshot.tts_start_tick, snapshot.first_packet_tick);
+    msg.payload.voice_latency.first_packet_to_first_write_ms =
+        voice_service_latency_delta_ms(snapshot.first_packet_tick, first_write_tick);
+    msg.payload.voice_latency.speech_end_to_first_write_ms =
+        voice_service_latency_delta_ms(snapshot.last_voice_tick, first_write_tick);
+    msg.payload.voice_latency.wake_to_first_write_ms =
+        voice_service_latency_delta_ms(snapshot.wake_tick, first_write_tick);
+
+    ret = m33_m55_comm_try_publish(&msg);
+    if (ret != RT_EOK)
+    {
+        level = rt_hw_interrupt_disable();
+        g_voice_latency.publish_fail_count++;
+        rt_hw_interrupt_enable(level);
+    }
+}
 
 static rt_uint32_t voice_service_text_code4(const char *text)
 {
@@ -799,6 +1020,10 @@ void voice_service_dump_tts_diag(void)
     rt_int32_t speaker_last_ret;
     rt_uint32_t diag_phase;
     rt_int32_t last_consume_ret;
+    rt_uint32_t latency_turn_seq;
+    rt_uint32_t latency_publish_fail;
+    rt_uint32_t latency_drop;
+    rt_base_t latency_level;
     rt_size_t heap_total = 0;
     rt_size_t heap_used = 0;
     rt_size_t heap_max_used = 0;
@@ -833,6 +1058,12 @@ void voice_service_dump_tts_diag(void)
     diag_phase = g_service.service_diag_phase;
     last_consume_ret = g_service.service_last_consume_ret;
     rt_mutex_release(&g_service.lock);
+
+    latency_level = rt_hw_interrupt_disable();
+    latency_turn_seq = g_voice_latency.turn_seq;
+    latency_publish_fail = g_voice_latency.publish_fail_count;
+    latency_drop = g_voice_latency.drop_count;
+    rt_hw_interrupt_enable(latency_level);
 
     rt_memory_info(&heap_total, &heap_used, &heap_max_used);
     rt_kprintf("tts_diag pending=%lu/%lu high=%lu slot=%lu largest=%lu oversize=%lu full=%lu\n",
@@ -873,6 +1104,10 @@ void voice_service_dump_tts_diag(void)
                (unsigned long)ifx_i2s_tx_underflow_count(),
                (unsigned long)ifx_i2s_tx_zero_fill_count(),
                (unsigned long)ifx_i2s_tx_frame_ready_count());
+    rt_kprintf("tts_diag latency turn=%lu fail=%lu drop=%lu\n",
+               (unsigned long)latency_turn_seq,
+               (unsigned long)latency_publish_fail,
+               (unsigned long)latency_drop);
 }
 
 void voice_service_note_error(rt_err_t error)
@@ -1559,6 +1794,8 @@ static rt_bool_t voice_service_stream_pcm_to_m55_speaker(const uint8_t *audio_da
                 return RT_FALSE;
             }
 
+            voice_service_latency_publish_first_write(rt_tick_get());
+
             rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
             g_service.xiaozhi_tts_forward_chunks++;
             g_service.xiaozhi_tts_forward_bytes += (rt_uint32_t)written;
@@ -1645,6 +1882,8 @@ static rt_bool_t voice_service_flush_m55_speaker(void)
         g_service.service_last_consume_ret = -RT_ERROR;
         return RT_FALSE;
     }
+
+    voice_service_latency_publish_first_write(rt_tick_get());
 
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.xiaozhi_tts_forward_chunks++;
@@ -1882,6 +2121,7 @@ static void voice_service_enqueue_tts_payload(const uint8_t *payload,
         }
     }
     rt_mutex_release(&g_service.lock);
+    voice_service_latency_mark_stage(VOICE_LATENCY_STAGE_FIRST_PACKET);
     rt_sem_release(&g_service.tts_sem);
 }
 
@@ -1895,8 +2135,18 @@ static void voice_service_enqueue_server_text(const uint8_t *payload, rt_size_t 
         return;
     }
 
-    copy_len = (payload_len >= VOICE_SERVER_TEXT_SLOT_SIZE) ?
-               (VOICE_SERVER_TEXT_SLOT_SIZE - 1U) : payload_len;
+    if (payload_len >= VOICE_SERVER_TEXT_SLOT_SIZE)
+    {
+        rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
+        g_service.server_text_drop_count++;
+        g_service.server_text_oversize_drop_count++;
+        rt_mutex_release(&g_service.lock);
+        rt_kprintf("[voice_service] server text oversize drop len=%lu max=%lu\n",
+                   (unsigned long)payload_len,
+                   (unsigned long)(VOICE_SERVER_TEXT_SLOT_SIZE - 1U));
+        return;
+    }
+    copy_len = payload_len;
 
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     if (g_service.server_text_pending_count >= VOICE_SERVER_TEXT_SLOT_COUNT)
@@ -2274,6 +2524,8 @@ static void voice_service_start_xiaozhi_listening(const char *wake_word)
     g_service.xiaozhi_audio_frame_len = 0;
     rt_mutex_release(&g_service.lock);
 
+    voice_service_latency_begin_turn(g_service.wake_last_trigger_tick,
+                                     VOICE_LATENCY_FLAG_REAL_WAKE);
     xiaozhi_ui_state_mark_wake(public_wake_word);
     xiaozhi_feedback_wake_local();
     rt_kprintf("[voice_service] Xiaozhi listening started session=%s word=%s\n",
@@ -2369,6 +2621,7 @@ static rt_err_t voice_service_start_xiaozhi_manual_listening(void)
     g_service.xiaozhi_audio_frame_len = 0;
     rt_mutex_release(&g_service.lock);
 
+    voice_service_latency_begin_turn(rt_tick_get(), VOICE_LATENCY_FLAG_MANUAL);
     voice_service_clear_xiaozhi_thinking();
     xiaozhi_ui_state_set(XIAOZHI_UI_LISTENING, "手动录音中", RT_EOK);
     rt_kprintf("[voice_service] Xiaozhi manual listening started session=%s\n", session_id);
@@ -2542,6 +2795,9 @@ rt_err_t voice_service_qa_xiaozhi_text_turn(const char *text)
     {
         return ret;
     }
+    voice_service_latency_begin_turn(rt_tick_get(),
+                                     VOICE_LATENCY_FLAG_MANUAL |
+                                     VOICE_LATENCY_FLAG_QA_TEXT);
     rt_thread_mdelay(80);
 
     json_escape_text(text, escaped, sizeof(escaped));
@@ -2551,6 +2807,7 @@ rt_err_t voice_service_qa_xiaozhi_text_turn(const char *text)
                 "\"audio_bytes\":0,\"audio_chunks\":0}",
                 session_id,
                 escaped);
+    voice_service_latency_mark_stop_before_send();
     ret = websocket_client_send_text(json);
     if (ret == RT_EOK)
     {
@@ -2983,6 +3240,11 @@ static rt_bool_t voice_service_update_xiaozhi_eou(const voice_model_result_t *mo
     wake_source = g_service.xiaozhi_listening_source;
     rt_mutex_release(&g_service.lock);
 
+    if (active && voice_seen)
+    {
+        voice_service_latency_mark_stage(VOICE_LATENCY_STAGE_LAST_VOICE);
+    }
+
     elapsed_ms = (rt_uint32_t)((now - started) * 1000U / RT_TICK_PER_SECOND);
     silence_ms = (rt_uint32_t)((now - last_voice) * 1000U / RT_TICK_PER_SECOND);
     min_record_ms = (wake_source == XIAOZHI_WAKE_SOURCE_MANUAL) ?
@@ -3108,6 +3370,7 @@ static rt_err_t voice_service_send_xiaozhi_listen_stop(const char *session_id,
         return ret;
     }
 
+    voice_service_latency_mark_stop_before_send();
     ret = websocket_client_send_text(json);
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.xiaozhi_listen_stop_result = ret;
@@ -3144,6 +3407,38 @@ static void __attribute__((unused)) on_asr_result(const char *text, rt_err_t err
     rt_kprintf("[voice_service] ASR: %s\n", text);
     voice_service_publish_text_to_m33(MSG_TYPE_ASR_TEXT, text);
     voice_service_send_text_to_server("asr_text", text);
+}
+
+static void voice_service_submit_fixed_level_intent(const char *text)
+{
+    voice_mode_request_t intent;
+    char event_id[40];
+    rt_uint32_t request_id = 0U;
+    rt_uint32_t event_seq;
+    rt_err_t ret;
+
+    event_seq = ++g_fixed_level_event_seq;
+    rt_snprintf(event_id,
+                sizeof(event_id),
+                "local-level-%08lx-%08lx",
+                (unsigned long)rt_tick_get(),
+                (unsigned long)event_seq);
+    if (!voice_mode_intent_classify(VOICE_MODE_EVENT_XIAOZHI_VLA_CONTROL,
+                                    event_id,
+                                    text,
+                                    &intent) ||
+        ((intent.action != VOICE_REHAB_ACTION_SET_MODE) &&
+         (intent.action != VOICE_REHAB_ACTION_LEVEL_UP) &&
+         (intent.action != VOICE_REHAB_ACTION_LEVEL_DOWN)))
+    {
+        return;
+    }
+
+    ret = voice_rehab_ipc_sender_submit_vla(event_id, text, &request_id);
+    rt_kprintf("[voice_service] fixed level intent ret=%d request=%lu text=%s\n",
+               ret,
+               (unsigned long)request_id,
+               text);
 }
 
 static void voice_service_handle_server_text(const char *message)
@@ -3202,6 +3497,19 @@ static void voice_service_handle_server_text(const char *message)
     g_service.xiaozhi_server_last_reason_code =
         ((reason_code & 0xffffU) | ((raw_len & 0xffffU) << 16U));
     rt_mutex_release(&g_service.lock);
+
+    if (rt_strcmp(type, "stt") == 0)
+    {
+        voice_service_latency_mark_stage(VOICE_LATENCY_STAGE_STT);
+    }
+    else if (rt_strcmp(type, "llm") == 0)
+    {
+        voice_service_latency_mark_stage(VOICE_LATENCY_STAGE_LLM);
+    }
+    else if ((rt_strcmp(type, "tts") == 0) && (rt_strcmp(state, "start") == 0))
+    {
+        voice_service_latency_mark_stage(VOICE_LATENCY_STAGE_TTS_START);
+    }
 
     rt_kprintf("[voice_service] server event type=%s state=%s session=%s text=%u content=%u speak=%u raw=%lu hint=0x%08lx err=%s reason=%s code=%s\n",
                type[0] ? type : "(none)",
@@ -3288,6 +3596,7 @@ static void voice_service_handle_server_text(const char *message)
         g_service.xiaozhi_server_stt_count++;
         rt_mutex_release(&g_service.lock);
         rt_kprintf("[voice_service] stt text: %s\n", text);
+        voice_service_submit_fixed_level_intent(text);
         voice_service_mark_xiaozhi_thinking("已识别，等待回答");
         voice_service_publish_text_to_m33(MSG_TYPE_ASR_TEXT, text);
         return;
@@ -3358,13 +3667,28 @@ static void voice_service_handle_server_text(const char *message)
     {
         if (xiaozhi_response.kind == XIAOZHI_UTTERANCE_VLA_COMMAND)
         {
-            const char *intent = xiaozhi_response.language_context[0] ?
-                                 xiaozhi_response.language_context :
-                                 xiaozhi_response.transcript;
-            rt_kprintf("[voice_service] vla language intent: %s\n", intent && intent[0] ? intent : "(empty)");
-            if (intent && intent[0])
+            const char *diagnostic_text = xiaozhi_response.language_context[0] ?
+                                          xiaozhi_response.language_context :
+                                          xiaozhi_response.transcript;
+            rt_uint32_t request_id = 0U;
+            rt_err_t submit_ret = -RT_EINVAL;
+
+            if ((xiaozhi_response.event_id[0] != '\0') &&
+                (xiaozhi_response.language_context[0] != '\0'))
             {
-                voice_service_publish_text_to_m33(MSG_TYPE_ASR_TEXT, intent);
+                submit_ret = voice_rehab_ipc_sender_submit_vla(xiaozhi_response.event_id,
+                                                               xiaozhi_response.language_context,
+                                                               &request_id);
+            }
+            rt_kprintf("[voice_service] vla event=%s intent=%s rehab_ret=%d request=%lu\n",
+                       xiaozhi_response.event_id[0] ? xiaozhi_response.event_id : "(none)",
+                       xiaozhi_response.language_context[0] ?
+                           xiaozhi_response.language_context : "(none)",
+                       submit_ret,
+                       (unsigned long)request_id);
+            if ((diagnostic_text != RT_NULL) && (diagnostic_text[0] != '\0'))
+            {
+                voice_service_publish_text_to_m33(MSG_TYPE_ASR_TEXT, diagnostic_text);
             }
         }
         else if (xiaozhi_response.kind == XIAOZHI_UTTERANCE_DAILY_CHAT)
@@ -3608,6 +3932,7 @@ static void voice_service_accept_shared_pcm(const sensor_stream_msg_t *stream)
         return;
     }
 
+    m33_m55_shared_pcm_invalidate_header(&g_m33_m55_pcm_shared);
     if (stream->chunk_index != g_m33_m55_pcm_shared.seq)
     {
         rt_kprintf("[voice_service] shared pcm seq mismatch msg=%lu shared=%lu\n",
@@ -3626,7 +3951,7 @@ static void voice_service_accept_shared_pcm(const sensor_stream_msg_t *stream)
         len = VOICE_PCM_BUFFER_SIZE;
     }
 
-    rt_hw_cpu_dcache_ops(RT_HW_CACHE_INVALIDATE, (void *)g_m33_m55_pcm_shared.data, len);
+    m33_m55_shared_pcm_invalidate_payload(&g_m33_m55_pcm_shared, len);
     rt_mutex_take(&g_service.lock, RT_WAITING_FOREVER);
     g_service.audio_expected = len;
     g_service.audio_received = len;
@@ -4113,6 +4438,9 @@ void voice_service_handle_ipc_message(const m33_m55_message_t *msg)
     case MSG_TYPE_VOICE_CONFIG:
         voice_service_handle_config(&msg->payload.voice_config);
         break;
+    case MSG_TYPE_REHAB_MODE_RESULT:
+        voice_rehab_ipc_sender_handle_result(&msg->payload.rehab_mode_result);
+        break;
     case MSG_TYPE_AI_INFERENCE_REQ:
     case MSG_TYPE_REHAB_ANALYSIS_REQ:
         ret = -RT_ENOSYS;
@@ -4421,6 +4749,12 @@ rt_err_t voice_service_init(const char *baidu_api_key, const char *baidu_secret_
         rt_free(g_service.audio_buffer);
         g_service.audio_buffer = RT_NULL;
         return ret;
+    }
+
+    ret = voice_rehab_ipc_sender_init();
+    if (ret != RT_EOK)
+    {
+        rt_kprintf("[voice_service] voice rehab control disabled: %d\n", ret);
     }
 
     ret = baidu_asr_init(baidu_api_key, baidu_secret_key);

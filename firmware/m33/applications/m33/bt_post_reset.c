@@ -221,7 +221,7 @@ void bt_post_reset_cback(void)
         return;
     }
 
-    if (brcm_patch_ram_length <= 0)
+    if ((brcm_patch_ram_length <= 0) || (brcm_patchram_buf == RT_NULL))
     {
         rt_kprintf("[bt.hci] patch image invalid\n");
         g_bt_fwdl_cb.state = BT_POST_RESET_STATE_DONE;

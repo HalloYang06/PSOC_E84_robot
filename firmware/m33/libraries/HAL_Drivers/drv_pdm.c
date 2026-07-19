@@ -13,6 +13,10 @@
 #define DBG_LVL              DBG_INFO
 #include <rtdbg.h>
 
+#ifndef M33_SKIP_PDM_MIC_INIT_FOR_EMG_DEMO
+#define M33_SKIP_PDM_MIC_INIT_FOR_EMG_DEMO 0
+#endif
+
 /*******************************************************************************
 * Macros
 *******************************************************************************/
@@ -73,6 +77,7 @@ struct mic_device
     rt_uint8_t *rx_fifo;                    /* Receive FIFO buffer */
     rt_uint8_t volume;                      /* Volume level */
     rt_bool_t is_running;                   /* Running state */
+    rt_bool_t hw_initialized;               /* PDM hardware is initialized lazily. */
 };
 
 /* Static device instance */
@@ -330,8 +335,15 @@ static rt_err_t mic_configure(struct rt_audio_device *audio, struct rt_audio_cap
     return result;
 }
 
-static rt_err_t mic_init(struct rt_audio_device *audio)
+static rt_err_t mic_hw_init(struct rt_audio_device *audio)
 {
+    RT_ASSERT(audio != RT_NULL);
+
+    if (mic_dev.hw_initialized)
+    {
+        return RT_EOK;
+    }
+
     /* Initialize PDM/PCM block */
     Cy_PDM_PCM_Init(PDM0, &CYBSP_PDM_config);
 
@@ -361,6 +373,14 @@ static rt_err_t mic_init(struct rt_audio_device *audio)
     NVIC_ClearPendingIRQ(PDM_IRQ_cfg.intrSrc);
     NVIC_EnableIRQ(PDM_IRQ_cfg.intrSrc);
 
+    mic_dev.hw_initialized = RT_TRUE;
+    return RT_EOK;
+}
+
+static rt_err_t mic_init(struct rt_audio_device *audio)
+{
+    RT_ASSERT(audio != RT_NULL);
+    LOG_I("mic0 registered; PDM hardware init deferred until record start.\n");
     return RT_EOK;
 }
 
@@ -371,6 +391,11 @@ static rt_err_t mic_start(struct rt_audio_device *audio, int stream)
 
     if (stream == AUDIO_STREAM_RECORD && !mic_dev->is_running)
     {
+        if (mic_hw_init(audio) != RT_EOK)
+        {
+            LOG_E("Microphone hardware init failed");
+            return -RT_ERROR;
+        }
         app_pdm_pcm_activate();
         rt_audio_rx_done(&mic_dev->audio, mic_dev->rx_fifo, 0);
         mic_dev->is_running = RT_TRUE;
@@ -409,6 +434,13 @@ int rt_hw_pdm_init(void)
 {
     rt_uint8_t *rx_fifo;
 
+#if M33_SKIP_PDM_MIC_INIT_FOR_EMG_DEMO
+    LOG_W("mic0 PDM init skipped for EMG demo");
+    return RT_EOK;
+#endif
+
+    return RT_EOK;
+
     rx_fifo = rt_malloc(RX_FIFO_SIZE);
     if (rx_fifo == RT_NULL)
     {
@@ -426,6 +458,7 @@ int rt_hw_pdm_init(void)
     mic_dev.record_config.samplebits = 16;
     mic_dev.volume                   = 40; /* gain */
     mic_dev.is_running               = RT_FALSE;
+    mic_dev.hw_initialized           = RT_FALSE;
 
     mic_dev.audio.ops = &mic_ops;
     LOG_I("audio pdm registered.\n");

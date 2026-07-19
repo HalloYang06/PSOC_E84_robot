@@ -515,16 +515,14 @@ WHD 资源分区名必须保持：
 关键定义：
 
 ```c
-#define FLASH_START_ADDRESS 0x60DC0000
+#define FLASH_START_ADDRESS 0x60E00000
 ```
 
 因此资源物理地址为：
 
-- `whd_firmware` -> `0x60DC0000`
-- `whd_clm` -> `0x60E20000`
-- `whd_nvram` -> `0x60E30000`
-
-旧基址 `0x60E00000` 已废弃。旧 2 MiB FAL 会延伸到 `0x61000000`，越过 M55 Non-secure SMIF MPC 独占末端 `0x60FC0000`；旧故障现场的 `BFAR=0x60FC0000` 正好命中第一个非法地址。资源文件、FAL 分区表和烧录脚本必须一起使用新基址，不能只改其中一处。
+- `whd_firmware` -> `0x60E00000`
+- `whd_clm` -> `0x60E60000`
+- `whd_nvram` -> `0x60E70000`
 
 ## 4. 官方资源文件
 
@@ -3392,14 +3390,14 @@ flash write_image erase D:/RT-ThreadStudio/workspace/yiliao_m33/build/rtthread.h
 1. 本轮在 `Edgi_Talk_M55_Blink_LED` 的 `M55` 分支上复测 WiFi，不是旧 `wifi` 工程。
 2. 用户现场反馈“WiFi 没资源/未就绪”，因此先确认 WHD resources、FAL 分区、M33 QA 桥接和 M55 WHD 初始化阶段。
 
-资源与分区确认（**2026-07-04 的旧布局历史记录，已于 2026-07-15 废弃，不得作为当前烧录地址**）：
+资源与分区确认：
 
-1. 当时配置使用 `WHD_RESOURCES_IN_EXTERNAL_STORAGE_FAL`。
-2. 当时 FAL 分区是：
+1. 当前配置使用 `WHD_RESOURCES_IN_EXTERNAL_STORAGE_FAL`。
+2. FAL 分区仍是：
    - `whd_firmware`：`0x60E00000`，`384KB`
    - `whd_clm`：`0x60E60000`，`64KB`
    - `whd_nvram`：`0x60E70000`，`64KB`
-3. 当时 `whd_resources_all.bin` 用 OpenOCD 写入 `0x60E00000` 并通过 `verify_image`，写入约 `466944 bytes`，校验约 `465509 bytes`。当前同一资源已迁移并 verify 到 `0x60DC0000`。
+3. `whd_resources_all.bin` 已用 OpenOCD 写入 `0x60E00000` 并通过 `verify_image`，写入约 `466944 bytes`，校验约 `465509 bytes`。
 4. 直接 `dump_image` 读 SMIF/XIP 地址可能看到全 0，不能单独据此判定外部 Flash 没写进去；复位后如果 SMIF memory-map 没被应用初始化，OpenOCD 直接读内存窗口并不可靠。资源是否有效以 OpenOCD `verify_image` 和运行时 WHD/FAL 结果为准。
 
 故障现象：

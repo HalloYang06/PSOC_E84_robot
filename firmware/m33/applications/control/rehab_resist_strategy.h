@@ -6,6 +6,7 @@
 
 typedef struct
 {
+    float last_current_a;
     rehab_adaptive_pid_state_t pid_state;
     rehab_adrc_state_t adrc_state;
 } rehab_resist_strategy_state_t;

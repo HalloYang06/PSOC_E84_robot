@@ -1,0 +1,3 @@
+# Direct LVGL text owner and reviewed transitive display-state source.
+applications/rehab_wifi_panel.c
+applications/xiaozhi_ui_state.c

@@ -124,7 +124,7 @@ M55 推理逻辑：
 ```text
 读取 g_m33_m55_pcm_shared.data
     -> 解析 3 路 uint16 EMG raw
-    -> 计算训练时一致的 20 个特征
+    -> 计算训练时一致的 21 个特征
     -> 按 preprocess.json 的 mean/std 标准化
     -> 按 int8 input scale/zero point 量化
     -> intent_tflm_runtime_infer_int8()
@@ -134,10 +134,9 @@ M55 推理逻辑：
 类别映射：
 
 ```text
-0 = elbow_extend
-1 = elbow_flex
-2 = rest
-3 = shoulder_flex
+0 = elbow_curl
+1 = rest
+2 = shoulder_flex
 ```
 
 M55 shell 命令：
@@ -271,7 +270,7 @@ intent_tflm_smoke -v
 串口执行 intent_tflm_smoke -v
 串口执行 m55_emg_stream 1 20
 真实 F103 EMG 数据闭环验证
-根据真实动作确认 elbow_flex / elbow_extend / rest / shoulder_flex 的稳定性
+根据真实动作确认 elbow_curl / rest / shoulder_flex 的稳定性
 ```
 
 所以当前准确状态是：

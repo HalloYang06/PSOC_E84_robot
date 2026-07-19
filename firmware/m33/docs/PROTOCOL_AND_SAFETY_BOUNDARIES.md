@@ -99,13 +99,21 @@ Recognized ASCII commands:
 stream:on
 stream:off
 heartbeat
+stop
+mode:passive
+mode:active
+mode:memory
+mode:ai
+mode:ai_assist
+move:<app_joint_id>:<target>
 ```
 
 Boundary:
 
 - `stream:*` and telemetry are safe as status/control-plane operations.
-- The current readonly M33 BLE profile returns `ERR:readonly` for `stop`, `mode:*`, and `move:*`; these commands are not queued or executed.
-- Future BLE motion work requires a separate bench/clinical profile and must pass through the same M33 safety authority as `0x320`.
+- `stop` may map to safe/passive behavior.
+- `mode:*` must not be treated as formal motion permission by itself.
+- `move:*` is legacy/bench-debug until it is routed through the same safety checks as `0x320`.
 
 ## M33 / M55 IPC Path
 

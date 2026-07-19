@@ -91,6 +91,10 @@ cy_rslt_t mtb_ml_init(uint32_t priority)
 
 #if defined(COMPONENT_U55) || \
         defined(COMPONENT_NNLITE2)
+        if (result != MTB_ML_RESULT_SUCCESS)
+        {
+            return result;
+        }
         mtb_ml_norm_clk_freq = ((float)mtb_ml_npu_clk_freq) / ((float)mtb_ml_cpu_clk_freq);
 #endif
     }

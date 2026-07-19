@@ -18,6 +18,8 @@
 #include "cycfg_system.h"
 #include "gpio_pse84_bga_220.h"
 
+#define rt_kprintf(...) do { } while (0)
+
 #ifdef BSP_USING_CAN
 
 #ifndef CANFD_ECR
@@ -896,7 +898,7 @@ rt_err_t ifx_can_direct_send(const struct rt_can_msg *msg)
     can->tx_buffer.t1_f = &can->tx_t1;
     can->tx_buffer.data_area_f = can->tx_data;
 
-    tx_index = g_can_direct_tx_index++ % BSP_CANFD0_TX_BUFFER_COUNT;
+    tx_index = 0U;
     ifx_canfd0_cancel_tx_buffer(can, tx_index);
     result = Cy_CANFD_UpdateAndTransmitMsgBuffer(can->config->can_x,
                                                  can->config->channel,
@@ -918,7 +920,17 @@ rt_err_t ifx_can_direct_send(const struct rt_can_msg *msg)
                                        can->config->channel,
                                        tx_index) != CY_CANFD_TX_BUFFER_PENDING)
         {
-            return RT_EOK;
+            rt_uint32_t mask = 1UL << tx_index;
+            if ((CANFD_TXBTO(can->config->can_x, can->config->channel) & mask) != 0U)
+            {
+                return RT_EOK;
+            }
+            rt_kprintf("[drv_can] direct tx not-complete box=%u psr=0x%08lx txbto=0x%08lx txbcf=0x%08lx\n",
+                       (unsigned int)tx_index,
+                       (unsigned long)CANFD_PSR(can->config->can_x, can->config->channel),
+                       (unsigned long)CANFD_TXBTO(can->config->can_x, can->config->channel),
+                       (unsigned long)CANFD_TXBCF(can->config->can_x, can->config->channel));
+            return -RT_ERROR;
         }
 
         if (waited_ms < IFX_CAN_TX_WAIT_MS)
@@ -997,11 +1009,12 @@ rt_ssize_t ifx_can_direct_recv(struct rt_can_msg *msg)
         return 0;
     }
 
+    rt_memset(msg, 0, sizeof(*msg));
+
     can->rx_buffer.r0_f = &can->rx_r0;
     can->rx_buffer.r1_f = &can->rx_r1;
     can->rx_buffer.data_area_f = can->rx_data;
     rt_memset(can->rx_data, 0, sizeof(can->rx_data));
-    rt_memset(msg, 0, sizeof(*msg));
 
     result = Cy_CANFD_ExtractMsgFromRXBuffer(can->config->can_x,
                                              can->config->channel,
@@ -1026,6 +1039,10 @@ rt_ssize_t ifx_can_direct_recv(struct rt_can_msg *msg)
 
     dlc = (rt_uint8_t)can->rx_r1.dlc;
     len = can_dlc_to_len(dlc);
+    if (len > sizeof(msg->data))
+    {
+        len = (rt_uint8_t)sizeof(msg->data);
+    }
     msg->len = len;
 #if defined(RT_CAN_USING_CANFD)
     msg->fd_frame = 0U;

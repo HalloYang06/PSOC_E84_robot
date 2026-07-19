@@ -185,7 +185,7 @@
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT4_GEAR_RATIO
-#define CONTROL_MOTOR_JOINT4_GEAR_RATIO    (1.0f)
+#define CONTROL_MOTOR_JOINT4_GEAR_RATIO    (7.1844f)
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT5_GEAR_RATIO
@@ -229,15 +229,15 @@
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT4_CALIBRATED
-#define CONTROL_MOTOR_JOINT4_CALIBRATED    0U
+#define CONTROL_MOTOR_JOINT4_CALIBRATED    1U
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT5_CALIBRATED
-#define CONTROL_MOTOR_JOINT5_CALIBRATED    0U
+#define CONTROL_MOTOR_JOINT5_CALIBRATED    1U
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT6_CALIBRATED
-#define CONTROL_MOTOR_JOINT6_CALIBRATED    0U
+#define CONTROL_MOTOR_JOINT6_CALIBRATED    1U
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT7_CALIBRATED
@@ -257,7 +257,7 @@
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT4_DIRECTION
-#define CONTROL_MOTOR_JOINT4_DIRECTION     (1.0f)
+#define CONTROL_MOTOR_JOINT4_DIRECTION     (-1.0f)
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT5_DIRECTION
@@ -285,15 +285,15 @@
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT4_ZERO_OFFSET_RAD
-#define CONTROL_MOTOR_JOINT4_ZERO_OFFSET_RAD (0.0f)
+#define CONTROL_MOTOR_JOINT4_ZERO_OFFSET_RAD (0.312f)
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT5_ZERO_OFFSET_RAD
-#define CONTROL_MOTOR_JOINT5_ZERO_OFFSET_RAD (0.0f)
+#define CONTROL_MOTOR_JOINT5_ZERO_OFFSET_RAD (6.010f)
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT6_ZERO_OFFSET_RAD
-#define CONTROL_MOTOR_JOINT6_ZERO_OFFSET_RAD (0.0f)
+#define CONTROL_MOTOR_JOINT6_ZERO_OFFSET_RAD (4.543f)
 #endif
 
 #ifndef CONTROL_MOTOR_JOINT7_ZERO_OFFSET_RAD
@@ -401,7 +401,7 @@
 #endif
 
 #ifndef CONTROL_MOTOR_CURRENT_CONTROL_MAX_A
-#define CONTROL_MOTOR_CURRENT_CONTROL_MAX_A (1.0f)
+#define CONTROL_MOTOR_CURRENT_CONTROL_MAX_A (2.0f)
 #endif
 
 #ifndef CONTROL_MOTOR_PRIVATE_SPEED_USE_MIT
@@ -426,8 +426,9 @@
 
 /* ROS command CAN protocol:
  * Byte0: cmd(1-enable 2-stop 3-set_target 4-set_mode 5-set_zero 6-active_report)
- * Byte1: joint_id
+ * Byte1: joint_id; SET_MODE keeps the existing correlation sequence here
  * Byte2~7: payload by command
+ * SET_MODE Byte2: mode, Byte3: single M33 joint bitmask for non-passive modes
  */
 #ifndef CONTROL_CAN_ID_ROS_COMMAND
 #define CONTROL_CAN_ID_ROS_COMMAND         0x320U
@@ -557,11 +558,31 @@
 #endif
 
 #ifndef CONTROL_MOTOR_STATUS_THREAD_STACK_SIZE
-#define CONTROL_MOTOR_STATUS_THREAD_STACK_SIZE 1536
+#define CONTROL_MOTOR_STATUS_THREAD_STACK_SIZE 4096
 #endif
 
 #ifndef CONTROL_MOTOR_STATUS_THREAD_PRIORITY
 #define CONTROL_MOTOR_STATUS_THREAD_PRIORITY 20
+#endif
+
+#ifndef CONTROL_MOTOR_STATUS_THREAD_ENABLE
+#define CONTROL_MOTOR_STATUS_THREAD_ENABLE 0U
+#endif
+
+#ifndef CONTROL_CAN_RX_THREAD_ENABLE
+#define CONTROL_CAN_RX_THREAD_ENABLE 1U
+#endif
+
+#ifndef CONTROL_ROS_CMD_THREAD_ENABLE
+#define CONTROL_ROS_CMD_THREAD_ENABLE 1U
+#endif
+
+#ifndef CONTROL_ROS_COMMAND_TTL_MS
+#define CONTROL_ROS_COMMAND_TTL_MS 500U
+#endif
+
+#ifndef CONTROL_ROS_EMERGENCY_POLL_MS
+#define CONTROL_ROS_EMERGENCY_POLL_MS 10U
 #endif
 
 #ifndef CONTROL_ROS_CMD_OP_ENABLE
@@ -738,31 +759,37 @@
 #define CONTROL_STATUS_DETAIL_PREARM_NOT_READY 12U
 #endif
 
+#ifndef CONTROL_STATUS_DETAIL_QUEUE_FULL
+#define CONTROL_STATUS_DETAIL_QUEUE_FULL 13U
+#endif
+
+#ifndef CONTROL_STATUS_DETAIL_STALE_COMMAND
+#define CONTROL_STATUS_DETAIL_STALE_COMMAND 14U
+#endif
+
 /* ROS trajectory joint ids use 0-based indexing. These software audit limits
  * mirror the NanoPi bridge limits and are expressed in 0.1 degree units.
  */
 #ifndef CONTROL_ROS_JOINT_COUNT
-#define CONTROL_ROS_JOINT_COUNT            5U
+#define CONTROL_ROS_JOINT_COUNT            3U
 #endif
 
 /* Formal ROS trajectory joint ids are 0-based and map onto the currently
- * confirmed bench motor slots 3..7:
- *   0 shoulder_lift_joint      -> motor/joint slot 3 (Sitaiwei)
- *   1 elbow_lift_joint         -> motor/joint slot 4 (Lingzu RS00)
- *   2 shoulder_abduction_joint -> motor/joint slot 5 (Lingzu RS00)
- *   3 upper_arm_rotation_joint -> motor/joint slot 6 (Lingzu EL05)
- *   4 forearm_rotation_joint   -> motor/joint slot 7 (Lingzu EL05)
+ * mounted 4/5/6 motor set:
+ *   0 elbow_lift_joint         -> motor/joint slot 4 (Lingzu RS00)
+ *   1 shoulder_abduction_joint -> motor/joint slot 5 (Lingzu RS00)
+ *   2 upper_arm_rotation_joint -> motor/joint slot 6 (Lingzu EL05)
  */
 #ifndef CONTROL_ROS_JOINT0_MOTOR_JOINT
-#define CONTROL_ROS_JOINT0_MOTOR_JOINT     3U
+#define CONTROL_ROS_JOINT0_MOTOR_JOINT     4U
 #endif
 
 #ifndef CONTROL_ROS_JOINT1_MOTOR_JOINT
-#define CONTROL_ROS_JOINT1_MOTOR_JOINT     4U
+#define CONTROL_ROS_JOINT1_MOTOR_JOINT     5U
 #endif
 
 #ifndef CONTROL_ROS_JOINT2_MOTOR_JOINT
-#define CONTROL_ROS_JOINT2_MOTOR_JOINT     5U
+#define CONTROL_ROS_JOINT2_MOTOR_JOINT     6U
 #endif
 
 #ifndef CONTROL_ROS_JOINT3_MOTOR_JOINT
@@ -774,19 +801,19 @@
 #endif
 
 #ifndef CONTROL_ROS_JOINT0_MIN_01DEG
-#define CONTROL_ROS_JOINT0_MIN_01DEG       (-600)
+#define CONTROL_ROS_JOINT0_MIN_01DEG       0
 #endif
 
 #ifndef CONTROL_ROS_JOINT0_MAX_01DEG
-#define CONTROL_ROS_JOINT0_MAX_01DEG       600
+#define CONTROL_ROS_JOINT0_MAX_01DEG       1031
 #endif
 
 #ifndef CONTROL_ROS_JOINT1_MIN_01DEG
-#define CONTROL_ROS_JOINT1_MIN_01DEG       (-600)
+#define CONTROL_ROS_JOINT1_MIN_01DEG       0
 #endif
 
 #ifndef CONTROL_ROS_JOINT1_MAX_01DEG
-#define CONTROL_ROS_JOINT1_MAX_01DEG       600
+#define CONTROL_ROS_JOINT1_MAX_01DEG       1500
 #endif
 
 #ifndef CONTROL_ROS_JOINT2_MIN_01DEG
@@ -814,11 +841,11 @@
 #endif
 
 #ifndef CONTROL_ROS_MAX_TARGET_RPM
-#define CONTROL_ROS_MAX_TARGET_RPM         5
+#define CONTROL_ROS_MAX_TARGET_RPM         10
 #endif
 
 #ifndef CONTROL_ROS_MAX_TARGET_TORQUE_MA
-#define CONTROL_ROS_MAX_TARGET_TORQUE_MA   0
+#define CONTROL_ROS_MAX_TARGET_TORQUE_MA   3000
 #endif
 
 #ifndef CONTROL_ROS_HEARTBEAT_TIMEOUT_MS
@@ -837,12 +864,71 @@
 #define CONTROL_REHAB_FEEDBACK_FRESH_MS 100U
 #endif
 
+#ifndef CONTROL_REHAB_FEEDBACK_PREPARE_TIMEOUT_MS
+#define CONTROL_REHAB_FEEDBACK_PREPARE_TIMEOUT_MS 300U
+#endif
+
+/* Single-joint curl profile. Feedback limits use private-motor raw coordinates;
+ * position commands are converted to calibrated joint coordinates in service. */
+#ifndef CONTROL_REHAB_CURL_JOINT_MASK
+#define CONTROL_REHAB_CURL_JOINT_MASK 0x10U
+#endif
+#ifndef CONTROL_REHAB_CURL_M33_JOINT
+#define CONTROL_REHAB_CURL_M33_JOINT 5U
+#endif
+#ifndef CONTROL_REHAB_CURL_HARD_MIN_RAW_RAD
+#define CONTROL_REHAB_CURL_HARD_MIN_RAW_RAD (6.238f)
+#endif
+#ifndef CONTROL_REHAB_CURL_HARD_MAX_RAW_RAD
+#define CONTROL_REHAB_CURL_HARD_MAX_RAW_RAD (7.829f)
+#endif
+#ifndef CONTROL_REHAB_CURL_TOP_TARGET_RAW_RAD
+#define CONTROL_REHAB_CURL_TOP_TARGET_RAW_RAD (6.288f)
+#endif
+#ifndef CONTROL_REHAB_CURL_BOTTOM_TARGET_RAW_RAD
+#define CONTROL_REHAB_CURL_BOTTOM_TARGET_RAW_RAD (7.779f)
+#endif
+#ifndef CONTROL_REHAB_CURL_POSITION_TOLERANCE_RAD
+#define CONTROL_REHAB_CURL_POSITION_TOLERANCE_RAD (0.030f)
+#endif
+#ifndef CONTROL_REHAB_CURL_COMMAND_SPEED_RAD_S
+#define CONTROL_REHAB_CURL_COMMAND_SPEED_RAD_S (0.12f)
+#endif
+#ifndef CONTROL_REHAB_CURL_MAX_FEEDBACK_SPEED_RAD_S
+#define CONTROL_REHAB_CURL_MAX_FEEDBACK_SPEED_RAD_S (0.35f)
+#endif
+#ifndef CONTROL_REHAB_CURL_LIMIT_CURRENT_A
+#define CONTROL_REHAB_CURL_LIMIT_CURRENT_A (2.0f)
+#endif
+#ifndef CONTROL_REHAB_FIXED_ACTION_COMMAND_SPEED_RAD_S
+#define CONTROL_REHAB_FIXED_ACTION_COMMAND_SPEED_RAD_S (0.12f)
+#endif
+#ifndef CONTROL_REHAB_FIXED_ACTION_LIMIT_CURRENT_A
+#define CONTROL_REHAB_FIXED_ACTION_LIMIT_CURRENT_A (1.0f)
+#endif
+#ifndef CONTROL_REHAB_CURL_DWELL_MS
+#define CONTROL_REHAB_CURL_DWELL_MS 500U
+#endif
+#ifndef CONTROL_REHAB_CURL_SEGMENT_TIMEOUT_MS
+#define CONTROL_REHAB_CURL_SEGMENT_TIMEOUT_MS 20000U
+#endif
+#ifndef CONTROL_REHAB_CURL_COMMAND_REFRESH_MS
+#define CONTROL_REHAB_CURL_COMMAND_REFRESH_MS 200U
+#endif
+#ifndef CONTROL_REHAB_CURL_ARRIVAL_SAMPLES
+#define CONTROL_REHAB_CURL_ARRIVAL_SAMPLES 5U
+#endif
+
 #ifndef CONTROL_REHAB_DEFAULT_M33_JOINT
 #define CONTROL_REHAB_DEFAULT_M33_JOINT 5U
 #endif
 
 #ifndef CONTROL_REHAB_FOLLOW_DIRECTION
 #define CONTROL_REHAB_FOLLOW_DIRECTION (-1.0f)
+#endif
+
+#ifndef CONTROL_REHAB_ASSIST_DIRECTION
+#define CONTROL_REHAB_ASSIST_DIRECTION (1.0f)
 #endif
 
 #ifndef CONTROL_REHAB_RESIST_DIRECTION
@@ -897,13 +983,18 @@
 #define CONTROL_REHAB_RESIST_LIMIT_CUR_A (1.0f)
 #endif
 
+#ifndef CONTROL_REHAB_RESIST_SLEW_A_PER_STEP
+#define CONTROL_REHAB_RESIST_SLEW_A_PER_STEP (0.03f)
+#endif
+
 #ifndef CONTROL_REHAB_TRAJECTORY_MAX_SAMPLES
 #define CONTROL_REHAB_TRAJECTORY_MAX_SAMPLES 512U
 #endif
 
 /* Rehab mode manager defaults.
- * v1 only opens ROS lift joints 0/1. App and ROS2 may request a narrower mask,
- * but firmware rejects masks outside this default until calibration is expanded.
+ * Bench demo assist/resist drives M33 joints 4/5/6 as one guarded group.
+ * App and ROS2 may request a narrower mask, but firmware rejects masks outside
+ * this default until calibration is expanded.
  */
 #ifndef CONTROL_REHAB_MODE_CMD_MARKER
 #define CONTROL_REHAB_MODE_CMD_MARKER      0xC1U
@@ -914,7 +1005,15 @@
 #endif
 
 #ifndef CONTROL_REHAB_ASSIST_DEFAULT_JOINT_MASK
-#define CONTROL_REHAB_ASSIST_DEFAULT_JOINT_MASK 0x03U
+#define CONTROL_REHAB_ASSIST_DEFAULT_JOINT_MASK 0x38U
+#endif
+
+#ifndef CONTROL_REHAB_ASSIST_JOINT5_HARD_MIN_RAW_RAD
+#define CONTROL_REHAB_ASSIST_JOINT5_HARD_MIN_RAW_RAD (6.000f)
+#endif
+
+#ifndef CONTROL_REHAB_ASSIST_JOINT5_HARD_MAX_RAW_RAD
+#define CONTROL_REHAB_ASSIST_JOINT5_HARD_MAX_RAW_RAD (8.264f)
 #endif
 
 #ifndef CONTROL_REHAB_ASSIST_TORQUE_ENTER_NM
@@ -929,12 +1028,40 @@
 #define CONTROL_REHAB_ASSIST_MAX_VEL_RAD_S   (0.20f)
 #endif
 
+#ifndef CONTROL_REHAB_ASSIST_OVERSPEED_TRIP_RAD_S
+#define CONTROL_REHAB_ASSIST_OVERSPEED_TRIP_RAD_S (2.0f)
+#endif
+
 #ifndef CONTROL_REHAB_ASSIST_LIMIT_CUR_A
 #define CONTROL_REHAB_ASSIST_LIMIT_CUR_A     (1.0f)
 #endif
 
 #ifndef CONTROL_REHAB_ASSIST_GAIN_A_PER_NM
 #define CONTROL_REHAB_ASSIST_GAIN_A_PER_NM   (2.0f)
+#endif
+
+#ifndef CONTROL_REHAB_ASSIST_VELOCITY_FALLBACK_ENABLE
+#define CONTROL_REHAB_ASSIST_VELOCITY_FALLBACK_ENABLE 1U
+#endif
+
+#ifndef CONTROL_REHAB_ASSIST_VEL_ENTER_RAD_S
+#define CONTROL_REHAB_ASSIST_VEL_ENTER_RAD_S (0.01f)
+#endif
+
+#ifndef CONTROL_REHAB_ASSIST_VEL_EXIT_RAD_S
+#define CONTROL_REHAB_ASSIST_VEL_EXIT_RAD_S  (0.005f)
+#endif
+
+#ifndef CONTROL_REHAB_ASSIST_MIN_CUR_A
+#define CONTROL_REHAB_ASSIST_MIN_CUR_A       (1.0f)
+#endif
+
+#ifndef CONTROL_REHAB_ASSIST_VEL_GAIN_A_PER_RAD_S
+#define CONTROL_REHAB_ASSIST_VEL_GAIN_A_PER_RAD_S (1.0f)
+#endif
+
+#ifndef CONTROL_REHAB_ASSIST_SLEW_A_PER_STEP
+#define CONTROL_REHAB_ASSIST_SLEW_A_PER_STEP (0.03f)
 #endif
 
 #ifndef CONTROL_REHAB_ASSIST_ADAPTIVE_ENABLE
@@ -1182,7 +1309,7 @@
  * safety inputs and per-joint limits are confirmed on the real mechanism.
  */
 #ifndef CONTROL_PREARM_REQUIRED_JOINT_MASK
-#define CONTROL_PREARM_REQUIRED_JOINT_MASK 0x7FU
+#define CONTROL_PREARM_REQUIRED_JOINT_MASK 0x38U
 #endif
 
 #ifndef CONTROL_PREARM_ESTOP_INPUT_CONFIRMED

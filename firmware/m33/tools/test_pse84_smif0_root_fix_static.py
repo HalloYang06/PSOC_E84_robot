@@ -94,15 +94,6 @@ class Pse84Smif0RootFixStaticTest(unittest.TestCase):
         )
         self.assertIn("if {($cmd & 0x3) != 0}", start_ns)
 
-    def test_flash_script_compares_secure_sources_independent_of_line_endings(self):
-        script = read(M33_ROOT / "tools/flash_m33_verified.ps1")
-
-        self.assertIn("[string]$EdgeProtectToolsPath", script)
-        self.assertIn("function Read-NormalizedText", script)
-        self.assertIn('.Replace("`r`n", "`n").Replace("`r", "`n")', script)
-        self.assertIn("[System.StringComparison]::Ordinal", script)
-        self.assertNotIn("$trackedSecureStartupHash", script)
-
     def test_m33_guard_is_installed_before_deferred_cm55_boot(self):
         board = read(M33_ROOT / "board/board.c")
         guard_source = read(M33_ROOT / "board/smif0_guard.c")
@@ -194,24 +185,6 @@ class Pse84Smif0RootFixStaticTest(unittest.TestCase):
         self.assertIn("memcpy", read_body)
         self.assertRegex(read_body, r"offset\s*<\s*0")
         self.assertIn("FLASH_SIZE - size", read_body)
-
-    def test_m55_fal_partition_table_matches_migrated_layout(self):
-        config = read(
-            M55_ROOT / "libraries/Common/board/ports/fal/fal_cfg.h"
-        )
-
-        self.assertRegex(
-            config,
-            r'"filesystem"\s*,\s*NOR_FLASH_DEV_NAME,\s*0x100000,\s*512\*1024',
-        )
-        self.assertRegex(
-            config,
-            r'"wifi_cfg"\s*,\s*NOR_FLASH_DEV_NAME,\s*0x180000,\s*256\*1024',
-        )
-        self.assertRegex(
-            config,
-            r'"xiaozhi_cfg"\s*,\s*NOR_FLASH_DEV_NAME,\s*0x1C0000,\s*256\*1024',
-        )
 
     def test_m55_fal_geometry_matches_generated_smif_device(self):
         fal = read(

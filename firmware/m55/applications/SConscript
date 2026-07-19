@@ -3,30 +3,32 @@ from building import *
 import os
 
 cwd  = GetCurrentDir()
-default_ei_candidates = [
-    os.path.abspath(os.path.join(cwd, '..', '..', '..', 'repo')),
-    os.path.abspath(os.path.join(cwd, '..', '..', '..', '..', '..', 'repo')),
-]
-default_ei_root = next((os.path.join(root,
-                                     'Extract',
-                                     'Board_Support_Packages',
-                                     'Infineon',
-                                     'PSOC_E84-EDGI-TALK',
-                                     '1.1.0',
-                                     'projects',
-                                     'Edgi_Talk_M55_XiaoZhi',
-                                     'edge-impulse')
-                        for root in default_ei_candidates
-                        if os.path.isdir(root)),
-                       os.path.join(default_ei_candidates[0],
-                                    'Extract',
-                                    'Board_Support_Packages',
-                                    'Infineon',
-                                    'PSOC_E84-EDGI-TALK',
-                                    '1.1.0',
-                                    'projects',
-                                    'Edgi_Talk_M55_XiaoZhi',
-                                    'edge-impulse'))
+
+
+def find_edge_impulse_root(start_dir):
+    suffix = os.path.join(
+    'repo',
+    'Extract',
+    'Board_Support_Packages',
+    'Infineon',
+    'PSOC_E84-EDGI-TALK',
+    '1.1.0',
+    'projects',
+    'Edgi_Talk_M55_XiaoZhi',
+        'edge-impulse')
+    fallback = os.path.abspath(os.path.join(start_dir, '..', '..', '..', suffix))
+    current = os.path.abspath(start_dir)
+    while True:
+        candidate = os.path.join(current, suffix)
+        if os.path.isdir(candidate):
+            return candidate
+        parent = os.path.dirname(current)
+        if parent == current:
+            return fallback
+        current = parent
+
+
+default_ei_root = find_edge_impulse_root(cwd)
 wake_backend = os.environ.get('XIAOZHI_WAKE_BACKEND', 'edge_impulse')
 edge_impulse_root = os.environ.get('XIAOZHI_EDGE_IMPULSE_ROOT', default_ei_root)
 edge_impulse_enabled = wake_backend == 'edge_impulse' and os.path.isdir(edge_impulse_root)
@@ -63,6 +65,7 @@ src  = [f for f in src if os.path.basename(str(f)) not in [
 if not lvgl_enabled:
     src = [f for f in src if os.path.basename(str(f)) not in [
         'rehab_wifi_font.c',
+        'rehab_cjk_common_font.c',
         'rehab_wifi_panel.c',
     ]]
 if not edge_impulse_enabled:

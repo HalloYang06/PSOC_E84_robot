@@ -9,11 +9,10 @@ extern "C" {
 
 typedef enum
 {
-    BT_HCI_STATE_UNINITIALIZED = 0,
+    BT_HCI_STATE_OFF = 0,
+    BT_HCI_STATE_STARTING,
     BT_HCI_STATE_READY,
-    BT_HCI_STATE_STACK_MISSING,
-    BT_HCI_STATE_RUNNING,
-    BT_HCI_STATE_ERROR
+    BT_HCI_STATE_FAILED
 } bt_hci_state_t;
 
 typedef struct
@@ -27,7 +26,9 @@ typedef struct
 
 rt_err_t bt_hci_transport_init(void);
 rt_err_t bt_hci_transport_start(void);
-const bt_hci_runtime_t *bt_hci_transport_get_runtime(void);
+void bt_hci_transport_report_enabled(rt_err_t status);
+void bt_hci_transport_report_disabled(void);
+rt_err_t bt_hci_transport_get_runtime_snapshot(bt_hci_runtime_t *runtime);
 rt_bool_t bt_hci_transport_is_ready(void);
 
 #ifdef __cplusplus

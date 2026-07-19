@@ -286,7 +286,7 @@ void vg_lite_hal_clear_wait_timeout_override(void);
 vg_lite_error_t vg_lite_hal_operation_cache(void *handle, vg_lite_cache_op_t cache_op);
 
 /*!
- @brief export memory to dma buf, and get the dma buf fd
+ @brief export memory to dma buf, and get the dma buf fd 
  */
 vg_lite_error_t vg_lite_hal_memory_export(int32_t *fd);
 

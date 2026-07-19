@@ -47,12 +47,19 @@ typedef struct
 typedef struct
 {
     float follow_direction;
+    float assist_direction;
     float resist_direction;
     float active_min_current_a;
     float active_max_current_a;
     float active_current_gain_a_per_nm;
     float assist_max_current_a;
     float assist_current_gain_a_per_nm;
+    rt_bool_t assist_velocity_fallback_enabled;
+    float assist_velocity_enter_rad_s;
+    float assist_velocity_exit_rad_s;
+    float assist_min_current_a;
+    float assist_velocity_gain_a_per_rad_s;
+    float assist_slew_current_a_per_step;
     rt_bool_t adaptive_assist_enabled;
     float adaptive_assist_base_gain_a_per_nm;
     float adaptive_assist_load_gain_a_per_nm2;

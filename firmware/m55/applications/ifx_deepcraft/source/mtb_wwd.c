@@ -195,7 +195,10 @@ cy_rslt_t mtb_wwd_init(mtb_wwd_t *wwd_obj, mtb_wwd_nlu_config_t *config_obj)
         ml_inference_init(&wwd_nlu_buff->am_model_bin,
                           &wwd_nlu_buff->am_model_buffer, mtb_ml_model_obj);
     if (error_code != MTB_VA_RSLT_SUCCESS)
+    {
+        ml_destroy_model(&mtb_ml_model_obj);
         return error_code;
+    }
     g_ifx_wwd_debug_stage = 4;
 
     /* Step 2: Allocate memory (AMPREDICT persistent memory allocated in

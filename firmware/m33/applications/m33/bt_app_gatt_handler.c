@@ -2,107 +2,149 @@
 
 #include <string.h>
 
+#include "app_ble_diag.h"
 #include "app_ble_service.h"
+#include "app_ble_worker.h"
 #include "app_bt_bonding.h"
 #include "app_bt_utils.h"
 #include "cycfg_gap.h"
 
-#define M33_BT_GATT_VERBOSE_EVENTS 0
+#ifndef M33_APP_BLE_GATT_TRACE
+#define M33_APP_BLE_GATT_TRACE 0
+#endif
+
+#if M33_APP_BLE_GATT_TRACE
+#define APP_BT_GATT_TRACE(...) rt_kprintf(__VA_ARGS__)
+#else
+#define APP_BT_GATT_TRACE(...) do { } while (0)
+#endif
 
 static rt_bool_t g_bt_app_gatt_ready = RT_FALSE;
 static bt_app_gatt_adv_restart_t g_bt_app_adv_restart_cb = RT_NULL;
 static uint32_t g_bt_app_gatt_event_count = 0u;
-static struct rt_mutex g_nus_tx_lock;
-static rt_bool_t g_nus_tx_lock_ready = RT_FALSE;
+static uint8_t g_app_ble_notify_buffer[APP_BLE_TX_PAYLOAD_MAX];
 
-static void app_bt_nus_notify(void)
+rt_err_t bt_app_gatt_notify_from_worker(uint32_t generation,
+                                        uint16_t conn_id,
+                                        const uint8_t *data,
+                                        uint16_t len)
 {
-    if ((hello_sensor_state.conn_id == 0u) ||
-        ((app_nus_tx_client_char_config[0] & GATT_CLIENT_CONFIG_NOTIFICATION) == 0u))
+    gatt_db_lookup_table_t *p_attr;
+    wiced_bt_gatt_status_t status;
+    uint16_t payload_limit;
+
+    if (!app_ble_worker_is_current_thread() ||
+        !app_ble_worker_session_is_current(generation, conn_id))
     {
-        return;
+        app_ble_diag_note_tx_stale_drop();
+        return -RT_ERROR;
+    }
+    if ((data == RT_NULL) || (len == 0u) ||
+        (len > APP_BLE_TX_PAYLOAD_MAX))
+    {
+        app_ble_diag_note_notify_failure();
+        return -RT_EINVAL;
+    }
+    if ((hello_sensor_state.conn_id == 0u) ||
+        (hello_sensor_state.conn_id != conn_id))
+    {
+        app_ble_diag_note_tx_disconnected_drop();
+        return -RT_ENOSYS;
+    }
+    if ((app_nus_tx_client_char_config[0] &
+         GATT_CLIENT_CONFIG_NOTIFICATION) == 0u)
+    {
+        app_ble_diag_note_tx_cccd_drop();
+        return -RT_EEMPTY;
+    }
+    if (hello_sensor_state.peer_mtu <= 3u)
+    {
+        app_ble_diag_note_notify_failure();
+        return -RT_EINVAL;
+    }
+    payload_limit = (uint16_t)(hello_sensor_state.peer_mtu - 3u);
+    if (len > payload_limit)
+    {
+        app_ble_diag_note_notify_failure();
+        return -RT_EINVAL;
     }
 
-    (void)wiced_bt_gatt_server_send_notification(hello_sensor_state.conn_id,
-                                                 HDLC_NUS_TX_VALUE,
-                                                 app_nus_tx_len,
-                                                 app_nus_tx,
-                                                 NULL);
+    rt_memcpy(app_nus_tx, data, len);
+    rt_memcpy(g_app_ble_notify_buffer, data, len);
+    app_nus_tx_len = len;
+    p_attr = app_bt_find_by_handle(HDLC_NUS_TX_VALUE);
+    if (p_attr != RT_NULL)
+    {
+        p_attr->cur_len = len;
+    }
+    if (!app_ble_worker_session_is_current(generation, conn_id) ||
+        (hello_sensor_state.conn_id != conn_id) ||
+        ((app_nus_tx_client_char_config[0] &
+          GATT_CLIENT_CONFIG_NOTIFICATION) == 0u))
+    {
+        app_ble_diag_note_tx_stale_drop();
+        return -RT_ERROR;
+    }
+    status = wiced_bt_gatt_server_send_notification(conn_id,
+                                                     HDLC_NUS_TX_VALUE,
+                                                     len,
+                                                     g_app_ble_notify_buffer,
+                                                     NULL);
+    if (status != WICED_BT_GATT_SUCCESS)
+    {
+        app_ble_diag_note_notify_failure();
+        return -RT_ERROR;
+    }
+    return RT_EOK;
 }
 
-static rt_err_t bt_app_gatt_send_unlocked(const uint8_t *data, uint16_t len)
+rt_err_t bt_app_gatt_send(const app_ble_session_token_t *token,
+                          const uint8_t *data,
+                          uint16_t len)
 {
     if ((data == RT_NULL) || (len == 0u))
     {
         return -RT_ERROR;
     }
-    if (len > MAX_LEN_NUS_TX)
+    if (len > APP_BLE_TX_PAYLOAD_MAX)
     {
-        len = MAX_LEN_NUS_TX;
+        return -RT_EINVAL;
     }
     if (hello_sensor_state.conn_id == 0u)
     {
+        app_ble_diag_note_tx_disconnected_drop();
         return -RT_ENOSYS;
     }
     if ((app_nus_tx_client_char_config[0] & GATT_CLIENT_CONFIG_NOTIFICATION) == 0u)
     {
+        app_ble_diag_note_tx_cccd_drop();
         return -RT_EEMPTY;
     }
 
-    memcpy(app_nus_tx, data, len);
-    app_nus_tx_len = len;
-    app_bt_nus_notify();
-    return RT_EOK;
+    return app_ble_worker_enqueue_ack(token, data, len);
 }
 
-static rt_bool_t app_bt_command_is_readonly_safe(app_ble_cmd_type_t type)
+rt_err_t bt_app_gatt_publish_telemetry(const app_ble_session_token_t *token,
+                                       const uint8_t *data,
+                                       uint16_t len)
 {
-    return ((type == APP_BLE_CMD_START_STREAM) ||
-            (type == APP_BLE_CMD_STOP_STREAM) ||
-            (type == APP_BLE_CMD_HEARTBEAT)) ? RT_TRUE : RT_FALSE;
-}
-
-rt_err_t bt_app_gatt_send(const uint8_t *data, uint16_t len)
-{
-    rt_err_t result;
-
-    if (!g_nus_tx_lock_ready)
+    if ((data == RT_NULL) || (len == 0u) ||
+        (len > APP_BLE_TX_PAYLOAD_MAX))
     {
-        return -RT_ERROR;
+        return -RT_EINVAL;
     }
-
-    rt_mutex_take(&g_nus_tx_lock, RT_WAITING_FOREVER);
-    result = bt_app_gatt_send_unlocked(data, len);
-    rt_mutex_release(&g_nus_tx_lock);
-    return result;
-}
-
-rt_err_t bt_app_gatt_send_frame(const uint8_t *data, uint16_t len, uint16_t chunk_size)
-{
-    rt_err_t result = RT_EOK;
-    uint16_t offset;
-
-    if ((data == RT_NULL) || (len == 0U) || (chunk_size == 0U) || !g_nus_tx_lock_ready)
+    if (hello_sensor_state.conn_id == 0u)
     {
-        return -RT_ERROR;
+        app_ble_diag_note_tx_disconnected_drop();
+        return -RT_ENOSYS;
     }
-
-    rt_mutex_take(&g_nus_tx_lock, RT_WAITING_FOREVER);
-    for (offset = 0U; offset < len; offset = (uint16_t)(offset + chunk_size))
+    if ((app_nus_tx_client_char_config[0] &
+         GATT_CLIENT_CONFIG_NOTIFICATION) == 0u)
     {
-        uint16_t send_len = (uint16_t)(((len - offset) > chunk_size) ? chunk_size : (len - offset));
-        result = bt_app_gatt_send_unlocked(data + offset, send_len);
-        if (result != RT_EOK)
-        {
-            break;
-        }
-        if ((uint16_t)(offset + send_len) < len)
-        {
-            rt_thread_mdelay(5U);
-        }
+        app_ble_diag_note_tx_cccd_drop();
+        return -RT_EEMPTY;
     }
-    rt_mutex_release(&g_nus_tx_lock);
-    return result;
+    return app_ble_worker_publish_telemetry(token, data, len);
 }
 
 wiced_bt_gatt_status_t app_bt_gatt_callback(wiced_bt_gatt_evt_t event,
@@ -110,12 +152,17 @@ wiced_bt_gatt_status_t app_bt_gatt_callback(wiced_bt_gatt_evt_t event,
 {
     wiced_bt_gatt_status_t gatt_status = WICED_BT_SUCCESS;
     uint16_t error_handle = 0u;
-    wiced_bt_gatt_attribute_request_t *p_attr_req = &p_event_data->attribute_request;
+    wiced_bt_gatt_attribute_request_t *p_attr_req;
+
+    if (p_event_data == RT_NULL)
+    {
+        return WICED_BT_GATT_ILLEGAL_PARAMETER;
+    }
+    p_attr_req = &p_event_data->attribute_request;
 
     g_bt_app_gatt_event_count++;
-#if M33_BT_GATT_VERBOSE_EVENTS
-    rt_kprintf("[bt] GATT evt=0x%02X\n", (unsigned int)event);
-#endif
+    app_ble_diag_note_gatt_event();
+    APP_BT_GATT_TRACE("[bt] GATT evt=0x%02X\n", (unsigned int)event);
 
     switch (event)
     {
@@ -124,13 +171,9 @@ wiced_bt_gatt_status_t app_bt_gatt_callback(wiced_bt_gatt_evt_t event,
         break;
 
     case GATT_ATTRIBUTE_REQUEST_EVT:
-#if M33_BT_GATT_VERBOSE_EVENTS
-        rt_kprintf("[bt] GATT req opcode=0x%02X conn_id=%u\n", p_attr_req->opcode, p_attr_req->conn_id);
-#endif
+        APP_BT_GATT_TRACE("[bt] GATT req opcode=0x%02X conn_id=%u\n", p_attr_req->opcode, p_attr_req->conn_id);
         gatt_status = app_bt_gatt_req_cb(p_attr_req, &error_handle);
-#if M33_BT_GATT_VERBOSE_EVENTS
-        rt_kprintf("[bt] GATT req status=0x%04X err_handle=0x%04X\n", gatt_status, error_handle);
-#endif
+        APP_BT_GATT_TRACE("[bt] GATT req status=0x%04X err_handle=0x%04X\n", gatt_status, error_handle);
         if (gatt_status != WICED_BT_GATT_SUCCESS)
         {
             wiced_bt_gatt_server_send_error_rsp(p_attr_req->conn_id,
@@ -141,18 +184,28 @@ wiced_bt_gatt_status_t app_bt_gatt_callback(wiced_bt_gatt_evt_t event,
         break;
 
     case GATT_GET_RESPONSE_BUFFER_EVT:
-        rt_kprintf("[bt] GATT get-rsp-buffer len=%u\n",
-                   (unsigned int)p_event_data->buffer_request.len_requested);
+        APP_BT_GATT_TRACE("[bt] GATT get-rsp-buffer len=%u\n",
+                          (unsigned int)p_event_data->buffer_request.len_requested);
         p_event_data->buffer_request.buffer.p_app_rsp_buffer =
             app_bt_alloc_buffer(p_event_data->buffer_request.len_requested);
-        p_event_data->buffer_request.buffer.p_app_ctxt = (void *)app_bt_free_buffer;
-        gatt_status = WICED_BT_GATT_SUCCESS;
+        if (p_event_data->buffer_request.buffer.p_app_rsp_buffer == RT_NULL)
+        {
+            p_event_data->buffer_request.buffer.p_app_ctxt = RT_NULL;
+            gatt_status = WICED_BT_GATT_INSUF_RESOURCE;
+        }
+        else
+        {
+            p_event_data->buffer_request.buffer.p_app_ctxt = (void *)app_bt_free_buffer;
+            gatt_status = WICED_BT_GATT_SUCCESS;
+        }
         break;
 
     case GATT_APP_BUFFER_TRANSMITTED_EVT:
-#if M33_BT_GATT_VERBOSE_EVENTS
-        rt_kprintf("[bt] GATT app-buffer-transmitted\n");
-#endif
+        APP_BT_GATT_TRACE("[bt] GATT app-buffer-transmitted\n");
+        if (p_event_data->buffer_xmitted.p_app_data == g_app_ble_notify_buffer)
+        {
+            app_ble_worker_notify_buffer_returned();
+        }
         if (p_event_data->buffer_xmitted.p_app_ctxt != RT_NULL)
         {
             ((pfn_free_buffer_t)p_event_data->buffer_xmitted.p_app_ctxt)(p_event_data->buffer_xmitted.p_app_data);
@@ -161,7 +214,7 @@ wiced_bt_gatt_status_t app_bt_gatt_callback(wiced_bt_gatt_evt_t event,
         break;
 
     default:
-        rt_kprintf("[bt] GATT unhandled evt=0x%02X\n", (unsigned int)event);
+        APP_BT_GATT_TRACE("[bt] GATT unhandled evt=0x%02X\n", (unsigned int)event);
         gatt_status = WICED_BT_GATT_SUCCESS;
         break;
     }
@@ -173,6 +226,11 @@ wiced_bt_gatt_status_t app_bt_gatt_req_cb(wiced_bt_gatt_attribute_request_t *p_a
                                           uint16_t *p_error_handle)
 {
     wiced_bt_gatt_status_t gatt_status = WICED_BT_SUCCESS;
+
+    if ((p_attr_req == RT_NULL) || (p_error_handle == RT_NULL))
+    {
+        return WICED_BT_GATT_ILLEGAL_PARAMETER;
+    }
 
     switch (p_attr_req->opcode)
     {
@@ -187,10 +245,10 @@ wiced_bt_gatt_status_t app_bt_gatt_req_cb(wiced_bt_gatt_attribute_request_t *p_a
 
     case GATT_REQ_WRITE:
     case GATT_CMD_WRITE:
-        rt_kprintf("[bt] Write request: handle=0x%04X len=%u opcode=0x%02X\n",
-                   p_attr_req->data.write_req.handle,
-                   p_attr_req->data.write_req.val_len,
-                   p_attr_req->opcode);
+        APP_BT_GATT_TRACE("[bt] Write request: handle=0x%04X len=%u opcode=0x%02X\n",
+                          p_attr_req->data.write_req.handle,
+                          p_attr_req->data.write_req.val_len,
+                          p_attr_req->opcode);
         gatt_status = app_bt_gatt_req_write_handler(p_attr_req->conn_id,
                                                     p_attr_req->opcode,
                                                     &p_attr_req->data.write_req,
@@ -206,14 +264,18 @@ wiced_bt_gatt_status_t app_bt_gatt_req_cb(wiced_bt_gatt_attribute_request_t *p_a
 
     case GATT_REQ_MTU:
         hello_sensor_state.peer_mtu = p_attr_req->data.remote_mtu;
-        rt_kprintf("[bt] MTU exchange: peer=%u local=%u\n",
-                   p_attr_req->data.remote_mtu, CY_BT_MTU_SIZE);
+        APP_BT_GATT_TRACE("[bt] MTU exchange: peer=%u local=%u\n",
+                          p_attr_req->data.remote_mtu, CY_BT_MTU_SIZE);
         gatt_status = wiced_bt_gatt_server_send_mtu_rsp(p_attr_req->conn_id,
                                                         p_attr_req->data.remote_mtu,
                                                         CY_BT_MTU_SIZE);
         break;
 
     case GATT_HANDLE_VALUE_NOTIF:
+        if (p_attr_req->data.confirm.handle == HDLC_NUS_TX_VALUE)
+        {
+            app_ble_worker_notify_operation_complete(p_attr_req->conn_id);
+        }
         gatt_status = WICED_BT_GATT_SUCCESS;
         break;
 
@@ -230,8 +292,8 @@ wiced_bt_gatt_status_t app_bt_gatt_req_cb(wiced_bt_gatt_attribute_request_t *p_a
         break;
 
     default:
-        rt_kprintf("[bt] GATT unsupported opcode=0x%02X\n",
-                   (unsigned int)p_attr_req->opcode);
+        APP_BT_GATT_TRACE("[bt] GATT unsupported opcode=0x%02X\n",
+                          (unsigned int)p_attr_req->opcode);
         gatt_status = WICED_BT_GATT_REQ_NOT_SUPPORTED;
         break;
     }
@@ -241,6 +303,10 @@ wiced_bt_gatt_status_t app_bt_gatt_req_cb(wiced_bt_gatt_attribute_request_t *p_a
 
 wiced_bt_gatt_status_t app_bt_gatt_conn_status_cb(wiced_bt_gatt_connection_status_t *p_conn_status)
 {
+    if (p_conn_status == RT_NULL)
+    {
+        return WICED_BT_GATT_ILLEGAL_PARAMETER;
+    }
     if (p_conn_status->connected)
     {
         return app_bt_gatt_connection_up(p_conn_status);
@@ -259,11 +325,11 @@ wiced_bt_gatt_status_t app_bt_gatt_req_read_handler(uint16_t conn_id,
     int to_send;
 
     *p_error_handle = p_read_req->handle;
-    rt_kprintf("[bt] GATT read handle=0x%04X offset=%u len_req=%u opcode=0x%02X\n",
-               p_read_req->handle,
-               (unsigned int)p_read_req->offset,
-               (unsigned int)len_req,
-               (unsigned int)opcode);
+    APP_BT_GATT_TRACE("[bt] GATT read handle=0x%04X offset=%u len_req=%u opcode=0x%02X\n",
+                      p_read_req->handle,
+                      (unsigned int)p_read_req->offset,
+                      (unsigned int)len_req,
+                      (unsigned int)opcode);
     p_attr = app_bt_find_by_handle(p_read_req->handle);
     if (p_attr == RT_NULL)
     {
@@ -293,17 +359,46 @@ wiced_bt_gatt_status_t app_bt_gatt_req_write_handler(uint16_t conn_id,
                                                      uint16_t len_req,
                                                      uint16_t *p_error_handle)
 {
-    RT_UNUSED(conn_id);
-    RT_UNUSED(opcode);
     RT_UNUSED(len_req);
 
+    if ((p_write_req == RT_NULL) || (p_error_handle == RT_NULL))
+    {
+        return WICED_BT_GATT_ILLEGAL_PARAMETER;
+    }
     *p_error_handle = p_write_req->handle;
-    rt_kprintf("[bt] GATT write handle=0x%04X offset=%u val_len=%u req_len=%u opcode=0x%02X\n",
-               p_write_req->handle,
-               (unsigned int)p_write_req->offset,
-               (unsigned int)p_write_req->val_len,
-               (unsigned int)len_req,
-               (unsigned int)opcode);
+    if (p_write_req->offset != 0u)
+    {
+        return WICED_BT_GATT_INVALID_OFFSET;
+    }
+    if ((p_write_req->val_len != 0u) && (p_write_req->p_val == RT_NULL))
+    {
+        return WICED_BT_GATT_INVALID_PDU;
+    }
+    APP_BT_GATT_TRACE("[bt] GATT write handle=0x%04X offset=%u val_len=%u req_len=%u opcode=0x%02X\n",
+                      p_write_req->handle,
+                      (unsigned int)p_write_req->offset,
+                      (unsigned int)p_write_req->val_len,
+                      (unsigned int)len_req,
+                      (unsigned int)opcode);
+    if (p_write_req->handle == HDLC_NUS_RX_VALUE)
+    {
+        if ((conn_id == 0u) || (conn_id != hello_sensor_state.conn_id))
+        {
+            return WICED_BT_GATT_WRONG_STATE;
+        }
+        if ((p_write_req->val_len == 0u) ||
+            (p_write_req->val_len > APP_BLE_RX_FRAGMENT_MAX))
+        {
+            return WICED_BT_GATT_INVALID_ATTR_LEN;
+        }
+        if (app_ble_service_enqueue_rx(conn_id,
+                                       p_write_req->p_val,
+                                       p_write_req->val_len) != RT_EOK)
+        {
+            return WICED_BT_GATT_INSUF_RESOURCE;
+        }
+        return WICED_BT_GATT_SUCCESS;
+    }
     return app_bt_set_value(p_write_req->handle, p_write_req->p_val, p_write_req->val_len);
 }
 
@@ -322,11 +417,11 @@ wiced_bt_gatt_status_t app_bt_gatt_req_read_by_type_handler(uint16_t conn_id,
 
     if (p_read_req->uuid.len == LEN_UUID_16)
     {
-        rt_kprintf("[bt] GATT read-by-type uuid16=0x%04X range=0x%04X-0x%04X len=%u\n",
-                   p_read_req->uuid.uu.uuid16,
-                   p_read_req->s_handle,
-                   p_read_req->e_handle,
-                   (unsigned int)len_requested);
+        APP_BT_GATT_TRACE("[bt] GATT read-by-type uuid16=0x%04X range=0x%04X-0x%04X len=%u\n",
+                          p_read_req->uuid.uu.uuid16,
+                          p_read_req->s_handle,
+                          p_read_req->e_handle,
+                          (unsigned int)len_requested);
     }
 
     p_rsp = app_bt_alloc_buffer((int)len_requested);
@@ -388,23 +483,51 @@ wiced_bt_gatt_status_t app_bt_gatt_req_read_by_type_handler(uint16_t conn_id,
 wiced_bt_gatt_status_t app_bt_gatt_connection_up(wiced_bt_gatt_connection_status_t *p_status)
 {
     hello_sensor_state.conn_id = p_status->conn_id;
+    hello_sensor_state.peer_mtu = 23u;
     memcpy(hello_sensor_state.remote_addr, p_status->bd_addr, sizeof(wiced_bt_device_address_t));
     pairing_mode = WICED_FALSE;
-    app_ble_service_set_link_state(RT_TRUE, app_ble_service_get_runtime()->streaming_enabled);
-    rt_kprintf("[bt] BLE connected conn_id=%u\n", p_status->conn_id);
+    if (app_ble_service_begin_rx_session(p_status->conn_id) != RT_EOK)
+    {
+        hello_sensor_state.conn_id = 0u;
+        hello_sensor_state.peer_mtu = 0u;
+        memset(hello_sensor_state.remote_addr, 0, BD_ADDR_LEN);
+        return WICED_BT_GATT_INSUF_RESOURCE;
+    }
+    app_ble_service_set_link_state(RT_TRUE, RT_FALSE);
+    APP_BT_GATT_TRACE("[bt] BLE connected conn_id=%u\n", p_status->conn_id);
     return WICED_BT_GATT_SUCCESS;
 }
 
 wiced_bt_gatt_status_t app_bt_gatt_connection_down(wiced_bt_gatt_connection_status_t *p_status)
 {
+    gatt_db_lookup_table_t *p_attr;
+
+    app_ble_service_reset_rx_session(p_status->conn_id);
     memset(hello_sensor_state.remote_addr, 0, BD_ADDR_LEN);
     hello_sensor_state.conn_id = 0u;
     hello_sensor_state.peer_mtu = 0u;
+    hello_sensor_state.flag_indication_sent = 0u;
+    hello_sensor_state.num_to_send = 0u;
+    memset(app_nus_tx_client_char_config, 0, app_nus_tx_client_char_config_len);
+    memset(app_nus_rx, 0, MAX_LEN_NUS_RX);
+    app_nus_rx_len = 0u;
+    p_attr = app_bt_find_by_handle(HDLC_NUS_RX_VALUE);
+    if (p_attr != RT_NULL)
+    {
+        p_attr->cur_len = 0u;
+    }
+    memset(app_nus_tx, 0, MAX_LEN_NUS_TX);
+    app_nus_tx_len = 0u;
+    p_attr = app_bt_find_by_handle(HDLC_NUS_TX_VALUE);
+    if (p_attr != RT_NULL)
+    {
+        p_attr->cur_len = 0u;
+    }
     pairing_mode = WICED_FALSE;
     app_ble_service_set_link_state(RT_FALSE, RT_FALSE);
-    rt_kprintf("[bt] BLE disconnected conn_id=%u reason=%u\n",
-               p_status->conn_id,
-               (unsigned int)p_status->reason);
+    APP_BT_GATT_TRACE("[bt] BLE disconnected conn_id=%u reason=%u\n",
+                      p_status->conn_id,
+                      (unsigned int)p_status->reason);
     if (g_bt_app_adv_restart_cb != RT_NULL)
     {
         g_bt_app_adv_restart_cb();
@@ -435,69 +558,35 @@ wiced_bt_gatt_status_t app_bt_set_value(uint16_t attr_handle,
     {
         return WICED_BT_GATT_INVALID_HANDLE;
     }
+    if (attr_handle == HDLC_NUS_RX_VALUE)
+    {
+        return WICED_BT_GATT_WRITE_NOT_PERMIT;
+    }
     if (len > p_attr->max_len)
     {
         return WICED_BT_GATT_INVALID_ATTR_LEN;
     }
+    if ((len != 0u) && (p_val == RT_NULL))
+    {
+        return WICED_BT_GATT_INVALID_PDU;
+    }
+    if ((attr_handle == HDLD_NUS_TX_CLIENT_CHAR_CONFIG) && (len != 2u))
+    {
+        return WICED_BT_GATT_INVALID_ATTR_LEN;
+    }
 
-    memcpy(p_attr->p_data, p_val, len);
+    if (len != 0u)
+    {
+        memcpy(p_attr->p_data, p_val, len);
+    }
     p_attr->cur_len = len;
 
     switch (attr_handle)
     {
     case HDLD_NUS_TX_CLIENT_CHAR_CONFIG:
-        if (len != 2u)
-        {
-            return WICED_BT_GATT_INVALID_ATTR_LEN;
-        }
         app_nus_tx_client_char_config[0] = p_val[0];
         app_nus_tx_client_char_config[1] = p_val[1];
         return WICED_BT_GATT_SUCCESS;
-
-    case HDLC_NUS_RX_VALUE:
-    {
-        app_ble_command_t cmd;
-        rt_err_t submit_ret;
-        char frame[MAX_LEN_NUS_RX + 1u];
-        char response[64];
-
-        app_nus_rx_len = len;
-        memcpy(app_nus_rx, p_val, len);
-        rt_kprintf("[bt] NUS rx len=%u data='%.*s'\n", (unsigned int)len, (int)len, p_val);
-
-        memset(frame, 0, sizeof(frame));
-        memcpy(frame, p_val, len);
-        if (app_ble_service_parse_ascii_frame(frame, &cmd) == RT_EOK)
-        {
-            if (!app_bt_command_is_readonly_safe(cmd.type))
-            {
-                rt_snprintf(response, sizeof(response), "ERR:readonly\n");
-                rt_kprintf("[bt] Readonly command rejected: %s\n", frame);
-            }
-            else
-            {
-                submit_ret = app_ble_service_submit_command(&cmd);
-                if (submit_ret == RT_EOK)
-                {
-                    app_ble_service_set_link_state(RT_TRUE, app_ble_service_get_runtime()->streaming_enabled);
-                    rt_snprintf(response, sizeof(response), "OK:%s\n", frame);
-                    rt_kprintf("[bt] Command accepted: %s\n", frame);
-                }
-                else
-                {
-                    rt_snprintf(response, sizeof(response), "ERR:busy\n");
-                    rt_kprintf("[bt] Command queue full: %s\n", frame);
-                }
-            }
-        }
-        else
-        {
-            rt_snprintf(response, sizeof(response), "ERR:invalid\n");
-            rt_kprintf("[bt] NUS cmd parse failed: %s\n", frame);
-        }
-        (void)bt_app_gatt_send((const uint8_t *)response, (uint16_t)rt_strlen(response));
-        return WICED_BT_GATT_SUCCESS;
-    }
 
     default:
         return WICED_BT_GATT_WRITE_NOT_PERMIT;
@@ -517,12 +606,12 @@ void *app_bt_alloc_buffer(int len)
     return rt_malloc((rt_size_t)len);
 }
 
-void app_bt_send_message(void)
+void app_bt_send_message(const app_ble_session_token_t *token)
 {
-    app_bt_nus_notify();
+    (void)bt_app_gatt_publish_telemetry(token, app_nus_tx, app_nus_tx_len);
 }
 
-void app_bt_gatt_increment_notify_value(void)
+void app_bt_gatt_increment_notify_value(const app_ble_session_token_t *token)
 {
     static const uint8_t ping[] = "ping\n";
 
@@ -531,11 +620,14 @@ void app_bt_gatt_increment_notify_value(void)
         return;
     }
 
-    (void)bt_app_gatt_send(ping, (uint16_t)(sizeof(ping) - 1U));
+    (void)bt_app_gatt_publish_telemetry(token,
+                                        ping,
+                                        (uint16_t)(sizeof(ping) - 1u));
 }
 
 rt_err_t bt_app_gatt_init(bt_app_gatt_adv_restart_t adv_restart_cb)
 {
+    rt_err_t ret;
     wiced_bt_gatt_status_t status;
 
     g_bt_app_adv_restart_cb = adv_restart_cb;
@@ -544,24 +636,21 @@ rt_err_t bt_app_gatt_init(bt_app_gatt_adv_restart_t adv_restart_cb)
         return RT_EOK;
     }
 
-    if (!g_nus_tx_lock_ready)
+    ret = app_ble_service_init();
+    if (ret != RT_EOK)
     {
-        if (rt_mutex_init(&g_nus_tx_lock, "nustx", RT_IPC_FLAG_PRIO) != RT_EOK)
-        {
-            return -RT_ERROR;
-        }
-        g_nus_tx_lock_ready = RT_TRUE;
+        return ret;
     }
 
     status = wiced_bt_gatt_register(app_bt_gatt_callback);
-    rt_kprintf("[bt] GATT register status=0x%04X\n", status);
+    APP_BT_GATT_TRACE("[bt] GATT register status=0x%04X\n", status);
     if (status != WICED_BT_GATT_SUCCESS)
     {
         return -RT_ERROR;
     }
 
     status = wiced_bt_gatt_db_init(gatt_database, gatt_database_len, NULL);
-    rt_kprintf("[bt] GATT db init status=0x%04X\n", status);
+    APP_BT_GATT_TRACE("[bt] GATT db init status=0x%04X\n", status);
     if (status != WICED_BT_GATT_SUCCESS)
     {
         return -RT_ERROR;

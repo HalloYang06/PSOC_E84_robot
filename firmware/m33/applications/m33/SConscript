@@ -27,6 +27,9 @@ LIBPATH = [
     os.path.join(root, 'vendor_btstack', 'lib', 'COMPONENT_CM33', 'COMPONENT_SOFTFP', 'TOOLCHAIN_GCC_ARM'),
 ]
 LIBS = ['libbtstack.a']
+cppdefines = []
+if os.environ.get('M33_APP_BLE_RUNTIME', '1') == '1':
+    cppdefines.append('M33_ENABLE_APP_BLE_RUNTIME=1')
 
-group = DefineGroup('AppM33', src, depend=[''], CPPPATH=CPPPATH, LIBS=LIBS, LIBPATH=LIBPATH)
+group = DefineGroup('AppM33', src, depend=[''], CPPPATH=CPPPATH, LIBS=LIBS, LIBPATH=LIBPATH, CPPDEFINES=cppdefines)
 Return('group')

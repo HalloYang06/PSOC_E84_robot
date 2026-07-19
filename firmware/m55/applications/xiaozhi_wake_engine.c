@@ -21,6 +21,15 @@ extern int xiaozhi_edge_impulse_wake_last_alloc_size(void);
 extern int xiaozhi_edge_impulse_wake_last_alloc_fail_source(void);
 extern int xiaozhi_edge_impulse_wake_last_alloc_fail_size(void);
 extern int xiaozhi_edge_impulse_wake_alloc_diag(void);
+extern int xiaozhi_edge_impulse_cpu_diag_get(xiaozhi_wake_cpu_diag_t *diag);
+extern int xiaozhi_edge_impulse_cpu_diag_reset(void);
+extern int xiaozhi_edge_impulse_cpu_samples_snapshot(
+    xiaozhi_wake_cpu_sample_snapshot_t *snapshot);
+extern rt_size_t xiaozhi_edge_impulse_cpu_samples_read(
+    const xiaozhi_wake_cpu_sample_snapshot_t *snapshot,
+    rt_size_t offset,
+    rt_uint32_t *samples,
+    rt_size_t capacity);
 #endif
 
 #ifdef XIAOZHI_WAKE_USE_IFX_DEEPCRAFT
@@ -212,6 +221,80 @@ int xiaozhi_wake_engine_last_alloc_fail_size(void)
     return xiaozhi_edge_impulse_wake_last_alloc_fail_size();
 #else
     return 0;
+#endif
+}
+
+rt_err_t xiaozhi_wake_engine_cpu_diag_get(xiaozhi_wake_cpu_diag_t *diag)
+{
+    int ret;
+
+    if (diag == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    ret = xiaozhi_edge_impulse_cpu_diag_get(diag);
+    if (ret != RT_EOK)
+    {
+        return (rt_err_t)ret;
+    }
+    diag->backend = "cpu_tflm";
+    diag->model_id = "official_xiaozhi_ei_int8";
+    return RT_EOK;
+#else
+    rt_memset(diag, 0, sizeof(*diag));
+    diag->backend = "unavailable";
+    diag->model_id = "not_active";
+    diag->timer = "not_active";
+    return -RT_ENOSYS;
+#endif
+}
+
+rt_err_t xiaozhi_wake_engine_cpu_diag_reset(void)
+{
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return (rt_err_t)xiaozhi_edge_impulse_cpu_diag_reset();
+#else
+    return -RT_ENOSYS;
+#endif
+}
+
+rt_err_t xiaozhi_wake_engine_cpu_samples_snapshot(
+    xiaozhi_wake_cpu_sample_snapshot_t *snapshot)
+{
+    if (snapshot == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return (rt_err_t)xiaozhi_edge_impulse_cpu_samples_snapshot(snapshot);
+#else
+    rt_memset(snapshot, 0, sizeof(*snapshot));
+    return -RT_ENOSYS;
+#endif
+}
+
+rt_size_t xiaozhi_wake_engine_cpu_samples_read(
+    const xiaozhi_wake_cpu_sample_snapshot_t *snapshot,
+    rt_size_t offset,
+    rt_uint32_t *samples,
+    rt_size_t capacity)
+{
+    if ((snapshot == RT_NULL) || (samples == RT_NULL) || (capacity == 0U))
+    {
+        return 0U;
+    }
+
+#ifdef XIAOZHI_WAKE_USE_EDGE_IMPULSE_TFLM
+    return xiaozhi_edge_impulse_cpu_samples_read(snapshot,
+                                                  offset,
+                                                  samples,
+                                                  capacity);
+#else
+    RT_UNUSED(offset);
+    return 0U;
 #endif
 }
 

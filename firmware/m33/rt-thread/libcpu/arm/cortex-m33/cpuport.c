@@ -270,8 +270,12 @@ void rt_hw_exception_install(rt_err_t (*exception_handle)(void *context))
 
 #define SCB_CFSR        (*(volatile const unsigned *)0xE000ED28) /* Configurable Fault Status Register */
 #define SCB_HFSR        (*(volatile const unsigned *)0xE000ED2C) /* HardFault Status Register */
+#define SCB_DFSR        (*(volatile const unsigned *)0xE000ED30) /* Debug Fault Status Register */
 #define SCB_MMAR        (*(volatile const unsigned *)0xE000ED34) /* MemManage Fault Address register */
 #define SCB_BFAR        (*(volatile const unsigned *)0xE000ED38) /* Bus Fault Address Register */
+#define SCB_AFSR        (*(volatile const unsigned *)0xE000ED3C) /* Auxiliary Fault Status Register */
+#define SCB_ICSR        (*(volatile const unsigned *)0xE000ED04) /* Interrupt Control and State Register */
+#define SCB_SHCSR       (*(volatile const unsigned *)0xE000ED24) /* System Handler Control and State Register */
 #define SCB_AIRCR       (*(volatile unsigned long *)0xE000ED0C)  /* Reset control Address Register */
 #define SCB_RESET_VALUE 0x05FA0004                               /* Reset value, write to SCB_AIRCR can reset cpu */
 
@@ -451,6 +455,86 @@ struct exception_info
     struct stack_frame stack_frame;
 };
 
+struct rt_hw_fault_dump
+{
+    rt_uint32_t magic;
+    rt_uint32_t exc_return;
+    rt_uint32_t fault_sp;
+    rt_uint32_t tz;
+    rt_uint32_t saved_lr;
+    rt_uint32_t psplim;
+    rt_uint32_t control;
+    rt_uint32_t r0;
+    rt_uint32_t r1;
+    rt_uint32_t r2;
+    rt_uint32_t r3;
+    rt_uint32_t r4;
+    rt_uint32_t r5;
+    rt_uint32_t r6;
+    rt_uint32_t r7;
+    rt_uint32_t r8;
+    rt_uint32_t r9;
+    rt_uint32_t r10;
+    rt_uint32_t r11;
+    rt_uint32_t r12;
+    rt_uint32_t lr;
+    rt_uint32_t pc;
+    rt_uint32_t psr;
+    rt_uint32_t cfsr;
+    rt_uint32_t hfsr;
+    rt_uint32_t dfsr;
+    rt_uint32_t afsr;
+    rt_uint32_t mmfar;
+    rt_uint32_t bfar;
+    rt_uint32_t shcsr;
+    rt_uint32_t icsr;
+};
+
+volatile struct rt_hw_fault_dump g_rt_hw_fault_dump;
+
+static void rt_hw_capture_fault_dump(struct exception_info *exception_info)
+{
+    struct stack_frame *context;
+
+    if (exception_info == RT_NULL)
+    {
+        return;
+    }
+
+    context = &exception_info->stack_frame;
+    g_rt_hw_fault_dump.magic = 0xFA17FA17U;
+    g_rt_hw_fault_dump.exc_return = exception_info->exc_return;
+    g_rt_hw_fault_dump.fault_sp = (rt_uint32_t)exception_info;
+    g_rt_hw_fault_dump.tz = context->tz;
+    g_rt_hw_fault_dump.saved_lr = context->lr;
+    g_rt_hw_fault_dump.psplim = context->psplim;
+    g_rt_hw_fault_dump.control = context->control;
+    g_rt_hw_fault_dump.r0 = context->exception_stack_frame.r0;
+    g_rt_hw_fault_dump.r1 = context->exception_stack_frame.r1;
+    g_rt_hw_fault_dump.r2 = context->exception_stack_frame.r2;
+    g_rt_hw_fault_dump.r3 = context->exception_stack_frame.r3;
+    g_rt_hw_fault_dump.r4 = context->r4;
+    g_rt_hw_fault_dump.r5 = context->r5;
+    g_rt_hw_fault_dump.r6 = context->r6;
+    g_rt_hw_fault_dump.r7 = context->r7;
+    g_rt_hw_fault_dump.r8 = context->r8;
+    g_rt_hw_fault_dump.r9 = context->r9;
+    g_rt_hw_fault_dump.r10 = context->r10;
+    g_rt_hw_fault_dump.r11 = context->r11;
+    g_rt_hw_fault_dump.r12 = context->exception_stack_frame.r12;
+    g_rt_hw_fault_dump.lr = context->exception_stack_frame.lr;
+    g_rt_hw_fault_dump.pc = context->exception_stack_frame.pc;
+    g_rt_hw_fault_dump.psr = context->exception_stack_frame.psr;
+    g_rt_hw_fault_dump.cfsr = SCB_CFSR;
+    g_rt_hw_fault_dump.hfsr = SCB_HFSR;
+    g_rt_hw_fault_dump.dfsr = SCB_DFSR;
+    g_rt_hw_fault_dump.afsr = SCB_AFSR;
+    g_rt_hw_fault_dump.mmfar = SCB_MMAR;
+    g_rt_hw_fault_dump.bfar = SCB_BFAR;
+    g_rt_hw_fault_dump.shcsr = SCB_SHCSR;
+    g_rt_hw_fault_dump.icsr = SCB_ICSR;
+}
+
 void rt_hw_hard_fault_exception(struct exception_info *exception_info)
 {
 #if defined(RT_USING_FINSH) && defined(MSH_USING_BUILT_IN_COMMANDS)
@@ -458,6 +542,8 @@ void rt_hw_hard_fault_exception(struct exception_info *exception_info)
 #endif
     struct exception_stack_frame *exception_stack = &exception_info->stack_frame.exception_stack_frame;
     struct stack_frame *context = &exception_info->stack_frame;
+
+    rt_hw_capture_fault_dump(exception_info);
 
     if (rt_exception_hook != RT_NULL)
     {

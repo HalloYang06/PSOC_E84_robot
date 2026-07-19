@@ -4,7 +4,6 @@ param(
     [string]$SecureRoot = "",
     [string]$Image = "",
     [string]$XipImage = "",
-    [string]$EdgeProtectToolsPath = "",
     [string]$OpenOcdHome = "F:\RT-ThreadStudio\repo\Extract\Debugger_Support_Packages\Infineon\OpenOCD-Infineon\2.0.0",
     [switch]$SkipBuild,
     [ValidateRange(1, 32)]
@@ -34,16 +33,7 @@ function Invoke-Native {
 
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
 if ([string]::IsNullOrWhiteSpace($SecureRoot)) {
-    $siblingSecureRoot = Join-Path (Split-Path -Parent $ProjectRoot) "secureCore"
-    if (Test-Path -LiteralPath $siblingSecureRoot -PathType Container) {
-        $SecureRoot = $siblingSecureRoot
-    }
-    else {
-        # The monorepo tracks the Secure startup source and signed input inside
-        # firmware/m33.  This fallback keeps -SkipBuild verification usable;
-        # rebuilding the signed Secure image still requires -SecureRoot.
-        $SecureRoot = $ProjectRoot
-    }
+    $SecureRoot = Join-Path (Split-Path -Parent $ProjectRoot) "secureCore"
 }
 $SecureRoot = (Resolve-Path -LiteralPath $SecureRoot).Path
 
@@ -57,16 +47,10 @@ foreach ($startupSource in @($trackedSecureStartup, $actualSecureStartup)) {
     }
 }
 
-function Read-NormalizedText([string]$Path) {
-    return [System.IO.File]::ReadAllText($Path).Replace("`r`n", "`n").Replace("`r", "`n")
-}
-
-$trackedSecureStartupContent = Read-NormalizedText $trackedSecureStartup
-$actualSecureStartupContent = Read-NormalizedText $actualSecureStartup
-if (-not [string]::Equals($trackedSecureStartupContent,
-                          $actualSecureStartupContent,
-                          [System.StringComparison]::Ordinal)) {
-    throw "Secure startup source content mismatch: tracked=$trackedSecureStartup actual=$actualSecureStartup"
+$trackedSecureStartupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $trackedSecureStartup).Hash
+$actualSecureStartupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $actualSecureStartup).Hash
+if ($trackedSecureStartupHash -ne $actualSecureStartupHash) {
+    throw "Secure startup source mismatch: tracked=$trackedSecureStartupHash actual=$actualSecureStartupHash"
 }
 
 $makeExe = "F:\RT-ThreadStudio\platform\env_released\env\tools\bin\make.exe"
@@ -74,12 +58,7 @@ $makeBin = Split-Path -Parent $makeExe
 $buildToolsBin = "F:\RT-ThreadStudio\platform\env_released\env\tools\BuildTools\2.12-20190422-1053\bin"
 $toolchainBin = "F:\RT-ThreadStudio\repo\Extract\ToolChain_Support_Packages\ARM\GNU_Tools_for_ARM_Embedded_Processors\13.3\bin"
 $projectLinkerBin = "F:\RT-ThreadStudio\plugins\org.rt-thread.studio.project.gener_1.0.30\builder"
-if ([string]::IsNullOrWhiteSpace($EdgeProtectToolsPath)) {
-    $edgeProtectTools = Join-Path $ProjectRoot "tools\edgeprotecttools\bin\edgeprotecttools.exe"
-}
-else {
-    $edgeProtectTools = $EdgeProtectToolsPath
-}
+$edgeProtectTools = Join-Path $ProjectRoot "tools\edgeprotecttools\bin\edgeprotecttools.exe"
 $secureBuildDirectory = Join-Path $SecureRoot "Debug"
 $nsBuildDirectory = Join-Path $ProjectRoot "Debug"
 $secureHex = Join-Path $secureBuildDirectory "rtthread.hex"
@@ -99,10 +78,6 @@ foreach ($requiredTool in @($makeExe, $edgeProtectTools)) {
 }
 
 if (-not $SkipBuild) {
-    if ($SecureRoot -eq $ProjectRoot) {
-        throw "Secure rebuild requires a standalone secureCore; pass -SecureRoot or use -SkipBuild with the reviewed signed image"
-    }
-
     $env:PATH = "$toolchainBin;$projectLinkerBin;$buildToolsBin;$makeBin;$env:PATH"
     $env:MAKE = "make"
     $env:RTT_EXEC_PATH = $toolchainBin

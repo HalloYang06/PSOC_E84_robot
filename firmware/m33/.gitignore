@@ -102,6 +102,14 @@ Thumbs.db
 artifacts/
 data/sensor_capture/*.csv
 
+# Rehab cloud local runtime
+cloud/rehab-platform/.env
+cloud/rehab-platform/.venv/
+cloud/rehab-platform/.pytest_cache/
+cloud/rehab-platform/rehab_platform.egg-info/
+cloud/rehab-platform/rehab-platform.db
+cloud/rehab-platform/**/__pycache__/
+
 # SCons
 .sconsign.dblite
 .sconf_temp/

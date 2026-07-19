@@ -62,7 +62,7 @@
 
 #define RT_USING_COMPONENTS_INIT
 #define RT_USING_USER_MAIN
-#define RT_MAIN_THREAD_STACK_SIZE 8192
+#define RT_MAIN_THREAD_STACK_SIZE 2048
 #define RT_MAIN_THREAD_PRIORITY 10
 #define RT_USING_MSH
 #define RT_USING_FINSH
@@ -350,6 +350,10 @@
 /* Onboard Peripheral Drivers */
 
 #define BSP_USING_USB_TO_UART
+#define BSP_USING_AUDIO
+#define BSP_USING_AUDIO_PLAY
+#define BSP_USING_AUDIO_RECORD
+#define ENABLE_STEREO_INPUT_FEED
 /* end of Onboard Peripheral Drivers */
 
 /* On-chip Peripheral Drivers */

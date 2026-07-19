@@ -16,6 +16,8 @@ typedef enum
     REHAB_MODE_MEMORY = 2,
     REHAB_MODE_ASSIST = 3,
     REHAB_MODE_RESIST = 4,
+    REHAB_MODE_CURL = 5,
+    REHAB_MODE_FIXED_ACTION = 6,
 } rehab_mode_t;
 
 typedef enum
@@ -39,6 +41,7 @@ typedef struct
 {
     rehab_mode_t mode;
     rehab_mode_submode_t submode;
+    rehab_cmd_source_t source;
     rt_uint8_t joint_mask;
     rt_uint8_t assist_direction_mask;
     float max_velocity_rad_s;
@@ -50,6 +53,16 @@ typedef struct
 typedef struct
 {
     rehab_mode_t mode;
+    rt_uint8_t joint_mask;
+    rehab_fixed_action_id_t fixed_action;
+    rt_uint32_t request_id;
+    rt_uint32_t session_generation;
+    rt_uint32_t ttl_ms;
+} rehab_app_mode_command_t;
+
+typedef struct
+{
+    rehab_mode_t mode;
     rehab_mode_submode_t submode;
     rt_uint8_t active_joint_mask;
     rt_uint8_t flags;
@@ -57,10 +70,18 @@ typedef struct
     rt_uint8_t assist_engaged_mask;
     rt_uint8_t sequence;
     rt_tick_t timestamp;
+    rt_uint32_t mode_generation;
+    rt_uint32_t lease_timeout_count;
+    rt_uint32_t lease_stop_retry_count;
+    rt_bool_t lease_stop_latched;
 } rehab_mode_status_t;
 
 rt_err_t rehab_mode_manager_init(void);
 rt_err_t rehab_mode_manager_apply_command(const rehab_mode_command_t *cmd);
+rt_err_t rehab_mode_manager_apply_app_command(const rehab_app_mode_command_t *cmd);
+rt_err_t rehab_mode_manager_note_app_heartbeat(rt_uint32_t session_generation);
+rt_err_t rehab_mode_manager_note_app_disconnect(rt_uint32_t session_generation);
+rt_err_t rehab_mode_manager_stop_app(rt_uint32_t session_generation);
 void rehab_mode_manager_record_reject(rt_uint8_t sequence, rt_uint8_t detail);
 void rehab_mode_manager_note_heartbeat(void);
 void rehab_mode_manager_tick(void);

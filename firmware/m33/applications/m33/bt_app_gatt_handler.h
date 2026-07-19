@@ -2,6 +2,7 @@
 #define BT_APP_GATT_HANDLER_H
 
 #include <rtthread.h>
+#include "app_ble_worker.h"
 #include "app_bt_event_handler.h"
 #include "bt_app_gatt_db.h"
 #include "wiced_bt_gatt.h"
@@ -41,10 +42,18 @@ wiced_bt_gatt_status_t app_bt_set_value(uint16_t attr_handle,
                                         uint16_t len);
 void app_bt_free_buffer(uint8_t *p_buf);
 void *app_bt_alloc_buffer(int len);
-void app_bt_send_message(void);
-void app_bt_gatt_increment_notify_value(void);
-rt_err_t bt_app_gatt_send(const uint8_t *data, uint16_t len);
-rt_err_t bt_app_gatt_send_frame(const uint8_t *data, uint16_t len, uint16_t chunk_size);
+void app_bt_send_message(const app_ble_session_token_t *token);
+void app_bt_gatt_increment_notify_value(const app_ble_session_token_t *token);
+rt_err_t bt_app_gatt_send(const app_ble_session_token_t *token,
+                          const uint8_t *data,
+                          uint16_t len);
+rt_err_t bt_app_gatt_publish_telemetry(const app_ble_session_token_t *token,
+                                       const uint8_t *data,
+                                       uint16_t len);
+rt_err_t bt_app_gatt_notify_from_worker(uint32_t generation,
+                                        uint16_t conn_id,
+                                        const uint8_t *data,
+                                        uint16_t len);
 
 rt_err_t bt_app_gatt_init(bt_app_gatt_adv_restart_t adv_restart_cb);
 uint16_t bt_app_gatt_current_conn_id(void);

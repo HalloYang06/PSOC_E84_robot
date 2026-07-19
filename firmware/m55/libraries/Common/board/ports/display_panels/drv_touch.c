@@ -144,10 +144,8 @@ static void ST7102_touch_down(void *buf, int8_t id, int16_t x, int16_t y, int16_
 
 rt_uint8_t read_buf[8 * ST7102_MAX_TOUCH] = {0};
 rt_uint8_t Last_read_buf[8 * ST7102_MAX_TOUCH] = {0};
-#define LED_RED GET_PIN(16, 7)
 static rt_size_t ST7102_read_point(struct rt_touch_device *touch, void *buf, rt_size_t read_num)
 {
-    rt_pin_write(LED_RED, PIN_HIGH);
     rt_uint8_t touch_num = 0;
     rt_uint8_t cmd[2];
 

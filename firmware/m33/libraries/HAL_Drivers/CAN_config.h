@@ -149,7 +149,7 @@ static const cy_en_canfd_fifo_config_t ifx_canfd0_rx_fifo0_cfg =
     .mode = CY_CANFD_FIFO_MODE_OVERWRITE,
     .watermark = 0U,
     .numberOfFIFOElements = BSP_CANFD0_RX_FIFO0_ELEMENTS,
-    .topPointerLogicEnabled = false,
+    .topPointerLogicEnabled = true,
 };
 
 static const cy_en_canfd_fifo_config_t ifx_canfd0_rx_fifo1_cfg =

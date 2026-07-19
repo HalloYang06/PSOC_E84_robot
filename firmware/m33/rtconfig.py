@@ -1,5 +1,23 @@
 import os
 
+
+def _find_gcc_exec_path(default_path):
+    gcc_name = 'arm-none-eabi-gcc.exe' if os.name == 'nt' else 'arm-none-eabi-gcc'
+    if default_path and os.path.exists(os.path.join(default_path, gcc_name)):
+        return default_path
+
+    search_roots = []
+    for drive in ('F:', 'C:', 'D:'):
+        search_roots.append(os.path.join(drive + os.sep, 'STM32CubeCLT'))
+    for root in search_roots:
+        if not os.path.isdir(root):
+            continue
+        for dirpath, _, filenames in os.walk(root):
+            if gcc_name in filenames:
+                return dirpath
+
+    return default_path
+
 # toolchains options
 ARCH='arm'
 CPU='cortex-m33'
@@ -27,6 +45,8 @@ elif CROSS_TOOL == 'iar':
 
 if os.getenv('RTT_EXEC_PATH'):
     EXEC_PATH = os.getenv('RTT_EXEC_PATH')
+elif PLATFORM == 'gcc':
+    EXEC_PATH = _find_gcc_exec_path(EXEC_PATH)
 
 BUILD = 'debug'
 

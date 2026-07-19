@@ -19,7 +19,6 @@
 #define BT_HCI_PIN(port, pin) ((cyhal_gpio_t)((((uint32_t)(port)) << 3U) | ((uint32_t)(pin) & 0x07U)))
 
 static bt_hci_runtime_t g_bt_hci_runtime;
-static rt_bool_t g_bt_stack_started = RT_FALSE;
 
 static const cybt_platform_config_t g_bt_platform_cfg =
 {
@@ -68,82 +67,140 @@ static rt_bool_t bt_hci_stack_is_integrated(void)
             probe.status == BT_STACK_STATUS_PROFILE_REQUIRED);
 }
 
+static void bt_hci_transport_set_runtime(bt_hci_state_t state, rt_err_t error)
+{
+    rt_base_t level = rt_hw_interrupt_disable();
+
+    g_bt_hci_runtime.state = state;
+    g_bt_hci_runtime.last_error = error;
+    rt_hw_interrupt_enable(level);
+}
+
 rt_err_t bt_hci_transport_init(void)
 {
-    rt_memset(&g_bt_hci_runtime, 0, sizeof(g_bt_hci_runtime));
-    g_bt_hci_runtime.hci_uart_expected = RT_TRUE;
-    g_bt_hci_runtime.dual_mode_expected = RT_TRUE;
-    g_bt_hci_runtime.spp_expected = RT_TRUE;
+    bt_hci_runtime_t runtime;
+    rt_base_t level;
+
+    rt_memset(&runtime, 0, sizeof(runtime));
+    runtime.hci_uart_expected = RT_TRUE;
+    runtime.dual_mode_expected = RT_TRUE;
+    runtime.spp_expected = RT_TRUE;
 
     if (!bt_hci_stack_is_integrated())
     {
-        g_bt_hci_runtime.state = BT_HCI_STATE_STACK_MISSING;
-        g_bt_hci_runtime.last_error = -RT_ENOSYS;
+        runtime.state = BT_HCI_STATE_FAILED;
+        runtime.last_error = -RT_ENOSYS;
+        level = rt_hw_interrupt_disable();
+        g_bt_hci_runtime = runtime;
+        rt_hw_interrupt_enable(level);
         LOG_W("Bluetooth board config exists, but %s is missing", bt_stack_adapter_missing_piece());
-        return g_bt_hci_runtime.last_error;
+        return runtime.last_error;
     }
 
-    g_bt_hci_runtime.state = BT_HCI_STATE_READY;
-    g_bt_hci_runtime.last_error = RT_EOK;
-    rt_kprintf("[bt.hci] transport ready\n");
-    LOG_I("Bluetooth HCI transport layer ready for stack startup");
+    runtime.state = BT_HCI_STATE_OFF;
+    runtime.last_error = RT_EOK;
+    level = rt_hw_interrupt_disable();
+    g_bt_hci_runtime = runtime;
+    rt_hw_interrupt_enable(level);
+    rt_kprintf("[bt.hci] transport configured\n");
+    LOG_I("Bluetooth HCI transport configured for stack startup");
     return RT_EOK;
 }
 
 rt_err_t bt_hci_transport_start(void)
 {
+    bt_hci_runtime_t runtime;
     wiced_result_t result;
 
-    if (g_bt_hci_runtime.state == BT_HCI_STATE_UNINITIALIZED)
+    (void)bt_hci_transport_get_runtime_snapshot(&runtime);
+    if ((runtime.state == BT_HCI_STATE_STARTING) ||
+        (runtime.state == BT_HCI_STATE_READY))
     {
-        bt_hci_transport_init();
+        return RT_EOK;
+    }
+    if (runtime.state == BT_HCI_STATE_FAILED)
+    {
+        return (runtime.last_error != RT_EOK) ? runtime.last_error : -RT_ERROR;
     }
 
     if (!bt_hci_stack_is_integrated())
     {
-        g_bt_hci_runtime.state = BT_HCI_STATE_STACK_MISSING;
-        g_bt_hci_runtime.last_error = -RT_ENOSYS;
+        bt_hci_transport_set_runtime(BT_HCI_STATE_FAILED, -RT_ENOSYS);
         LOG_W("Skipping Bluetooth startup until %s is available", bt_stack_adapter_missing_piece());
-        return g_bt_hci_runtime.last_error;
-    }
-
-    if (g_bt_stack_started)
-    {
-        g_bt_hci_runtime.state = BT_HCI_STATE_RUNNING;
-        g_bt_hci_runtime.last_error = RT_EOK;
-        rt_kprintf("[bt.hci] already started\n");
-        return RT_EOK;
+        return -RT_ENOSYS;
     }
 
     rt_kprintf("[bt.hci] starting bring-up\n");
     LOG_I("Starting BTSTACK bring-up");
     cybt_platform_config_init(&g_bt_platform_cfg);
+    bt_hci_transport_set_runtime(BT_HCI_STATE_STARTING, RT_EOK);
     result = wiced_bt_stack_init(app_bt_management_callback, &wiced_bt_cfg_settings);
     rt_kprintf("[bt.hci] wiced_bt_stack_init result=0x%08lx\n", (unsigned long)result);
     LOG_I("wiced_bt_stack_init result=0x%08lx", (unsigned long)result);
 
     if ((result != WICED_SUCCESS) && (result != WICED_PENDING) && (result != WICED_ALREADY_INITIALIZED))
     {
-        g_bt_hci_runtime.state = BT_HCI_STATE_ERROR;
-        g_bt_hci_runtime.last_error = -RT_ERROR;
-        return g_bt_hci_runtime.last_error;
+        bt_hci_transport_set_runtime(BT_HCI_STATE_FAILED, -RT_ERROR);
+        return -RT_ERROR;
     }
 
-    g_bt_stack_started = RT_TRUE;
-    g_bt_hci_runtime.state = BT_HCI_STATE_RUNNING;
-    g_bt_hci_runtime.last_error = RT_EOK;
-    rt_kprintf("[bt.hci] transport started\n");
-    LOG_I("Bluetooth HCI transport started");
+    rt_kprintf("[bt.hci] stack start accepted; waiting for enabled event\n");
+    LOG_I("Bluetooth stack start accepted; readiness is asynchronous");
     return RT_EOK;
 }
 
-const bt_hci_runtime_t *bt_hci_transport_get_runtime(void)
+void bt_hci_transport_report_enabled(rt_err_t status)
 {
-    return &g_bt_hci_runtime;
+    rt_base_t level = rt_hw_interrupt_disable();
+
+    if (status == RT_EOK)
+    {
+        if (g_bt_hci_runtime.state == BT_HCI_STATE_STARTING)
+        {
+            g_bt_hci_runtime.state = BT_HCI_STATE_READY;
+            g_bt_hci_runtime.last_error = RT_EOK;
+        }
+    }
+    else if (g_bt_hci_runtime.state == BT_HCI_STATE_STARTING)
+    {
+        g_bt_hci_runtime.state = BT_HCI_STATE_FAILED;
+        g_bt_hci_runtime.last_error = status;
+    }
+    rt_hw_interrupt_enable(level);
+}
+
+void bt_hci_transport_report_disabled(void)
+{
+    rt_base_t level = rt_hw_interrupt_disable();
+
+    if ((g_bt_hci_runtime.state == BT_HCI_STATE_STARTING) ||
+        (g_bt_hci_runtime.state == BT_HCI_STATE_READY))
+    {
+        g_bt_hci_runtime.state = BT_HCI_STATE_FAILED;
+        g_bt_hci_runtime.last_error = -RT_ERROR;
+    }
+    rt_hw_interrupt_enable(level);
+}
+
+rt_err_t bt_hci_transport_get_runtime_snapshot(bt_hci_runtime_t *runtime)
+{
+    rt_base_t level;
+
+    if (runtime == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+
+    level = rt_hw_interrupt_disable();
+    *runtime = g_bt_hci_runtime;
+    rt_hw_interrupt_enable(level);
+    return RT_EOK;
 }
 
 rt_bool_t bt_hci_transport_is_ready(void)
 {
-    return (g_bt_hci_runtime.state == BT_HCI_STATE_READY) ||
-           (g_bt_hci_runtime.state == BT_HCI_STATE_RUNNING);
+    bt_hci_runtime_t runtime;
+
+    (void)bt_hci_transport_get_runtime_snapshot(&runtime);
+    return runtime.state == BT_HCI_STATE_READY;
 }

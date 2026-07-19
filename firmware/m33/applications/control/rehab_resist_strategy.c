@@ -6,9 +6,27 @@ void rehab_resist_strategy_reset(rehab_resist_strategy_state_t *state)
 {
     if (state != RT_NULL)
     {
+        state->last_current_a = 0.0f;
         rehab_adaptive_pid_reset(&state->pid_state);
         rehab_adrc_reset(&state->adrc_state);
     }
+}
+
+static float rehab_resist_strategy_slew(float target, float current, float step)
+{
+    if (step <= 0.0f)
+    {
+        return target;
+    }
+    if (target > (current + step))
+    {
+        return current + step;
+    }
+    if (target < (current - step))
+    {
+        return current - step;
+    }
+    return target;
 }
 
 void rehab_resist_strategy_step(rehab_resist_strategy_state_t *state,
@@ -116,5 +134,11 @@ void rehab_resist_strategy_step(rehab_resist_strategy_state_t *state,
     out->current_a = -params->resist_direction *
                      rehab_strategy_signf(fb->vel_rad_s) *
                      rehab_strategy_clampf(current_mag, params->resist_max_current_a);
+    out->current_a = rehab_resist_strategy_slew(out->current_a,
+                                                state->last_current_a,
+                                                CONTROL_REHAB_RESIST_SLEW_A_PER_STEP);
+    out->current_a = rehab_strategy_clampf(out->current_a,
+                                           params->resist_max_current_a);
+    state->last_current_a = out->current_a;
     out->engaged = RT_TRUE;
 }

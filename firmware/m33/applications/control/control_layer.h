@@ -202,6 +202,8 @@ typedef struct
     rt_uint8_t clear_fault;
     /* set_mode 使用的运行模式。 */
     rt_uint8_t mode;
+    /* SET_MODE active modes use one M33 joint bit. */
+    rt_uint8_t joint_mask;
     /* active_report 命令的开关值。 */
     rt_uint8_t active_report_enable;
     /* 目标位置，单位 0.1 deg。 */
@@ -216,6 +218,9 @@ typedef struct
 
 /* 初始化控制层：打开/初始化 CAN，创建后台线程，初始化传感器子模块。 */
 int control_layer_init(const char *can_name);
+void control_layer_poll_once(void);
+/* Read-only initialization state for admission checks. */
+rt_bool_t control_layer_is_initialized(void);
 
 /* 使能指定关节电机。joint_id 为机械臂关节编号，不是底层 motor_id。 */
 rt_err_t control_motor_enable(rt_uint8_t joint_id);
@@ -249,11 +254,26 @@ rt_err_t control_motor_write_parameter(rt_uint8_t joint_id, rt_uint16_t index, f
 /* 读取最近一次电机参数回复缓存。 */
 rt_err_t control_get_last_motor_param(control_motor_param_report_t *out);
 /* 私有协议速度模式控制：设置速度和电流限制。 */
-/* Private protocol current-mode command, writes iq_ref after enabling the joint. */
+/* Prepare private-protocol current mode once with a zero-current reference. */
+rt_err_t control_motor_current_prepare(rt_uint8_t joint_id);
+/* Update iq_ref without changing run mode or enable state. */
+rt_err_t control_motor_current_setpoint(rt_uint8_t joint_id, float current_a);
+/* Compatibility helper: prepare then write one current setpoint. */
 rt_err_t control_motor_current_control(rt_uint8_t joint_id, float current_a);
 rt_err_t control_motor_speed_control(rt_uint8_t joint_id, float speed_rad_s, float limit_cur);
 /* 私有协议位置控制：csp_mode 为真时使用 CSP 参数流，否则走普通位置参数流。 */
 rt_err_t control_motor_position_control(rt_uint8_t joint_id, float pos_rad, float limit_spd, rt_bool_t csp_mode);
+rt_err_t control_motor_position_control_with_current_limit(rt_uint8_t joint_id,
+                                                           float pos_rad,
+                                                           float limit_spd,
+                                                           float limit_cur_a,
+                                                           rt_bool_t csp_mode);
+/* Prepare CSP/position mode once for high-rate smooth setpoints. */
+rt_err_t control_motor_csp_prepare(rt_uint8_t joint_id, float limit_spd, float limit_cur_a);
+/* Update only the position target after control_motor_csp_prepare(). */
+rt_err_t control_motor_csp_setpoint(rt_uint8_t joint_id, float pos_rad);
+/* Stop all joints selected by a one-based joint mask. */
+rt_err_t control_motor_csp_group_stop(rt_uint8_t joint_mask);
 /* CANSimple 位置控制：用于 CANSimple/ODrive-like 电机。 */
 rt_err_t control_motor_cansimple_set_input_pos(rt_uint8_t joint_id, float pos_rad, float vel_ff_rad_s, float torque_ff_nm);
 /* CANSimple 速度控制：用于 CANSimple/ODrive-like 电机。 */
@@ -273,6 +293,7 @@ rt_err_t control_joint_motor_set_target(rt_uint8_t joint_id,
 rt_err_t control_joint_motor_stop(rt_uint8_t joint_id);
 
 /* 配置传感器上报：设置周期并启动/停止 F103 与旧传感控制帧。 */
+rt_err_t control_sensor_request_status(void);
 rt_err_t control_sensor_report_enable(rt_bool_t enable, rt_uint16_t period_ms);
 /* 读取最近一次肌电报告。 */
 rt_err_t control_get_emg_report(control_emg_report_t *out);

@@ -45,6 +45,7 @@ typedef enum
 typedef struct
 {
     xiaozhi_utterance_kind_t kind;
+    char event_id[65];
     char reply[256];
     char transcript[192];
     char language_context[256];

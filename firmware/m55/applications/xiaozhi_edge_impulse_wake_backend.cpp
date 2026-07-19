@@ -3,6 +3,9 @@
 #include <string.h>
 #include <math.h>
 
+#include "cy_pdl.h"
+#include "wake_cpu_baseline_stats.h"
+#include "xiaozhi_wake_engine.h"
 #include "tflite_learn_333519_3.h"
 
 #include "model-parameters/model_metadata.h"
@@ -27,6 +30,12 @@
 #define XIAOZHI_EI_FFT_SIZE 256
 #define XIAOZHI_EI_DEFAULT_THRESHOLD_PERMILLE 600
 #define XIAOZHI_EI_ARENA_SIZE 32768
+enum
+{
+    CPU_TIMER_UNSET = 0,
+    CPU_TIMER_DWT,
+    CPU_TIMER_RT_TICK
+};
 
 extern "C" int g_ifx_wwd_ethosu_stub_seen;
 int g_ifx_wwd_ethosu_stub_seen;
@@ -53,12 +62,163 @@ static uint32_t g_hyperam_alloc_count;
 static uint32_t g_heap_alloc_count;
 static uint32_t g_alloc_fail_count;
 static uint32_t g_inference_count;
+static wake_cpu_baseline_state_t g_cpu_baseline;
+static int g_cpu_timer_source;
+static bool g_cpu_timer_progressed;
 
 static const tflite::Model *g_model;
 static tflite::MicroInterpreter *g_interpreter;
 static TfLiteTensor *g_input;
 static TfLiteTensor *g_output;
 static tflite::MicroErrorReporter g_error_reporter;
+
+static uint32_t cpu_timer_now(void)
+{
+    return (g_cpu_timer_source == CPU_TIMER_DWT) ? DWT->CYCCNT : (uint32_t)rt_tick_get();
+}
+
+static uint32_t cpu_timer_units_per_second(void)
+{
+    return (g_cpu_timer_source == CPU_TIMER_DWT) ? SystemCoreClock : RT_TICK_PER_SECOND;
+}
+
+static wake_cpu_baseline_token_t cpu_baseline_begin(void)
+{
+    wake_cpu_baseline_token_t token;
+    rt_base_t level;
+
+    if (g_cpu_timer_source == CPU_TIMER_UNSET)
+    {
+        g_cpu_timer_source = ((DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk) != 0U) ?
+                                 CPU_TIMER_DWT : CPU_TIMER_RT_TICK;
+    }
+
+    level = rt_hw_interrupt_disable();
+    token = wake_cpu_baseline_begin(&g_cpu_baseline, cpu_timer_now());
+    rt_hw_interrupt_enable(level);
+    return token;
+}
+
+static void cpu_baseline_finish(const wake_cpu_baseline_token_t *token, bool success)
+{
+    uint32_t end_units = cpu_timer_now();
+    uint32_t elapsed_us = wake_cpu_baseline_elapsed_us(token->start_units,
+                                                        end_units,
+                                                        cpu_timer_units_per_second());
+    rt_base_t level = rt_hw_interrupt_disable();
+
+    if (token->collect && !g_cpu_baseline.collection_complete &&
+        (token->generation == g_cpu_baseline.generation) &&
+        (end_units != token->start_units))
+    {
+        g_cpu_timer_progressed = true;
+    }
+    wake_cpu_baseline_finish(&g_cpu_baseline, token, elapsed_us, success);
+
+    rt_hw_interrupt_enable(level);
+}
+
+extern "C" int xiaozhi_edge_impulse_cpu_diag_get(xiaozhi_wake_cpu_diag_t *diag)
+{
+    rt_base_t level;
+
+    if (diag == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+
+    memset(diag, 0, sizeof(*diag));
+    level = rt_hw_interrupt_disable();
+    diag->invoke_count = g_cpu_baseline.completed_count;
+    diag->benchmark_count = g_cpu_baseline.benchmark_count;
+    diag->fail_count = g_cpu_baseline.fail_count;
+    diag->warmup_count = g_cpu_baseline.warmup_count;
+    diag->discarded_reset_count = g_cpu_baseline.discarded_reset_count;
+    diag->sample_count = g_cpu_baseline.sample_count;
+    diag->sample_dropped_count = g_cpu_baseline.sample_dropped_count;
+    diag->last_us = g_cpu_baseline.last_us;
+    diag->min_us = g_cpu_baseline.min_us;
+    diag->max_us = g_cpu_baseline.max_us;
+    diag->total_us = g_cpu_baseline.total_us;
+    diag->timer_progressed = g_cpu_timer_progressed ? RT_TRUE : RT_FALSE;
+    diag->core_hz = SystemCoreClock;
+    diag->timer_ready = (g_cpu_timer_source == CPU_TIMER_DWT) ? RT_TRUE : RT_FALSE;
+    diag->run_complete = wake_cpu_baseline_run_complete(&g_cpu_baseline) ? RT_TRUE : RT_FALSE;
+    diag->run_valid = wake_cpu_baseline_run_valid(&g_cpu_baseline,
+                                                   diag->timer_ready != RT_FALSE,
+                                                   diag->timer_progressed != RT_FALSE,
+                                                   diag->core_hz) ? RT_TRUE : RT_FALSE;
+    rt_hw_interrupt_enable(level);
+
+    diag->timer = (g_cpu_timer_source == CPU_TIMER_DWT) ? "dwt_cycles" : "rt_tick";
+    if (g_cpu_timer_source == CPU_TIMER_DWT)
+    {
+        diag->timer_resolution_us = (SystemCoreClock == 0U) ? 0U :
+                                        ((1000000U + SystemCoreClock - 1U) / SystemCoreClock);
+    }
+    else
+    {
+        diag->timer_resolution_us = 1000000U / RT_TICK_PER_SECOND;
+    }
+    return RT_EOK;
+}
+
+extern "C" int xiaozhi_edge_impulse_cpu_diag_reset(void)
+{
+    rt_base_t level = rt_hw_interrupt_disable();
+
+    wake_cpu_baseline_reset(&g_cpu_baseline);
+    g_cpu_timer_progressed = false;
+
+    rt_hw_interrupt_enable(level);
+    return RT_EOK;
+}
+
+extern "C" int xiaozhi_edge_impulse_cpu_samples_snapshot(
+    xiaozhi_wake_cpu_sample_snapshot_t *snapshot)
+{
+    rt_base_t level;
+
+    if (snapshot == RT_NULL)
+    {
+        return -RT_EINVAL;
+    }
+
+    level = rt_hw_interrupt_disable();
+    snapshot->generation = g_cpu_baseline.generation;
+    snapshot->sample_count = g_cpu_baseline.sample_count;
+    rt_hw_interrupt_enable(level);
+    return RT_EOK;
+}
+
+extern "C" rt_size_t xiaozhi_edge_impulse_cpu_samples_read(
+    const xiaozhi_wake_cpu_sample_snapshot_t *snapshot,
+    rt_size_t offset,
+    rt_uint32_t *samples,
+    rt_size_t capacity)
+{
+    rt_size_t count;
+    rt_base_t level;
+
+    if (snapshot == RT_NULL)
+    {
+        return 0U;
+    }
+
+    if (capacity > WAKE_CPU_BASELINE_READ_CHUNK_MAX)
+    {
+        capacity = WAKE_CPU_BASELINE_READ_CHUNK_MAX;
+    }
+
+    level = rt_hw_interrupt_disable();
+    count = wake_cpu_baseline_read_samples(&g_cpu_baseline,
+                                           snapshot->generation,
+                                           offset,
+                                           samples,
+                                           capacity);
+    rt_hw_interrupt_enable(level);
+    return count;
+}
 
 void *ei_malloc(size_t size)
 {
@@ -314,6 +474,8 @@ static int run_inference(int *detected, int *confidence_permille)
     int8_t *input_i8;
     int8_t *output_i8;
     int ret;
+    wake_cpu_baseline_token_t invoke_token;
+    TfLiteStatus invoke_status;
 
     if ((g_interpreter == RT_NULL) || (g_input == RT_NULL) || (g_output == RT_NULL) ||
         (g_audio_window == RT_NULL) || (g_features == RT_NULL))
@@ -349,7 +511,10 @@ static int run_inference(int *detected, int *confidence_permille)
         input_i8[i] = (int8_t)q;
     }
 
-    if (g_interpreter->Invoke() != kTfLiteOk)
+    invoke_token = cpu_baseline_begin();
+    invoke_status = g_interpreter->Invoke();
+    cpu_baseline_finish(&invoke_token, invoke_status == kTfLiteOk);
+    if (invoke_status != kTfLiteOk)
     {
         return -3;
     }

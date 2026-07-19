@@ -32,12 +32,16 @@
 
 #### 控制命令
 \`\`\`
+stop                    # 紧急停止
 stream:on              # 启用数据流
 stream:off             # 关闭数据流
 heartbeat              # 心跳检测
+mode:passive           # 被动模式
+mode:active            # 主动模式
+mode:memory            # 记忆模式
+mode:ai                # AI辅助模式
+move:0:90.0            # 移动关节 (关节ID:角度)
 \`\`\`
-
-当前恢复分支为只读 BLE profile。`move:*`、`mode:*` 和 `stop` 不进入控制层，统一返回 `ERR:readonly`。正式运动仍只能走 `JointTrajectory -> NanoPi -> M33 -> motor`。
 
 #### 数据流格式
 \`\`\`json
@@ -105,8 +109,8 @@ heartbeat              # 心跳检测
 └──────────┬──────────────────────────────┘
            │
            │ 蓝牙BLE (NUS)
-           │ - heartbeat / stream 控制面
-           │ - 只读传感器数据流 (10Hz)
+           │ - 实时控制指令
+           │ - 传感器数据流 (100Hz)
            │
 ┌──────────▼──────────────────────────────┐
 │        PSoC Edge E84 - M33核心          │
@@ -189,15 +193,24 @@ M33核心通过共享内存与M55核心通信：
 
 ### 命令示例
 \`\`\`
-# 心跳检测
-heartbeat
-
-# 启用/关闭数据流
+# 启用数据流
 stream:on
+
+# 切换到主动模式
+mode:active
+
+# 移动肩关节到90度
+move:0:90.0
+
+# 移动肘关节到45度
+move:1:45.0
+
+# 紧急停止
+stop
+
+# 关闭数据流
 stream:off
 \`\`\`
-
-`move:*`、`mode:*`、电机 enable、速度、位置和扭矩命令不属于当前 BLE 验收范围，也不得用于该 profile。
 
 ## 目录结构
 
@@ -237,7 +250,7 @@ yiliao_m33/
 - 过滤器: 接收0x200-0x310
 
 ### 传感器配置
-- BLE 遥测周期: 100ms (10Hz)
+- 采样频率: 100Hz
 - 数据格式: JSON
 
 ## 故障排查

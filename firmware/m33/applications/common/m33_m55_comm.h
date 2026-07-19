@@ -24,7 +24,11 @@ typedef enum
     MSG_TYPE_VOICE_CONTROL,
     MSG_TYPE_VOICE_CONTROL_ACK,
     MSG_TYPE_VOICE_STATUS,
-    MSG_TYPE_VOICE_CONFIG
+    MSG_TYPE_VOICE_CONFIG,
+    MSG_TYPE_VOICE_LATENCY,
+    MSG_TYPE_REHAB_MODE_REQUEST = 17,
+    MSG_TYPE_REHAB_MODE_RESULT = 18,
+    MSG_TYPE_APP_BLE_STATUS = 19
 } m33_m55_msg_type_t;
 
 typedef enum
@@ -260,9 +264,92 @@ typedef struct
     char netdev_name[RT_NAME_MAX];
 } voice_status_msg_t;
 
+/*
+ * Set VALID only when publishing one complete turn. An unobserved stage must
+ * be VOICE_LATENCY_MS_UNAVAILABLE; zero means a measured 0 ms. REAL_WAKE and
+ * MANUAL are mutually exclusive source labels, while QA_TEXT may be combined
+ * with either source label.
+ */
+#define VOICE_LATENCY_MS_UNAVAILABLE   (0xFFFFFFFFUL)
+#define VOICE_LATENCY_FLAG_VALID       (1UL << 0)
+#define VOICE_LATENCY_FLAG_REAL_WAKE   (1UL << 1)
+#define VOICE_LATENCY_FLAG_MANUAL      (1UL << 2)
+#define VOICE_LATENCY_FLAG_QA_TEXT     (1UL << 3)
+
 typedef struct
 {
-    m33_m55_msg_type_t type;
+    rt_uint32_t turn_seq;
+    rt_uint32_t flags;
+    rt_uint32_t wake_to_listen_ms;
+    rt_uint32_t last_voice_to_stop_ms;
+    rt_uint32_t stop_to_stt_ms;
+    rt_uint32_t stt_to_llm_ms;
+    rt_uint32_t llm_to_tts_start_ms;
+    rt_uint32_t tts_start_to_first_packet_ms;
+    rt_uint32_t first_packet_to_first_write_ms;
+    rt_uint32_t speech_end_to_first_write_ms;
+    rt_uint32_t wake_to_first_write_ms;
+} voice_latency_msg_t;
+
+#define APP_BLE_STATUS_PROTOCOL_VERSION (1UL)
+
+typedef struct
+{
+    rt_uint32_t version;
+    rt_uint32_t connected;
+    rt_uint32_t link_seq;
+} app_ble_status_msg_t;
+
+#define REHAB_MODE_PROTOCOL_VERSION       (3UL)
+#define REHAB_MODE_SOURCE_VOICE           (1UL)
+#define REHAB_MODE_ACTION_SET_MODE        (0UL)
+#define REHAB_MODE_ACTION_LEVEL_UP        (1UL)
+#define REHAB_MODE_ACTION_LEVEL_DOWN      (2UL)
+#define REHAB_MODE_REQUEST_MODE_PASSIVE   (0UL)
+#define REHAB_MODE_REQUEST_MODE_ASSIST    (3UL)
+#define REHAB_MODE_REQUEST_MODE_RESIST    (4UL)
+#define REHAB_MODE_JOINT_MASK             (0x38UL)
+#define REHAB_MODE_MAX_TTL_MS             (500UL)
+
+#define REHAB_MODE_RESULT_NONE            (0UL)
+#define REHAB_MODE_RESULT_INVALID         (1UL)
+#define REHAB_MODE_RESULT_QUEUE_FULL      (2UL)
+#define REHAB_MODE_RESULT_DUPLICATE       (3UL)
+#define REHAB_MODE_RESULT_STALE           (4UL)
+#define REHAB_MODE_RESULT_BUSY            (5UL)
+#define REHAB_MODE_RESULT_PRECONDITION    (6UL)
+#define REHAB_MODE_RESULT_STOP_FAILED     (7UL)
+#define REHAB_MODE_RESULT_APPLIED         (8UL)
+
+/* M33 stamps local receive time; absolute ticks are not comparable across cores. */
+typedef struct
+{
+    rt_uint32_t version;
+    rt_uint32_t boot_epoch;
+    rt_uint32_t request_id;
+    rt_uint32_t source;
+    rt_uint32_t mode;
+    rt_uint32_t joint_mask;
+    rt_uint32_t ttl_ms;
+    rt_uint32_t action;
+} rehab_mode_request_msg_t;
+
+typedef struct
+{
+    rt_uint32_t version;
+    rt_uint32_t boot_epoch;
+    rt_uint32_t request_id;
+    rt_uint32_t status;
+    rt_uint32_t detail;
+    rt_uint32_t requested_mode;
+    rt_uint32_t applied_mode;
+    rt_uint32_t joint_mask;
+    rt_uint32_t mode_generation;
+} rehab_mode_result_msg_t;
+
+typedef struct
+{
+    rt_uint32_t type; /* m33_m55_msg_type_t wire value; fixed-width ABI */
     rt_uint32_t seq;
     union
     {
@@ -274,10 +361,15 @@ typedef struct
         voice_control_msg_t voice_control;
         voice_status_msg_t voice_status;
         voice_config_msg_t voice_config;
+        voice_latency_msg_t voice_latency;
+        app_ble_status_msg_t app_ble_status;
+        rehab_mode_request_msg_t rehab_mode_request;
+        rehab_mode_result_msg_t rehab_mode_result;
     } payload;
 } m33_m55_message_t;
 
 rt_err_t m33_m55_comm_init(void);
+rt_err_t m33_m55_comm_try_publish(const m33_m55_message_t *msg);
 rt_err_t m33_m55_comm_publish(const m33_m55_message_t *msg);
 rt_err_t m33_m55_comm_consume(m33_m55_message_t *msg);
 rt_bool_t m33_m55_comm_is_ready(void);

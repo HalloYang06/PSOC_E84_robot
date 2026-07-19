@@ -5,6 +5,15 @@ import platform
 import subprocess
 import uuid
 
+M55_ETHOSU_EXPERIMENTAL = os.environ.get('M55_ETHOSU_EXPERIMENTAL', '0')
+if M55_ETHOSU_EXPERIMENTAL not in ('0', '1'):
+    raise RuntimeError('M55_ETHOSU_EXPERIMENTAL must be 0 or 1')
+if M55_ETHOSU_EXPERIMENTAL == '1':
+    raise RuntimeError(
+        'M55 Ethos-U experimental runtime is not implemented; '
+        'keep M55_ETHOSU_EXPERIMENTAL=0 until the TFLM custom kernel, '
+        'driver lifecycle, timeout recovery, and CPU fallback gates are complete')
+
 if os.path.exists('rt-thread'):
     RTT_ROOT = os.path.normpath(os.getcwd() + '/rt-thread')
 else:

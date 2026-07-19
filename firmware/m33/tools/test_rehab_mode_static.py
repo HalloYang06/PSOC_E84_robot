@@ -39,14 +39,43 @@ def main():
     control_h = read_text("applications/control/control_layer.h")
     control_c = read_text("applications/control/control_layer.c")
     sensor_c = read_text("applications/control/sensor.c")
+    main_c = read_text("applications/main.c")
+    m55_model_bridge_c = read_text("applications/m33/m55_model_bridge.c")
 
     for needle in (
         "#define CONTROL_REHAB_SERVICE_PERIOD_MS 20U",
         "#define CONTROL_REHAB_FEEDBACK_FRESH_MS 100U",
+        "#define CONTROL_DEVELOPMENT_BENCH_MOTION_ENABLE 1U",
+        "#define CONTROL_ROS_COMMAND_LOGGING_ONLY   0U",
+        "#define CONTROL_ROS_JOINT_COUNT            3U",
+        "#define CONTROL_ROS_JOINT0_MOTOR_JOINT     4U",
+        "#define CONTROL_ROS_JOINT1_MOTOR_JOINT     5U",
+        "#define CONTROL_ROS_JOINT2_MOTOR_JOINT     6U",
+        "#define CONTROL_ROS_JOINT0_MIN_01DEG       0",
+        "#define CONTROL_ROS_JOINT0_MAX_01DEG       1031",
+        "#define CONTROL_ROS_MAX_TARGET_TORQUE_MA   3000",
+        "#define CONTROL_PREARM_REQUIRED_JOINT_MASK 0x38U",
+        "#define CONTROL_MOTOR_JOINT3_CALIBRATED    1U",
+        "#define CONTROL_MOTOR_JOINT4_CALIBRATED    1U",
+        "#define CONTROL_MOTOR_JOINT5_CALIBRATED    1U",
+        "#define CONTROL_MOTOR_JOINT6_CALIBRATED    1U",
+        "#define CONTROL_MOTOR_JOINT7_CALIBRATED    1U",
+        "#define CONTROL_MOTOR_JOINT4_GEAR_RATIO    (7.1844f)",
+        "#define CONTROL_MOTOR_JOINT4_DIRECTION     (-1.0f)",
+        "#define CONTROL_MOTOR_JOINT4_ZERO_OFFSET_RAD (0.312f)",
+        "#define CONTROL_MOTOR_JOINT5_DIRECTION     (1.0f)",
+        "#define CONTROL_MOTOR_JOINT5_ZERO_OFFSET_RAD (6.010f)",
+        "#define CONTROL_MOTOR_JOINT6_ZERO_OFFSET_RAD (4.543f)",
+        "#define CONTROL_ROS_JOINT1_MIN_01DEG       0",
+        "#define CONTROL_ROS_JOINT1_MAX_01DEG       1500",
+        "#define CONTROL_ROS_MAX_TARGET_RPM         10",
         "#define CONTROL_REHAB_DEFAULT_M33_JOINT 5U",
-        "#define CONTROL_MOTOR_CURRENT_CONTROL_MAX_A",
+        "#define CONTROL_REHAB_ASSIST_DEFAULT_JOINT_MASK 0x38U",
+        "#define CONTROL_MOTOR_CURRENT_CONTROL_MAX_A (2.0f)",
         "#define CONTROL_REHAB_FOLLOW_DIRECTION",
         "#define CONTROL_REHAB_ACTIVE_GAIN_A_PER_NM",
+        "#define CONTROL_REHAB_ASSIST_LIMIT_CUR_A     (1.0f)",
+        "#define CONTROL_REHAB_ASSIST_MIN_CUR_A       (1.0f)",
         "#define CONTROL_REHAB_ASSIST_GAIN_A_PER_NM",
         "#define CONTROL_REHAB_ASSIST_ADAPTIVE_LOAD_GAIN_A_PER_NM2",
         "#define CONTROL_REHAB_ASSIST_ADAPTIVE_GAIN_STEP_A_PER_NM",
@@ -82,6 +111,7 @@ def main():
         "REHAB_CMD_SOURCE_BENCH_MSH = 0",
         "REHAB_CMD_SOURCE_CAN",
         "rehab_service_set_mode",
+        "rehab_service_set_mode_mask",
         "rehab_service_record_start",
         "rehab_service_play_start",
         "rehab_service_set_mode_on_m33",
@@ -91,6 +121,8 @@ def main():
         "feedback_torque_nm",
         "feedback_vel_rad_s",
         "output_current_a",
+        "active_joint_mask",
+        "assist_engaged_mask",
         "effective_gain",
         "pid_kp",
         "pid_ki",
@@ -177,6 +209,8 @@ def main():
         "s_rehab.params",
         "s_rehab.status.feedback_torque_nm",
         "s_rehab.status.output_current_a",
+        "s_rehab.status.active_joint_mask",
+        "s_rehab.status.assist_engaged_mask",
         "s_rehab.status.effective_gain",
         "s_rehab.status.pid_kp",
         "s_rehab.status.pid_load_level",
@@ -186,7 +220,11 @@ def main():
         "s_rehab.status.adrc_z3",
         "s_rehab.status.adrc_trim_current_a",
         "s_rehab.status.output_saturated",
-        "rehab_resist_strategy_reset(&s_rehab.resist_state)",
+        "rehab_service_reset_all_strategy_states_locked",
+        "rehab_service_stop_joint_mask",
+        "rehab_service_set_mode_mask",
+        "s_rehab.assist_state[index]",
+        "s_rehab.resist_state[index]",
         "CONTROL_MOTOR_CURRENT_CONTROL_MAX_A",
         "stopped_for_fault = s_rehab.stopped_for_fault",
         "if (stopped_for_fault)",
@@ -291,22 +329,43 @@ def main():
     ):
         require(manager_h, needle, "rehab_mode_manager.h")
 
-    require(manager_c, "rehab_service_set_mode", "rehab_mode_manager.c")
+    require(manager_c, "rehab_service_set_mode_mask", "rehab_mode_manager.c")
     require(manager_c, "REHAB_CMD_SOURCE_CAN", "rehab_mode_manager.c")
     require(manager_c, "CONTROL_REHAB_MODE_CMD_MARKER", "rehab_mode_manager.c")
+    require(manager_c, "CONTROL_REHAB_ASSIST_DEFAULT_JOINT_MASK", "rehab_mode_manager.c")
+    forbid(manager_c, "const rt_uint8_t elbow_mask = 0x02U;", "rehab_mode_manager.c")
+    forbid(manager_c, "out->active_joint_mask = 0x02U;", "rehab_mode_manager.c")
+    forbid(manager_c, "service_status.assist_engaged ? 0x02U : 0U", "rehab_mode_manager.c")
     forbid(manager_c, "control_motor_speed_control", "rehab_mode_manager.c")
     forbid(manager_c, "control_motor_position_control", "rehab_mode_manager.c")
     forbid(manager_c, "control_get_motor_feedback", "rehab_mode_manager.c")
 
     require(control_h, "control_motor_is_joint_calibrated", "control_layer.h")
     require(control_h, "control_motor_current_control", "control_layer.h")
+    require(control_h, "control_motor_position_control_with_current_limit", "control_layer.h")
     require(control_c, "rehab_service_init", "control_layer.c")
     require(control_c, "rehab_mode_manager_init", "control_layer.c")
+    require(control_c, "rehab_mode_manager_note_heartbeat();", "control_layer.c")
+    require(control_c, "static rt_bool_t ctrl_rehab_mode_value_supported", "control_layer.c")
+    require(control_c, "static rt_err_t ctrl_apply_rehab_mode_command", "control_layer.c")
+    require(control_c, "rehab_mode_command_t mode_cmd;", "control_layer.c")
+    require(control_c, "mode_cmd.mode = (rehab_mode_t)cmd->mode;", "control_layer.c")
+    require(control_c, "mode_cmd.joint_mask = cmd->joint_mask;", "control_layer.c")
+    require(control_c, "return rehab_mode_manager_apply_command(&mode_cmd);", "control_layer.c")
     require(control_c, "MOTOR_PARAM_INDEX_IQ_REF", "control_layer.c")
+    require(control_c, "MOTOR_PARAM_INDEX_LIMIT_CUR", "control_layer.c")
+    require(control_c, "control_motor_position_control_with_current_limit", "control_layer.c")
+    require(control_c, "target_torque_ma) / 1000.0f", "control_layer.c")
     require(control_c, "cmd_motor_current_hold", "control_layer.c")
     require(control_c, "cmd_motor_report", "control_layer.c")
     require(control_c, "current_a > CONTROL_MOTOR_CURRENT_CONTROL_MAX_A", "control_layer.c")
     require(control_c, "(s_speed_hold_thread != RT_NULL) || (s_current_hold_thread != RT_NULL)", "control_layer.c")
+    prearm_cmd = control_c[
+        control_c.index("static int cmd_m33_prearm_check"):
+        control_c.index("MSH_CMD_EXPORT(cmd_m33_prearm_check")
+    ]
+    require(prearm_cmd, "if (!s_is_inited)", "cmd_m33_prearm_check")
+    require(prearm_cmd, "PREARM: control layer not initialized", "cmd_m33_prearm_check")
 
     emg_stream_cmd = control_c[
         control_c.index("static int cmd_emg_motor_stream"):
@@ -333,6 +392,20 @@ def main():
     require(sensor_c, "node.emg3_seq = s_f103_sensor_seq++;", "sensor.c")
     forbid(sensor_c, "node.emg3_flags = msg->data[6];", "sensor.c")
     forbid(sensor_c, "node.emg3_seq = msg->data[7];", "sensor.c")
+
+    require(m55_model_bridge_c, "[m55_model_bridge] asr text", "m55_model_bridge.c")
+    forbid(m55_model_bridge_c, "m55_voice_mode_bridge_handle_asr_text", "m55_model_bridge.c")
+    forbid(m55_model_bridge_c, "#include \"m55_voice_mode_bridge.h\"", "m55_model_bridge.c")
+
+    minimal_framework = main_c[
+        main_c.index("static void m33_init_framework"):
+        main_c.index("#ifdef __cplusplus")
+    ]
+    require(minimal_framework, "#if M33_XIAOZHI_MINIMAL_FRAMEWORK", "m33_init_framework")
+    require(minimal_framework, "can_driver_init()", "m33_init_framework")
+    if minimal_framework.index("can_driver_init()") > minimal_framework.index("return;"):
+        raise AssertionError("m33_init_framework must start CAN/control before minimal framework return")
+    require(main_c, "#define M33_XIAOZHI_MINIMAL_FRAMEWORK 0", "main.c")
 
 
 if __name__ == "__main__":

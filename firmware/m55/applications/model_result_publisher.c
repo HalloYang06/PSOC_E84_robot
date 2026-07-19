@@ -8,9 +8,6 @@
 #define MODEL_RESULT_FLAG_DETECTED          0x02U
 
 static rt_uint32_t g_model_result_seq;
-static rt_uint32_t g_model_result_publish_ok;
-static rt_uint32_t g_model_result_publish_fail;
-static rt_err_t g_model_result_last_ret;
 
 static float model_result_confidence_float(rt_uint16_t confidence_permille)
 {
@@ -29,7 +26,6 @@ rt_err_t model_result_publish(rt_uint8_t model_code,
                               rt_uint16_t window_ms)
 {
     m33_m55_message_t msg;
-    rt_err_t ret;
 
     if (confidence_permille > 1000U)
     {
@@ -49,17 +45,7 @@ rt_err_t model_result_publish(rt_uint8_t model_code,
     msg.payload.ai_inference.fatigue_score = fresh ? 0.0f : 1.0f;
     msg.payload.ai_inference.pain_risk = ((float)window_ms) / 1000.0f;
 
-    ret = m33_m55_comm_publish(&msg);
-    g_model_result_last_ret = ret;
-    if (ret == RT_EOK)
-    {
-        g_model_result_publish_ok++;
-    }
-    else
-    {
-        g_model_result_publish_fail++;
-    }
-    return ret;
+    return m33_m55_comm_publish(&msg);
 }
 
 rt_err_t model_result_publish_wake_word(rt_uint16_t confidence_permille,
@@ -101,16 +87,3 @@ static void m55_model_selftest(int argc, char **argv)
 }
 MSH_CMD_EXPORT(m55_model_selftest, Publish one CM55 model-result test frame to CM33);
 MSH_CMD_EXPORT_ALIAS(m55_model_selftest, mdl_pub, Publish one CM55 model-result test frame to CM33);
-
-static void m55_model_publish_status(int argc, char **argv)
-{
-    RT_UNUSED(argc);
-    RT_UNUSED(argv);
-
-    rt_kprintf("[m55_model_pub] seq=%lu ok=%lu fail=%lu last_ret=%d\n",
-               (unsigned long)g_model_result_seq,
-               (unsigned long)g_model_result_publish_ok,
-               (unsigned long)g_model_result_publish_fail,
-               g_model_result_last_ret);
-}
-MSH_CMD_EXPORT_ALIAS(m55_model_publish_status, mdl_stat, Show CM55 model-result publish status);

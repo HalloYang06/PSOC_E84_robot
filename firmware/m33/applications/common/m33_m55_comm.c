@@ -157,6 +157,33 @@ rt_err_t m33_m55_comm_init(void)
     return RT_EOK;
 }
 
+rt_err_t m33_m55_comm_try_publish(const m33_m55_message_t *msg)
+{
+    m33_m55_message_t local;
+    cy_rslt_t result;
+
+    if (msg == RT_NULL)
+    {
+        return -RT_ERROR;
+    }
+    if (!g_comm_runtime.initialized)
+    {
+        return -RT_EBUSY;
+    }
+    if (rt_mutex_take(&g_comm_runtime.lock, RT_WAITING_NO) != RT_EOK)
+    {
+        return -RT_EBUSY;
+    }
+
+    local = *msg;
+    local.seq = ++g_comm_runtime.seq;
+    /* Keep sequence and queue order atomic. A full queue may leave a sequence gap. */
+    result = mtb_ipc_queue_put(&g_comm_runtime.tx_queue, &local, 0);
+    rt_mutex_release(&g_comm_runtime.lock);
+
+    return m33_m55_result_to_rt(result);
+}
+
 rt_err_t m33_m55_comm_publish(const m33_m55_message_t *msg)
 {
     m33_m55_message_t local;

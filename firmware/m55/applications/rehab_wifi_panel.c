@@ -4,6 +4,30 @@
 #include "voice_service.h"
 #include "xiaozhi_ui_state.h"
 #include "xiaozhi_voice_relay.h"
+#include <rthw.h>
+
+#define REHAB_APP_BLE_STATUS_STALE_MS 3000U
+
+typedef struct
+{
+    rt_bool_t valid;
+    rt_bool_t connected;
+    rt_uint32_t link_seq;
+    rt_tick_t received_tick;
+} rehab_app_ble_status_snapshot_t;
+
+static rehab_app_ble_status_snapshot_t g_app_ble_status;
+
+void rehab_wifi_panel_note_ble_status(rt_bool_t connected, rt_uint32_t link_seq)
+{
+    rt_base_t level = rt_hw_interrupt_disable();
+
+    g_app_ble_status.valid = RT_TRUE;
+    g_app_ble_status.connected = connected;
+    g_app_ble_status.link_seq = link_seq;
+    g_app_ble_status.received_tick = rt_tick_get();
+    rt_hw_interrupt_enable(level);
+}
 
 #ifdef BSP_USING_LVGL
 
@@ -58,6 +82,26 @@ static lv_obj_t *panel_button_sized(lv_obj_t *parent,
                                     lv_coord_t height,
                                     lv_color_t color,
                                     lv_color_t pressed_color);
+
+static rt_bool_t rehab_wifi_panel_ble_connected(void)
+{
+    rehab_app_ble_status_snapshot_t snapshot;
+    rt_base_t level;
+    rt_uint32_t age_ms;
+
+    level = rt_hw_interrupt_disable();
+    snapshot = g_app_ble_status;
+    rt_hw_interrupt_enable(level);
+
+    if (!snapshot.valid || !snapshot.connected)
+    {
+        return RT_FALSE;
+    }
+
+    age_ms = (rt_uint32_t)((rt_tick_get() - snapshot.received_tick) *
+                           1000U / RT_TICK_PER_SECOND);
+    return (age_ms <= REHAB_APP_BLE_STATUS_STALE_MS) ? RT_TRUE : RT_FALSE;
+}
 static void start_scan_refresh_timer(void);
 static void start_xiaozhi_refresh_timer(void);
 static void rehab_wifi_panel_run_qa_scan(const char *source);
@@ -271,6 +315,7 @@ static void rehab_wifi_panel_refresh(void)
     const char *phase_text;
     rt_bool_t show_spinner = RT_FALSE;
     rt_bool_t xiaozhi_online;
+    rt_bool_t ble_connected;
 
     if ((g_status_label == RT_NULL) || (g_xiaozhi_label == RT_NULL))
     {
@@ -280,6 +325,7 @@ static void rehab_wifi_panel_refresh(void)
     (void)wifi_config_whd_diag();
     wifi_config_get_snapshot(&snapshot);
     xiaozhi_ui_state_snapshot(&xiaozhi);
+    ble_connected = rehab_wifi_panel_ble_connected();
     xiaozhi_online = (xiaozhi_voice_relay_has_token() &&
                       websocket_client_is_connected()) ? RT_TRUE : RT_FALSE;
     if (xiaozhi_online &&
@@ -292,9 +338,10 @@ static void rehab_wifi_panel_refresh(void)
     }
     rt_snprintf(status,
                 sizeof(status),
-                "%s  %ld个网络",
+                "%s  %ld个网络  蓝牙%s",
                 wifi_state_text(&snapshot),
-                (long)snapshot.scan_count);
+                (long)snapshot.scan_count,
+                ble_connected ? "已连接" : "未连接");
     lv_label_set_text(g_status_label, status);
 
     if (!xiaozhi_voice_relay_has_token())

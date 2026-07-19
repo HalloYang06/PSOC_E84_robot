@@ -8,6 +8,10 @@
 #define M55_RESULT_CODE_WAKE_START_REQUEST 1U
 #define M55_RESULT_FLAG_FRESH 0x01U
 #define M55_RESULT_FLAG_DETECTED 0x02U
+#define VOICE_LATENCY_ALLOWED_FLAGS (VOICE_LATENCY_FLAG_VALID | \
+                                     VOICE_LATENCY_FLAG_REAL_WAKE | \
+                                     VOICE_LATENCY_FLAG_MANUAL | \
+                                     VOICE_LATENCY_FLAG_QA_TEXT)
 
 typedef struct
 {
@@ -39,6 +43,7 @@ typedef struct
 static m55_model_bridge_state_t g_m55_model_state;
 static m55_voice_ack_state_t g_m55_voice_ack_state;
 static m55_voice_status_state_t g_m55_voice_status_state;
+static m55_voice_latency_snapshot_t g_m55_voice_latency_state;
 
 static rt_uint16_t confidence_to_permille(float confidence)
 {
@@ -58,6 +63,7 @@ void m55_model_bridge_init(void)
     rt_memset(&g_m55_model_state, 0, sizeof(g_m55_model_state));
     rt_memset(&g_m55_voice_ack_state, 0, sizeof(g_m55_voice_ack_state));
     rt_memset(&g_m55_voice_status_state, 0, sizeof(g_m55_voice_status_state));
+    rt_memset(&g_m55_voice_latency_state, 0, sizeof(g_m55_voice_latency_state));
 }
 
 static void m55_model_bridge_handle_ai_result(const m33_m55_message_t *msg)
@@ -141,6 +147,50 @@ static void m55_model_bridge_handle_voice_status(const m33_m55_message_t *msg)
     g_m55_voice_status_state.timestamp = rt_tick_get();
 }
 
+static void m55_model_bridge_handle_voice_latency(const m33_m55_message_t *msg)
+{
+    const voice_latency_msg_t *latency = &msg->payload.voice_latency;
+    const rt_uint32_t source_flags = latency->flags &
+        (VOICE_LATENCY_FLAG_REAL_WAKE | VOICE_LATENCY_FLAG_MANUAL);
+    rt_base_t level;
+    rt_int32_t turn_delta;
+
+    level = rt_hw_interrupt_disable();
+    g_m55_voice_latency_state.received_count++;
+    if ((latency->turn_seq == 0U) ||
+        ((latency->flags & ~VOICE_LATENCY_ALLOWED_FLAGS) != 0U) ||
+        ((latency->flags & VOICE_LATENCY_FLAG_VALID) == 0U) ||
+        ((source_flags != VOICE_LATENCY_FLAG_REAL_WAKE) &&
+         (source_flags != VOICE_LATENCY_FLAG_MANUAL)))
+    {
+        g_m55_voice_latency_state.invalid_count++;
+        rt_hw_interrupt_enable(level);
+        return;
+    }
+
+    if (g_m55_voice_latency_state.accepted_count != 0U)
+    {
+        turn_delta = (rt_int32_t)(latency->turn_seq -
+                                  g_m55_voice_latency_state.latency.turn_seq);
+        if (turn_delta <= 0)
+        {
+            g_m55_voice_latency_state.stale_count++;
+            rt_hw_interrupt_enable(level);
+            return;
+        }
+        if (turn_delta > 1)
+        {
+            g_m55_voice_latency_state.dropped_count += (rt_uint32_t)(turn_delta - 1);
+        }
+    }
+
+    g_m55_voice_latency_state.latency = *latency;
+    g_m55_voice_latency_state.ipc_seq = msg->seq;
+    g_m55_voice_latency_state.received_tick = rt_tick_get();
+    g_m55_voice_latency_state.accepted_count++;
+    rt_hw_interrupt_enable(level);
+}
+
 void m55_model_bridge_handle_message(const m33_m55_message_t *msg)
 {
     if (msg == RT_NULL)
@@ -165,9 +215,28 @@ void m55_model_bridge_handle_message(const m33_m55_message_t *msg)
     case MSG_TYPE_VOICE_STATUS:
         m55_model_bridge_handle_voice_status(msg);
         break;
+    case MSG_TYPE_VOICE_LATENCY:
+        m55_model_bridge_handle_voice_latency(msg);
+        break;
     default:
         break;
     }
+}
+
+rt_bool_t m55_model_bridge_get_voice_latency(m55_voice_latency_snapshot_t *snapshot)
+{
+    m55_voice_latency_snapshot_t local;
+    rt_base_t level;
+
+    level = rt_hw_interrupt_disable();
+    local = g_m55_voice_latency_state;
+    rt_hw_interrupt_enable(level);
+
+    if (snapshot != RT_NULL)
+    {
+        *snapshot = local;
+    }
+    return (local.accepted_count != 0U) ? RT_TRUE : RT_FALSE;
 }
 
 rt_bool_t m55_model_bridge_get_snapshot(rt_uint32_t *seq,

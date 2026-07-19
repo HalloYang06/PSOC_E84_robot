@@ -40,10 +40,6 @@ static void audio_capture_thread_entry(void *parameter)
 
 rt_err_t audio_capture_init(void)
 {
-#ifndef BSP_USING_AUDIO
-    rt_kprintf("[audio_capture] unavailable: M55 owns mic0 for Xiaozhi\n");
-    return -RT_ENOSYS;
-#else
     struct rt_audio_caps caps;
 
     if (g_capture.initialized)
@@ -88,15 +84,10 @@ rt_err_t audio_capture_init(void)
     rt_kprintf("[audio_capture] Initialized (using mic0 device)\n");
 
     return RT_EOK;
-#endif
 }
 
 rt_err_t audio_capture_start(audio_capture_callback_t callback)
 {
-#ifndef BSP_USING_AUDIO
-    RT_UNUSED(callback);
-    return -RT_ENOSYS;
-#else
     if (!g_capture.initialized)
     {
         rt_kprintf("[audio_capture] ERROR: Not initialized\n");
@@ -127,7 +118,6 @@ rt_err_t audio_capture_start(audio_capture_callback_t callback)
 
     g_capture.running = RT_FALSE;
     return -RT_ERROR;
-#endif
 }
 
 rt_err_t audio_capture_stop(void)

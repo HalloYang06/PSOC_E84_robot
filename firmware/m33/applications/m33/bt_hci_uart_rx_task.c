@@ -46,7 +46,6 @@
  ******************************************************************************/
 
 #define HCI_MAX_READ_PACKET_NUM_PER_ROUND   (10)
-
 #define CHECK_IF_HCI_RX_IND_IS_VALID(ind) \
             if(BT_IND_BASE > (ind) || BT_IND_END <= (ind)) \
             { \

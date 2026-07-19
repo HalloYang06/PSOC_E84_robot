@@ -69,54 +69,226 @@ static rt_uint32_t xiaozhi_token_record_checksum(const xiaozhi_token_record_t *r
                                               (const rt_uint8_t *)record));
 }
 
-static void json_get_string(const char *json, const char *key, char *out, rt_size_t out_len)
+typedef enum
 {
-    char pattern[48];
+    JSON_TOP_STRING_NOT_FOUND = 0,
+    JSON_TOP_STRING_OK,
+    JSON_TOP_STRING_INVALID,
+    JSON_TOP_STRING_TRUNCATED
+} json_top_string_result_t;
+
+static rt_bool_t json_space(char value)
+{
+    return ((value == ' ') || (value == '\t') ||
+            (value == '\r') || (value == '\n')) ? RT_TRUE : RT_FALSE;
+}
+
+static rt_bool_t json_object_complete(const char *json)
+{
+    char stack[16];
+    rt_size_t depth = 0U;
     const char *p;
-    const char *start;
-    rt_size_t i = 0;
+    rt_bool_t in_string = RT_FALSE;
+    rt_bool_t escaped = RT_FALSE;
+    rt_bool_t root_closed = RT_FALSE;
 
-    if (!json || !key || !out || out_len == 0)
+    if (json == RT_NULL)
     {
-        return;
+        return RT_FALSE;
     }
-
-    out[0] = '\0';
-    rt_snprintf(pattern, sizeof(pattern), "\"%s\"", key);
-    p = strstr(json, pattern);
-    if (!p)
-    {
-        return;
-    }
-
-    p = strchr(p + strlen(pattern), ':');
-    if (!p)
-    {
-        return;
-    }
-
-    p++;
-    while ((*p == ' ') || (*p == '\t'))
+    p = json;
+    while (json_space(*p))
     {
         p++;
     }
-
-    if (*p != '"')
+    if (*p != '{')
     {
-        return;
+        return RT_FALSE;
     }
 
-    start = ++p;
-    while (*p && *p != '"' && i < out_len - 1)
+    for (; *p != '\0'; p++)
     {
-        if ((*p == '\\') && (*(p + 1) != '\0'))
+        char value = *p;
+
+        if (in_string)
         {
-            p++;
+            if (escaped)
+            {
+                escaped = RT_FALSE;
+            }
+            else if (value == '\\')
+            {
+                escaped = RT_TRUE;
+            }
+            else if (value == '"')
+            {
+                in_string = RT_FALSE;
+            }
+            continue;
         }
-        out[i++] = *p++;
+        if (root_closed)
+        {
+            if (!json_space(value))
+            {
+                return RT_FALSE;
+            }
+            continue;
+        }
+        if (value == '"')
+        {
+            in_string = RT_TRUE;
+        }
+        else if ((value == '{') || (value == '['))
+        {
+            if (depth >= sizeof(stack))
+            {
+                return RT_FALSE;
+            }
+            stack[depth++] = value;
+        }
+        else if ((value == '}') || (value == ']'))
+        {
+            char expected = (value == '}') ? '{' : '[';
+
+            if ((depth == 0U) || (stack[depth - 1U] != expected))
+            {
+                return RT_FALSE;
+            }
+            depth--;
+            if (depth == 0U)
+            {
+                root_closed = RT_TRUE;
+            }
+        }
     }
-    out[i] = '\0';
-    RT_UNUSED(start);
+
+    return (root_closed && !in_string && !escaped && (depth == 0U)) ?
+           RT_TRUE : RT_FALSE;
+}
+
+static rt_bool_t json_token_equals(const char *start,
+                                   const char *end,
+                                   const char *key)
+{
+    rt_size_t token_len = (rt_size_t)(end - start);
+    rt_size_t key_len = rt_strlen(key);
+
+    return ((token_len == key_len) &&
+            (rt_memcmp(start, key, key_len) == 0)) ? RT_TRUE : RT_FALSE;
+}
+
+static json_top_string_result_t json_get_top_string(const char *json,
+                                                    const char *key,
+                                                    char *out,
+                                                    rt_size_t out_len)
+{
+    const char *p;
+    rt_size_t depth = 0U;
+    rt_bool_t found = RT_FALSE;
+
+    if ((json == RT_NULL) || (key == RT_NULL) ||
+        (out == RT_NULL) || (out_len == 0U))
+    {
+        return JSON_TOP_STRING_INVALID;
+    }
+    out[0] = '\0';
+
+    for (p = json; *p != '\0'; p++)
+    {
+        if ((*p == '{') || (*p == '['))
+        {
+            depth++;
+        }
+        else if ((*p == '}') || (*p == ']'))
+        {
+            if (depth > 0U)
+            {
+                depth--;
+            }
+        }
+        else if (*p == '"')
+        {
+            const char *token_start = ++p;
+            const char *token_end;
+            const char *after;
+
+            while ((*p != '\0') && (*p != '"'))
+            {
+                if ((*p == '\\') && (*(p + 1) != '\0'))
+                {
+                    p += 2;
+                }
+                else
+                {
+                    p++;
+                }
+            }
+            if (*p != '"')
+            {
+                return JSON_TOP_STRING_INVALID;
+            }
+            token_end = p;
+            after = p + 1;
+            while (json_space(*after))
+            {
+                after++;
+            }
+            if ((depth == 1U) && (*after == ':') &&
+                json_token_equals(token_start, token_end, key))
+            {
+                rt_size_t copied = 0U;
+                rt_bool_t truncated = RT_FALSE;
+
+                if (found)
+                {
+                    out[0] = '\0';
+                    return JSON_TOP_STRING_INVALID;
+                }
+                after++;
+                while (json_space(*after))
+                {
+                    after++;
+                }
+                if (*after != '"')
+                {
+                    return JSON_TOP_STRING_INVALID;
+                }
+                after++;
+                while ((*after != '\0') && (*after != '"'))
+                {
+                    char value = *after++;
+
+                    if ((value == '\\') && (*after != '\0'))
+                    {
+                        value = *after++;
+                    }
+                    if ((copied + 1U) < out_len)
+                    {
+                        out[copied++] = value;
+                    }
+                    else
+                    {
+                        truncated = RT_TRUE;
+                    }
+                }
+                if (*after != '"')
+                {
+                    out[0] = '\0';
+                    return JSON_TOP_STRING_INVALID;
+                }
+                if (truncated)
+                {
+                    out[0] = '\0';
+                    return JSON_TOP_STRING_TRUNCATED;
+                }
+                out[copied] = '\0';
+                found = RT_TRUE;
+                p = after;
+            }
+        }
+    }
+
+    return found ? JSON_TOP_STRING_OK : JSON_TOP_STRING_NOT_FOUND;
 }
 
 static rt_bool_t xiaozhi_token_record_is_valid(xiaozhi_token_record_t *record)
@@ -809,8 +981,13 @@ rt_bool_t xiaozhi_voice_relay_parse_response(const char *json,
 {
     char kind[48];
     char tmp[256];
+    json_top_string_result_t field_result;
 
     if ((json == RT_NULL) || (response == RT_NULL))
+    {
+        return RT_FALSE;
+    }
+    if (!json_object_complete(json))
     {
         return RT_FALSE;
     }
@@ -819,17 +996,22 @@ rt_bool_t xiaozhi_voice_relay_parse_response(const char *json,
     response->kind = XIAOZHI_UTTERANCE_UNKNOWN;
 
     kind[0] = '\0';
-    json_get_string(json, "kind", kind, sizeof(kind));
-    if (kind[0] == '\0')
+    field_result = json_get_top_string(json, "kind", kind, sizeof(kind));
+    if (field_result == JSON_TOP_STRING_NOT_FOUND)
     {
-        json_get_string(json, "utterance_kind", kind, sizeof(kind));
+        field_result = json_get_top_string(json, "utterance_kind", kind, sizeof(kind));
     }
-    if (kind[0] == '\0')
+    if (field_result == JSON_TOP_STRING_NOT_FOUND)
     {
-        json_get_string(json, "classification", kind, sizeof(kind));
+        field_result = json_get_top_string(json, "classification", kind, sizeof(kind));
+    }
+    if ((field_result == JSON_TOP_STRING_INVALID) ||
+        (field_result == JSON_TOP_STRING_TRUNCATED))
+    {
+        return RT_FALSE;
     }
 
-    if ((rt_strstr(kind, "vla_command") != RT_NULL) || (rt_strstr(kind, "command") != RT_NULL))
+    if (rt_strcmp(kind, "vla_command") == 0)
     {
         response->kind = XIAOZHI_UTTERANCE_VLA_COMMAND;
     }
@@ -838,29 +1020,60 @@ rt_bool_t xiaozhi_voice_relay_parse_response(const char *json,
         response->kind = XIAOZHI_UTTERANCE_DAILY_CHAT;
     }
 
-    json_get_string(json, "reply", response->reply, sizeof(response->reply));
-    if (response->reply[0] == '\0')
+    field_result = json_get_top_string(json, "event_id", response->event_id, sizeof(response->event_id));
+    if (field_result == JSON_TOP_STRING_NOT_FOUND)
     {
-        json_get_string(json, "text", response->reply, sizeof(response->reply));
+        field_result = json_get_top_string(json, "command_id", response->event_id, sizeof(response->event_id));
     }
-    if (response->reply[0] == '\0')
+    if ((field_result == JSON_TOP_STRING_INVALID) ||
+        (field_result == JSON_TOP_STRING_TRUNCATED))
     {
-        json_get_string(json, "tts", response->reply, sizeof(response->reply));
-    }
-    if (response->reply[0] == '\0')
-    {
-        json_get_string(json, "speak", response->reply, sizeof(response->reply));
+        return RT_FALSE;
     }
 
-    json_get_string(json, "transcript", response->transcript, sizeof(response->transcript));
-    json_get_string(json, "language_context", response->language_context, sizeof(response->language_context));
-    if (response->language_context[0] == '\0')
+    field_result = json_get_top_string(json, "reply", response->reply, sizeof(response->reply));
+    if (field_result == JSON_TOP_STRING_NOT_FOUND)
     {
-        json_get_string(json, "voice_intent", response->language_context, sizeof(response->language_context));
+        field_result = json_get_top_string(json, "text", response->reply, sizeof(response->reply));
+    }
+    if (field_result == JSON_TOP_STRING_NOT_FOUND)
+    {
+        field_result = json_get_top_string(json, "tts", response->reply, sizeof(response->reply));
+    }
+    if (field_result == JSON_TOP_STRING_NOT_FOUND)
+    {
+        field_result = json_get_top_string(json, "speak", response->reply, sizeof(response->reply));
+    }
+    if ((field_result == JSON_TOP_STRING_INVALID) ||
+        (field_result == JSON_TOP_STRING_TRUNCATED))
+    {
+        return RT_FALSE;
+    }
+
+    field_result = json_get_top_string(json, "transcript", response->transcript, sizeof(response->transcript));
+    if ((field_result == JSON_TOP_STRING_INVALID) ||
+        (field_result == JSON_TOP_STRING_TRUNCATED))
+    {
+        return RT_FALSE;
+    }
+    field_result = json_get_top_string(json, "language_context", response->language_context, sizeof(response->language_context));
+    if (field_result == JSON_TOP_STRING_NOT_FOUND)
+    {
+        field_result = json_get_top_string(json, "voice_intent", response->language_context, sizeof(response->language_context));
+    }
+    if ((field_result == JSON_TOP_STRING_INVALID) ||
+        (field_result == JSON_TOP_STRING_TRUNCATED))
+    {
+        return RT_FALSE;
     }
 
     tmp[0] = '\0';
-    json_get_string(json, "type", tmp, sizeof(tmp));
+    field_result = json_get_top_string(json, "type", tmp, sizeof(tmp));
+    if ((field_result == JSON_TOP_STRING_INVALID) ||
+        (field_result == JSON_TOP_STRING_TRUNCATED))
+    {
+        return RT_FALSE;
+    }
     return (response->reply[0] != '\0') ||
            (response->transcript[0] != '\0') ||
            (response->language_context[0] != '\0') ||

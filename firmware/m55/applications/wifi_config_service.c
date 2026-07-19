@@ -192,7 +192,11 @@ static rt_err_t wifi_config_save_fal_record(const wifi_config_fal_record_t *reco
         rt_kprintf("[wifi_config] fal log full part=%s len=%lu\n",
                    WIFI_CONFIG_FAL_PART,
                    (unsigned long)part->len);
-        return -RT_ENOSPC;
+        if (fal_partition_erase(part, 0, part->len) < 0)
+        {
+            return -RT_ERROR;
+        }
+        write_offset = 0U;
     }
 
     if (fal_partition_write(part, write_offset, (const rt_uint8_t *)record, sizeof(*record)) != sizeof(*record))
