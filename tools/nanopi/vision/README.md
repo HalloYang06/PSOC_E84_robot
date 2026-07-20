@@ -1,0 +1,67 @@
+# NanoPi RK3576 vision tools
+
+This directory contains the latest NanoPi M5 VLA-V capture, inference, stereo
+evidence, and upload utilities migrated from the former platform repository.
+They are an edge evidence path only: none of these programs sends CAN frames,
+publishes motor commands, or grants motion permission.
+
+## Runtime pipeline
+
+```text
+two V4L2 cameras
+  -> persistent C++ capture / OpenCV probe
+  -> RK3576 RKNN INT8 inference (CPU ONNX fallback available)
+  -> target and end-effector association
+  -> calibrated point stereo or provisional dense stereo evidence
+  -> asynchronous keyframe/context upload to the platform API
+```
+
+`nanopi-vla-cpp-upload-loop.py` is the orchestrator. Despite its historical
+file name it contains the current Python control loop around the C++ capture
+tools and RKNN runtime. Its output is tagged as evidence and must be transformed
+and gated before any ROS trajectory candidate can be considered.
+
+## Files
+
+| File | Purpose |
+| --- | --- |
+| `nanopi-vla-cpp-upload-loop.py` | Multi-rate capture, RKNN/ONNX inference, stereo evidence, tracking, and asynchronous upload |
+| `nanopi_vla_rknn_benchmark.py` | RKNN model latency and decode benchmark on RK3576 |
+| `nanopi_stereo_natural_feature_calibration.py` | Provisional relative-pose estimate using natural features and a measured baseline |
+| `nanopi_vla_capture_daemon.cpp` | Persistent dual-camera V4L2 capture process |
+| `nanopi_vla_pixel_servo_probe_dnn.cpp` | OpenCV DNN detector probe and annotated evidence writer |
+| `nanopi_vla_target_yolo_infer.py` | CPU ONNX target-inference helper retained as fallback |
+
+Natural-feature calibration and dense single-eye fallback are provisional
+evidence. A printed calibration target and a verified camera-to-arm transform
+remain required before using XYZ in a motion-planning candidate.
+
+## Build and test
+
+On the NanoPi, build the C++ helpers with the installed OpenCV 4 package:
+
+```bash
+g++ -std=c++17 -O3 nanopi_vla_capture_daemon.cpp \
+  $(pkg-config --cflags --libs opencv4) -o nanopi_vla_capture_daemon
+g++ -std=c++17 -O3 nanopi_vla_pixel_servo_probe_dnn.cpp \
+  $(pkg-config --cflags --libs opencv4) -o nanopi_vla_pixel_servo_probe_dnn
+```
+
+Run the host-side algorithm tests from the repository root:
+
+```bash
+python -m pytest tools/nanopi/vision/test_nanopi_stereo_natural_feature_calibration.py \
+  tools/nanopi/vision/test_nanopi_vla_stereo_dense_fallback.py -q
+```
+
+RKNN execution itself requires the NanoPi RK3576 runtime and is not exercised
+by the host tests.
+
+## Provenance
+
+The tracked Python pipeline is synchronized from
+`wenjunyong666/ai-:feature/rehab-arm-rk3576-npu-20260712` at `b03ea772`.
+The three C++/CPU helper sources were deployed working-tree snapshots from the
+same project and had not been committed in that source repository; they are
+recorded here explicitly so the new monorepo becomes their canonical baseline.
+

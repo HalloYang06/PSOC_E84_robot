@@ -5,7 +5,7 @@
 ## Product layers
 
 1. **设备与实时控制层**：C8T6 采集 EMG/心率等传感数据；PSoC E84 的 M33 负责 CAN、关节映射、电机反馈、限位、心跳，并在架构上承担最终安全裁决；M55 负责本地推理、语音和模型结果发布。实现入口是 `firmware/c8t6/app`、`firmware/m33/applications/control/control_layer.c` 与 `firmware/m55/applications`。
-2. **边缘协调层**：NanoPi 运行 ROS 2 与 SocketCAN bridge，把 `JointTrajectory` 候选转换为 `0x320`，并把 M33/C8T6 遥测转换为 ROS topics。入口是 `ros/rehab_arm_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_can_bridge_node.py`。
+2. **边缘协调层**：NanoPi 运行 ROS 2 与 SocketCAN bridge，把 `JointTrajectory` 候选转换为 `0x320`，并把 M33/C8T6 遥测转换为 ROS topics。入口是 `ros/rehab_arm_ws/src/rehab_arm_psoc_bridge/rehab_arm_psoc_bridge/psoc_can_bridge_node.py`。RK3576 视觉侧以 C++/OpenCV 持续采集双目图像，以 RKNN INT8（可退回 CPU ONNX）生成目标、末端和双目深度证据，工具位于 `tools/nanopi/vision`；它是 evidence side-channel，不授予运动权限。
 3. **数字影子层**：MuJoCo 接收硬件状态或独立仿真状态，用于 shadow/simulation，不替代 M33 的安全判定。入口是 `ros/rehab_arm_ws/src/rehab_arm_sim_mujoco/rehab_arm_sim_mujoco/medical_arm_shadow_relay_node.py`。
 4. **产品与数据层**：Android/移动 Web、平台 Web 和 FastAPI 提供账户、设备绑定、计划、训练记录、遥测上传、模型 relay 与可视化。入口是 `apps/mobile/www/rehab-mobile-runtime.js`、`platform/web/app/projects/[id]/rehab-arm-control/rehab-arm-control-client.tsx` 与 `platform/api/app/modules/rehab_arm`。
 5. **高层智能层**：VLA 解析高层任务并生成建议或 dry-run trajectory candidate；它不是运动许可源。边界由 `ai/vla/services/vla_bridge_service.py` 与 `ai/vla/tests/test_control_boundary.py` 固定。
@@ -18,6 +18,7 @@
 | M33 | CAN 总线、电机协议适配、关节限位/校准、pre-arm 状态汇总、`0x322` 安全状态与最终执行边界 | M55/云端模型训练 |
 | M55 | M33-M55 IPC 消费、本地模型/语音处理、模型结果建议 | 绕过 M33 直接驱动电机 |
 | NanoPi/ROS bridge | `JointTrajectory` 校验、SocketCAN 编解码、heartbeat、ROS telemetry topics | 最终安全裁决；默认也不发送 target |
+| NanoPi/RK3576 vision | 双摄像头采集、RKNN/ONNX 推理、目标关联、双目深度证据、异步平台上传 | 相机到机械臂坐标变换、运动许可、CAN 或原始电机输出 |
 | MuJoCo | simulation/shadow 可视化与数据验证 | 真实硬件控制权 |
 | App/Web/API | 用户、计划、训练记录、设备数据与高层请求 | 直接 CAN 或电机输出 |
 
@@ -36,6 +37,7 @@
 - M33 → M55：`MSG_TYPE_SENSOR_SNAPSHOT` / `MSG_TYPE_SENSOR_STREAM` 经双队列 IPC 提供模型输入。
 - M55 → M33 → NanoPi：`MSG_TYPE_AI_INFERENCE_RESP` 回到 M33，再由 M33 以 `0x323` 发布；该帧强制带 `suggestion_only`，bridge 发布 `/rehab_arm/model_state`。
 - NanoPi → platform API：motor/sensor/safety、session 和文件属于非实时上传与产品数据，不组成电机闭环。实现见 `platform/api/app/modules/rehab_arm/router.py`。
+- NanoPi vision → platform API：标注帧、检测结果、关联质量与相机坐标系深度是视觉证据；上传循环与推理线程解耦，旧帧可被新证据替代，但任何视觉锁定都不能直接成为 `JointTrajectory` 或 M33 permission。实现与来源见 `tools/nanopi/vision/README.md` 和 `docs/migration/nanopi-rk3576-vision-sync-20260720.md`。
 
 ## Mainline vs simulation/bench
 
@@ -53,6 +55,7 @@
 - BLE NUS profile 已实现连接、通知、heartbeat/stream 控制及只读拒绝策略，启动策略测试见 `firmware/m33/tools/test_m33_ble_startup_policy_static.py`。
 - 平台具备 App API、设备遥测上传、训练与 AI 草稿边界测试，见 `platform/api/tests/test_rehab_arm_app_backend.py` 与 `platform/api/tests/test_rehab_arm_sync.py`。
 - MuJoCo shadow relay 有离线测试，见 `ros/rehab_arm_ws/src/rehab_arm_sim_mujoco/test/test_medical_arm_shadow_relay_node.py`。
+- RK3576 NanoPi 视觉工具已同步进总仓，包含持续双摄采集、RKNN benchmark、目标/末端推理、关联质量门和稠密双目回退算法；当前仓库验证限于主机算法测试，最新实机帧率仍引用迁移前记录。
 
 ## Known incomplete capability
 
@@ -62,3 +65,4 @@
 - IPC message ABI 没有显式 wire version、packing 或跨编译器字节序声明；只能按当前同平台 C struct 使用。
 - `SET_TARGET_PREARM_RECHECK_GAP`：当前 accepted `SET_TARGET` 路径没有重新执行完整 pre-arm/current-mode gate；反馈 freshness/fault 虽参与 pre-arm 与状态生成，但尚未证明在每条 target 应用前都会 fail closed。临床路径必须先补齐并验证此规则。
 - Platform API、App、Web、VLA 和 MuJoCo 均未实现直接 motor control；云端计划接受、模型结果或 UI 状态都不是运动许可。
+- NanoPi 的 `rehab-rknpu-load.service`、`rehab-vla-vision.service` 和匹配当前运行内核的既有 `rknpu.ko` 尚未从在线设备回收为可追溯部署文件；不得通过改内核补齐此缺口。

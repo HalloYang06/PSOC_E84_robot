@@ -74,6 +74,7 @@ tools/      仓库验证、构建辅助与隔离的 bench-debug 工具
 | M55 | [firmware/m55](firmware/m55) | 联网、语音与边缘推理；输出只作为建议 |
 | C8T6 | [firmware/c8t6](firmware/c8t6) | STM32 传感器节点与 CAN 数据采集；见[组件 README](firmware/c8t6/README.md) |
 | ROS 2 / NanoPi / MuJoCo | [ros/rehab_arm_ws](ros/rehab_arm_ws) | 正式 bridge、前置 gate、描述、bringup、仿真与 shadow；见[工作区 README](ros/rehab_arm_ws/README.md) |
+| NanoPi RK3576 vision | [tools/nanopi/vision](tools/nanopi/vision) | 双摄采集、NPU/CPU 推理、双目深度证据与异步上传；不授予运动权限 |
 | Android/Capacitor | [apps/mobile](apps/mobile) | 移动 PWA 封装与 Android 工程；见[移动端 README](apps/mobile/README.md) |
 | Web/API/Runner | [platform](platform) | 用户界面、非实时业务 API、共享包和受控 runner |
 | VLA | [ai/vla](ai/vla) | 高层任务解析、grounding、schema 和离线评估；见[VLA README](ai/vla/README.md) |
