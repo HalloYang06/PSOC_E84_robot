@@ -1,5 +1,17 @@
 # Troubleshooting And Lessons
 
+## 2026-07-21 - Reuse the visual-zero slider path for VLA execution
+
+Symptom: the platform had camera XYZ and a generic six-DOF IK scaffold, but NanoPi forced robot-frame fields to `None`, the API schema discarded extra transform fields, and the generic IK could move joints that are not installed.
+
+Fix: load only an accepted stereo-bound eye-to-hand matrix, preserve robot-frame evidence in the API, solve the constrained motor `4/5/6` visual-zero model, and stage the result through `/sim/medical_arm/joint_trajectory`. The optional final ROS publication reuses commit `69450f71` and `/arm_controller/joint_trajectory` instead of creating a second hardware path.
+
+Performance lesson: the initial three-motor multi-seed IK took roughly 273 ms on the Windows host. Cache candidates by calibration ID and a 1 cm target grid so 8 FPS evidence refresh does not become 8 FPS IK recomputation.
+
+Deployment lesson: replacing the NanoPi Python file does not update the running process. The first restart attempt was blocked by sudo, leaving old PID `993` and old `transform_state=waiting`; after an authenticated service-only restart, PID `9141` emitted the new `waiting_calibration` state. Verify both PID and live context fields after deployment.
+
+MuJoCo lesson: the generic ROS backend clamps to the original six-axis ranges, while the demonstrated visual zero has shoulder/elbow/wrist values outside those ranges. The historical slider viewer worked because it assigned qpos directly. Keep the generic profile unchanged and launch `medical_arm_visual_zero_3motor_shadow.launch.py` for this chain; otherwise the execution agent will wait forever for a shadow pose the backend cannot represent.
+
 ## 2026-07-21 - Recover visual-zero evidence before deriving hand-eye robot points
 
 Symptom: the active tree had a raw three-motor capture path, but the temporary calibration YAML still marked motor `4/5/6` zero and direction as TODO. Treating raw angles directly as model qpos would produce plausible but wrong `base_link` points.

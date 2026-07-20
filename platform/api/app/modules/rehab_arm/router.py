@@ -23,6 +23,7 @@ from .schemas import (
     RehabBoardManifestRequest,
     RehabDeviceRegisterRequest,
     RehabEstopRequest,
+    RehabIkCandidateRequest,
     RehabModelRelayConfigRequest,
     RehabManifestUploadRequest,
     RehabModelRelayRequest,
@@ -42,6 +43,7 @@ from .service import (
     build_safety_status,
     build_wiring_health,
     latest_keyframe_path,
+    latest_ik_candidate,
     latest_model_package_path,
     issue_model_relay_token,
     model_relay_config_status,
@@ -52,6 +54,7 @@ from .service import (
     record_device_model_package,
     record_device_registration,
     record_estop_request,
+    record_ik_candidate_request,
     record_manifest_upload,
     record_model_relay_request,
     record_motor_state,
@@ -413,6 +416,21 @@ def api_upload_stereo_vision_context(device_id: str, payload: RehabStereoVisionC
         return ok(record_stereo_vision_context(payload.model_dump(mode="json")))
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post("/devices/{device_id}/ik-candidate")
+def api_create_ik_candidate(device_id: str, payload: RehabIkCandidateRequest):
+    if payload.device_id != device_id:
+        raise HTTPException(status_code=422, detail="payload.device_id must match path device_id")
+    try:
+        return ok(record_ik_candidate_request(payload.model_dump(mode="json")))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/devices/{device_id}/ik-candidate/latest")
+def api_latest_ik_candidate(device_id: str):
+    return ok(latest_ik_candidate(device_id))
 
 
 @router.post("/devices/{device_id}/model-package")

@@ -136,6 +136,25 @@ MEDICAL_ARM_6DOF_SHADOW_TOPICS = {
     "safety_state_topic": "/sim/medical_arm/safety_state",
     "sensor_state_topic": "/sim/medical_arm/sensor_state",
 }
+THREE_MOTOR_VISUAL_ZERO = {
+    "jian_hengxiang_joint": -0.236,
+    "jian_zongxiang_joint": -0.675,
+    "jian_xuanzhuan_joint": 0.0,
+    "zhou_zongxiang_joint": -1.12,
+    "wanbu_zongxiang_joint": -1.57,
+    "wanbu_hengxiang_joint": 1.05,
+}
+THREE_MOTOR_ACTIVE_VISUAL_JOINTS = [
+    "jian_zongxiang_joint",
+    "zhou_zongxiang_joint",
+    "jian_xuanzhuan_joint",
+]
+THREE_MOTOR_HARDWARE_JOINTS = [
+    "elbow_lift_joint",
+    "shoulder_abduction_joint",
+    "upper_arm_rotation_joint",
+]
+THREE_MOTOR_HARDWARE_LIMITS = [(0.0, 1.8), (0.0, math.radians(150.0)), (-1.2, 1.2)]
 
 
 def safe_part(value: str | None, fallback: str = "unknown") -> str:
@@ -1196,6 +1215,44 @@ def record_stereo_vision_context(payload: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("confidence must be numeric") from None
     record = telemetry_record("stereo_vision_context", payload)
     write_device_latest(record["device_id"], "stereo_vision_context", record)
+    auto_ik_candidate_state = "not_requested"
+    auto_ik_candidate_id = ""
+    model_relay = _device_latest(record["device_id"], "model_relay_response") or {}
+    semantic_mode = _latest_semantic_mode(model_relay)
+    transform = payload.get("camera_to_robot_transform") if isinstance(payload.get("camera_to_robot_transform"), dict) else {}
+    target_robot = payload.get("target_3d_robot_frame") if isinstance(payload.get("target_3d_robot_frame"), dict) else {}
+    effector_robot = payload.get("end_effector_3d_robot_frame") if isinstance(payload.get("end_effector_3d_robot_frame"), dict) else {}
+    visual_lock = payload.get("visual_lock_stability") if isinstance(payload.get("visual_lock_stability"), dict) else {}
+    calibrated_visual_target = (
+        semantic_mode in {"fetch_object", "vision_servo"}
+        and payload.get("transform_state") == "calibrated"
+        and transform.get("state") == "accepted"
+        and str(transform.get("calibration_id") or "")
+        and _has_numeric_xyz(target_robot)
+        and _has_numeric_xyz(effector_robot)
+        and (visual_lock.get("stable_for_dry_run") is True or visual_lock.get("stable") is True)
+    )
+    if calibrated_visual_target:
+        try:
+            candidate = record_ik_candidate_request(
+                {
+                    "schema_version": "rehab_arm_ik_candidate_request_v1",
+                    "robot_id": record["robot_id"],
+                    "device_id": record["device_id"],
+                    "project_id": record.get("project_id") or "",
+                    "source": "stereo_eye_to_hand",
+                    "semantic_mode": semantic_mode,
+                    "kinematic_profile": "three_motor_visual_zero_v1",
+                    "target_robot_frame": target_robot,
+                    "source_frame_ts_unix": payload.get("frame_ts_unix"),
+                    "source_calibration_id": str(transform.get("calibration_id") or ""),
+                    "control_boundary": "ik_candidate_request_evidence_only_not_motion_permission",
+                }
+            )
+            auto_ik_candidate_state = str(candidate.get("ik_status") or "candidate_blocked")
+            auto_ik_candidate_id = str(candidate.get("candidate_id") or "")
+        except ValueError:
+            auto_ik_candidate_state = "candidate_blocked"
     return {
         "ok": True,
         "schema_version": "stereo_rgb_yolo_context_v1",
@@ -1208,6 +1265,9 @@ def record_stereo_vision_context(payload: dict[str, Any]) -> dict[str, Any]:
         "end_effector_label": _target_label(payload.get("end_effector_object")),
         "detection_count": _detection_count(payload.get("detections")),
         "estimated_depth_m": payload.get("estimated_depth_m"),
+        "semantic_mode": semantic_mode,
+        "auto_ik_candidate_state": auto_ik_candidate_state,
+        "auto_ik_candidate_id": auto_ik_candidate_id,
         "control_boundary": "stereo_vision_context_only_not_motion_permission",
     }
 
@@ -1604,10 +1664,15 @@ def _clamp_candidate_positions(joint_names: list[str], positions: list[float]) -
     return clamped
 
 
-def _mujoco_shadow_validation_plan(joint_names: list[str], candidate_positions: list[float]) -> dict[str, Any]:
+def _mujoco_shadow_validation_plan(
+    joint_names: list[str],
+    candidate_positions: list[float],
+    initial_positions: list[float] | None = None,
+) -> dict[str, Any]:
+    start_positions = list(initial_positions) if initial_positions is not None else [0.0 for _ in joint_names]
     return {
         "schema_version": "mujoco_shadow_validation_plan_v1",
-        "sim_host": "192.168.3.34",
+        "sim_host": os.environ.get("REHAB_ARM_SIM_HOST", "unconfigured"),
         "ros_domain_id": 42,
         "ros_setup": [
             "source /home/cal/.rehab_arm_ros2_network",
@@ -1621,7 +1686,7 @@ def _mujoco_shadow_validation_plan(joint_names: list[str], candidate_positions: 
         "candidate_message": {
             "joint_names": joint_names,
             "points": [
-                {"time_from_start": {"sec": 0, "nanosec": 0}, "positions": [0.0 for _ in joint_names]},
+                {"time_from_start": {"sec": 0, "nanosec": 0}, "positions": [round(value, 4) for value in start_positions]},
                 {
                     "time_from_start": {"sec": 2, "nanosec": 0},
                     "positions": [round(value, 4) for value in candidate_positions],
@@ -1634,6 +1699,140 @@ def _mujoco_shadow_validation_plan(joint_names: list[str], candidate_positions: 
     }
 
 
+def _three_motor_visual_positions(hardware_positions: list[float]) -> tuple[list[str], list[float]]:
+    if len(hardware_positions) != 3:
+        raise ValueError("three-motor hardware positions must contain motor 4,5,6")
+    motor4, motor5, motor6 = [float(value) for value in hardware_positions]
+    by_name = dict(THREE_MOTOR_VISUAL_ZERO)
+    by_name["jian_zongxiang_joint"] = THREE_MOTOR_VISUAL_ZERO["jian_zongxiang_joint"] - motor4
+    by_name["zhou_zongxiang_joint"] = THREE_MOTOR_VISUAL_ZERO["zhou_zongxiang_joint"] + motor5
+    by_name["jian_xuanzhuan_joint"] = THREE_MOTOR_VISUAL_ZERO["jian_xuanzhuan_joint"] + motor6
+    joint_names = [str(spec["name"]) for spec in MEDICAL_ARM_6DOF_JOINT_SPECS]
+    return joint_names, [by_name[name] for name in joint_names]
+
+
+def _three_motor_hardware_positions(joint_names: list[str], visual_positions: list[float]) -> list[float]:
+    by_name = {name: float(visual_positions[index]) for index, name in enumerate(joint_names)}
+    return [
+        -(by_name["jian_zongxiang_joint"] - THREE_MOTOR_VISUAL_ZERO["jian_zongxiang_joint"]),
+        by_name["zhou_zongxiang_joint"] - THREE_MOTOR_VISUAL_ZERO["zhou_zongxiang_joint"],
+        by_name["jian_xuanzhuan_joint"] - THREE_MOTOR_VISUAL_ZERO["jian_xuanzhuan_joint"],
+    ]
+
+
+def _clamp_three_motor_visual(joint_names: list[str], positions: list[float]) -> list[float]:
+    hardware = _three_motor_hardware_positions(joint_names, positions)
+    clamped_hardware = [
+        max(low, min(high, float(value)))
+        for value, (low, high) in zip(hardware, THREE_MOTOR_HARDWARE_LIMITS)
+    ]
+    return _three_motor_visual_positions(clamped_hardware)[1]
+
+
+def _solve_three_motor_visual_zero_ik(target: dict[str, Any]) -> tuple[list[str], list[float], list[float], dict[str, Any]]:
+    target_position = [
+        _float_field(target, "x_m") or 0.0,
+        _float_field(target, "y_m") or 0.0,
+        _float_field(target, "z_m") or 0.0,
+    ]
+    seed_axes = [
+        [0.0, 0.45, 0.9, 1.35],
+        [0.0, 0.65, 1.3, 1.95],
+        [-0.8, 0.0, 0.8],
+    ]
+    seeds = [[motor4, motor5, motor6] for motor4 in seed_axes[0] for motor5 in seed_axes[1] for motor6 in seed_axes[2]]
+    joint_names, best_positions = _three_motor_visual_positions([0.0, 0.0, 0.0])
+    active_indices = [joint_names.index(name) for name in THREE_MOTOR_ACTIVE_VISUAL_JOINTS]
+    best_error = _position_error(_medical_arm_fk_position(joint_names, best_positions), target_position)
+    best_iterations = 0
+    best_converged = False
+    max_iterations = 100
+    damping = 0.06
+    epsilon = 1e-4
+
+    for hardware_seed in seeds:
+        _, positions = _three_motor_visual_positions(hardware_seed)
+        converged = False
+        iteration = 0
+        for iteration in range(1, max_iterations + 1):
+            current = _medical_arm_fk_position(joint_names, positions)
+            error_vector = [target_position[axis] - current[axis] for axis in range(3)]
+            error_norm = math.sqrt(sum(value * value for value in error_vector))
+            if error_norm <= 0.02:
+                converged = True
+                break
+            jacobian_columns: list[list[float]] = []
+            for joint_index in active_indices:
+                shifted = list(positions)
+                shifted[joint_index] += epsilon
+                shifted_position = _medical_arm_fk_position(joint_names, shifted)
+                jacobian_columns.append([(shifted_position[axis] - current[axis]) / epsilon for axis in range(3)])
+            normal = [[0.0 for _ in range(3)] for _ in range(3)]
+            for column in jacobian_columns:
+                for row in range(3):
+                    for col in range(3):
+                        normal[row][col] += column[row] * column[col]
+            for axis in range(3):
+                normal[axis][axis] += damping * damping
+            task_step = _solve_3x3(normal, error_vector)
+            if task_step is None:
+                break
+            next_positions = list(positions)
+            for active_index, column in zip(active_indices, jacobian_columns):
+                joint_step = sum(column[axis] * task_step[axis] for axis in range(3))
+                next_positions[active_index] += 0.65 * joint_step
+            positions = _clamp_three_motor_visual(joint_names, next_positions)
+        final_position = _medical_arm_fk_position(joint_names, positions)
+        final_error = _position_error(final_position, target_position)
+        if final_error < best_error:
+            best_positions = positions
+            best_error = final_error
+            best_iterations = iteration
+            best_converged = converged or final_error <= 0.02
+
+    hardware_positions = _three_motor_hardware_positions(joint_names, best_positions)
+    end_effector_position = _medical_arm_fk_position(joint_names, best_positions)
+    quality = "precise" if best_error <= 0.03 else ("approximate" if best_error <= 0.12 else "blocked")
+    report = {
+        "schema_version": "rehab_arm_ik_solver_report_v1",
+        "method": "damped_least_squares_three_motor_visual_zero_v1",
+        "kinematic_profile": "three_motor_visual_zero_v1",
+        "model_source": "medical_arm_6dof_mujoco_visual_zero_commit_69450f71",
+        "active_motor_ids": [4, 5, 6],
+        "active_visual_joints": list(THREE_MOTOR_ACTIVE_VISUAL_JOINTS),
+        "frozen_visual_joints": [name for name in joint_names if name not in THREE_MOTOR_ACTIVE_VISUAL_JOINTS],
+        "target_position_m": {key: round(value, 4) for key, value in zip(("x_m", "y_m", "z_m"), target_position)},
+        "end_effector_position_m": {key: round(value, 4) for key, value in zip(("x_m", "y_m", "z_m"), end_effector_position)},
+        "position_error_m": round(best_error, 4),
+        "iterations": best_iterations,
+        "seed_count": len(seeds),
+        "converged": best_converged,
+        "quality": quality,
+        "control_boundary": IK_CONTROL_BOUNDARY,
+    }
+    return joint_names, best_positions, hardware_positions, report
+
+
+def _ik_candidate_id(device_id: str, payload: dict[str, Any], target: dict[str, Any], profile: str) -> str:
+    digest = hashlib.sha256(
+        json.dumps(
+            {
+                "device_id": device_id,
+                "calibration_id": payload.get("source_calibration_id"),
+                "target": {
+                    "x_m": round(float(target["x_m"]), 2),
+                    "y_m": round(float(target["y_m"]), 2),
+                    "z_m": round(float(target["z_m"]), 2),
+                },
+                "profile": profile,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("utf-8")
+    ).hexdigest()[:16]
+    return "ik_" + digest
+
+
 def record_ik_candidate_request(payload: dict[str, Any]) -> dict[str, Any]:
     target = payload.get("target_robot_frame") if isinstance(payload.get("target_robot_frame"), dict) else {}
     x = _float_field(target, "x_m")
@@ -1643,13 +1842,55 @@ def record_ik_candidate_request(payload: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("target_robot_frame.x_m, y_m, and z_m must be numeric meters")
     if str(payload.get("control_boundary") or "") not in {"", "ik_candidate_request_evidence_only_not_motion_permission", IK_CONTROL_BOUNDARY}:
         raise ValueError("IK candidate requests must remain evidence-only")
+    profile = str(payload.get("kinematic_profile") or "three_motor_visual_zero_v1")
+    if profile not in {"three_motor_visual_zero_v1", "medical_arm_6dof_v1"}:
+        raise ValueError("unsupported kinematic_profile")
+    if payload.get("source") == "stereo_eye_to_hand" and not str(payload.get("source_calibration_id") or ""):
+        raise ValueError("stereo_eye_to_hand IK requires source_calibration_id")
     device_id = safe_part(str(payload.get("device_id") or "unknown"))
-    render_state = build_robot_render_state(device_id)
-    joint_names = list(render_state.get("joint_names") or [row["urdf_joint"] for row in ARM_JOINT_MAP])
-    candidate_positions, solver_report = _solve_medical_arm_6dof_ik(target, joint_names)
+    candidate_id = _ik_candidate_id(device_id, payload, {"x_m": x, "y_m": y, "z_m": z}, profile)
+    existing = latest_ik_candidate(device_id)
+    if existing.get("candidate_id") == candidate_id:
+        refreshed = {
+            **existing,
+            "source_frame_ts_unix": payload.get("source_frame_ts_unix"),
+            "candidate_cache_reused": True,
+        }
+        cached_record = telemetry_record(
+            "ik_candidate",
+            {**payload, "candidate_response": refreshed, "control_boundary": IK_CONTROL_BOUNDARY},
+        )
+        write_device_latest(cached_record["device_id"], "ik_candidate", cached_record)
+        return refreshed
+    hardware_positions: list[float] | None = None
+    if profile == "three_motor_visual_zero_v1":
+        joint_names, candidate_positions, hardware_positions, solver_report = _solve_three_motor_visual_zero_ik(target)
+        initial_positions = [THREE_MOTOR_VISUAL_ZERO[name] for name in joint_names]
+        joint_limit_rows = [
+            {
+                "joint_name": name,
+                "motor_id": motor_id,
+                "candidate_rad": round(value, 4),
+                "lower_rad": low,
+                "upper_rad": high,
+                "within_limit": low <= value <= high,
+                "control_boundary": IK_CONTROL_BOUNDARY,
+            }
+            for name, motor_id, value, (low, high) in zip(
+                THREE_MOTOR_HARDWARE_JOINTS,
+                [4, 5, 6],
+                hardware_positions,
+                THREE_MOTOR_HARDWARE_LIMITS,
+            )
+        ]
+    else:
+        render_state = build_robot_render_state(device_id)
+        joint_names = list(render_state.get("joint_names") or [row["urdf_joint"] for row in ARM_JOINT_MAP])
+        candidate_positions, solver_report = _solve_medical_arm_6dof_ik(target, joint_names)
+        initial_positions = [0.0 for _ in joint_names]
+        joint_limit_rows = _joint_limit_rows(joint_names, candidate_positions)
     distance = (x * x + y * y + z * z) ** 0.5
-    workspace_ok = 0.08 <= distance <= 0.85 and z >= -0.05
-    joint_limit_rows = _joint_limit_rows(joint_names, candidate_positions)
+    workspace_ok = 0.08 <= distance <= 1.05 and z >= -0.10
     joint_ok = all(row["within_limit"] for row in joint_limit_rows)
     solver_quality = str(solver_report.get("quality") or "blocked")
     solver_ok = solver_quality in {"precise", "approximate"}
@@ -1664,9 +1905,15 @@ def record_ik_candidate_request(payload: dict[str, Any]) -> dict[str, Any]:
     simulation_report = simulation_payload.get("report") if isinstance(simulation_payload.get("report"), dict) else {}
     response = {
         "schema_version": "rehab_arm_ik_candidate_evidence_v1",
+        "candidate_id": candidate_id,
         "ik_status": ik_status,
+        "kinematic_profile": profile,
+        "active_motor_ids": [4, 5, 6] if profile == "three_motor_visual_zero_v1" else [],
+        "execution_stage": "shadow_candidate_only",
         "source": payload.get("source") or "manual_platform",
         "semantic_mode": payload.get("semantic_mode") or "fetch_object",
+        "source_frame_ts_unix": payload.get("source_frame_ts_unix"),
+        "source_calibration_id": payload.get("source_calibration_id") or "",
         "target_robot_frame": {"x_m": x, "y_m": y, "z_m": z},
         "approach_vector": payload.get("approach_vector"),
         "gripper_orientation": payload.get("gripper_orientation"),
@@ -1674,9 +1921,20 @@ def record_ik_candidate_request(payload: dict[str, Any]) -> dict[str, Any]:
             "schema_version": "dry_run_joint_trajectory_candidate_v1",
             "joint_names": joint_names,
             "points": [
-                {"time_from_start_s": 0.0, "positions_rad": [0.0 for _ in joint_names]},
+                {"time_from_start_s": 0.0, "positions_rad": [round(value, 4) for value in initial_positions]},
                 {"time_from_start_s": 2.0, "positions_rad": [round(value, 4) for value in candidate_positions]},
             ],
+            "control_boundary": IK_CONTROL_BOUNDARY,
+        },
+        "hardware_joint_trajectory_candidate": {
+            "schema_version": "staged_hardware_joint_trajectory_candidate_v1",
+            "joint_names": list(THREE_MOTOR_HARDWARE_JOINTS) if hardware_positions is not None else [],
+            "points": [
+                {"time_from_start_s": 0.0, "positions_rad": [0.0, 0.0, 0.0]},
+                {"time_from_start_s": 2.0, "positions_rad": [round(value, 4) for value in hardware_positions]},
+            ] if hardware_positions is not None else [],
+            "publish_topic_after_shadow_and_confirmation": "/arm_controller/joint_trajectory",
+            "requires": ["mujoco_dry_run_passed", "m33_motion_allowed_true", "human_confirmation"],
             "control_boundary": IK_CONTROL_BOUNDARY,
         },
         "ik_solver_report": solver_report,
@@ -1697,7 +1955,7 @@ def record_ik_candidate_request(payload: dict[str, Any]) -> dict[str, Any]:
             "expected_shadow_topics": MEDICAL_ARM_6DOF_SHADOW_TOPICS,
             "control_boundary": "simulation_evidence_only_not_motion_permission",
         },
-        "mujoco_shadow_validation_plan": _mujoco_shadow_validation_plan(joint_names, candidate_positions),
+        "mujoco_shadow_validation_plan": _mujoco_shadow_validation_plan(joint_names, candidate_positions, initial_positions),
         "control_boundary": IK_CONTROL_BOUNDARY,
         "forbidden_outputs": sorted(DANGEROUS_VLA_OUTPUTS),
     }
@@ -1706,6 +1964,20 @@ def record_ik_candidate_request(payload: dict[str, Any]) -> dict[str, Any]:
     record = telemetry_record("ik_candidate", {**payload, "candidate_response": response, "control_boundary": IK_CONTROL_BOUNDARY})
     write_device_latest(record["device_id"], "ik_candidate", record)
     return response
+
+
+def latest_ik_candidate(device_id: str) -> dict[str, Any]:
+    record = _device_latest(safe_part(device_id), "ik_candidate") or {}
+    payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+    response = payload.get("candidate_response") if isinstance(payload.get("candidate_response"), dict) else {}
+    if response:
+        return response
+    return {
+        "schema_version": "rehab_arm_ik_candidate_evidence_v1",
+        "ik_status": "waiting",
+        "execution_stage": "no_candidate",
+        "control_boundary": IK_CONTROL_BOUNDARY,
+    }
 
 
 def record_xiaozhi_ws_event(payload: dict[str, Any]) -> dict[str, Any]:

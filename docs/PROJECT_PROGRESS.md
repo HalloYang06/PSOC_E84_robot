@@ -1,5 +1,28 @@
 # Project Progress
 
+## 2026-07-21 - Calibrated VLA target to MuJoCo/hardware staging
+
+Completed:
+
+- Connected accepted eye-to-hand matrices to the live NanoPi context; robot-frame target, gripper, and delta fields now fail closed on missing/rejected/mismatched calibration.
+- Extended the platform stereo schema so robot-frame evidence is preserved instead of silently discarded.
+- Added a calibration-provenance-bound three-motor IK candidate API and automatic L+V dispatch gate for `fetch_object`/`vision_servo`.
+- Added a Linux execution agent that publishes MuJoCo shadow first and reuses the historical visual-zero slider protocol for optional supervised hardware ROS publication.
+- Added a dedicated `medical_arm_visual_zero_3motor` MuJoCo profile/model/launch so the old demonstrated zero is not clamped by the generic six-axis limits.
+- Added a 1 cm target-grid cache so unchanged 8 FPS vision frames reuse the same candidate rather than repeating the roughly 273 ms first IK solve.
+
+Validated:
+
+- Combined vision, calibration, Linux-agent, and MuJoCo-profile regression: 33 passed.
+- Platform stereo, VLA closed-loop, IK dispatch, and sync tests: 42 passed.
+- NanoPi process restarted as PID `9141`; service active, context freshness approximately 0.13 s, capture approximately 38.6 ms, and transform state correctly `waiting_calibration` while the accepted matrix file is absent.
+
+Open:
+
+- Complete the physical hand-eye samples and install an accepted `/home/pi/rehab_arm_calibration/base_from_camera.json`.
+- Obtain the new Linux host IP, deploy the execution agent, and run a shadow-only candidate against the actual MuJoCo node/topic graph.
+- Do not enable the two hardware flags until the shadow target, current M33 permission, joint mapping, and onsite arm state are all confirmed.
+
 ## 2026-07-21 - Three-motor visual-zero FK preparation
 
 Completed:

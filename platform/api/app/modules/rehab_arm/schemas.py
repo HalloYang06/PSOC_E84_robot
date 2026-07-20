@@ -139,6 +139,22 @@ class RehabVlaTaskRequest(BaseModel):
     control_boundary: str = "vla_planning_request_only_not_motion_permission"
 
 
+class RehabIkCandidateRequest(BaseModel):
+    schema_version: str = "rehab_arm_ik_candidate_request_v1"
+    robot_id: str = Field(min_length=1)
+    device_id: str = Field(min_length=1)
+    project_id: str = ""
+    source: str = "stereo_eye_to_hand"
+    semantic_mode: str = "fetch_object"
+    kinematic_profile: str = "three_motor_visual_zero_v1"
+    target_robot_frame: dict
+    approach_vector: dict | None = None
+    gripper_orientation: dict | None = None
+    source_frame_ts_unix: float | None = None
+    source_calibration_id: str = ""
+    control_boundary: str = "ik_candidate_request_evidence_only_not_motion_permission"
+
+
 class RehabModelRelayRequest(BaseModel):
     schema_version: str = "model_relay_request_v1"
     robot_id: str = Field(min_length=1)
@@ -211,6 +227,14 @@ class RehabStereoVisionContextRequest(BaseModel):
     visual_lock_stability: dict | None = None
     estimated_depth_m: float | None = None
     target_3d_camera_frame: dict | list | None = None
+    end_effector_3d_camera_frame: dict | list | None = None
+    end_effector_depth_evidence: dict | None = None
+    camera_frame_delta_to_target: dict | None = None
+    camera_to_robot_transform: dict | None = None
+    transform_state: str = "waiting_calibration"
+    target_3d_robot_frame: dict | None = None
+    end_effector_3d_robot_frame: dict | None = None
+    robot_frame_delta_to_target: dict | None = None
     scene_summary: str = ""
     vla_context: str = ""
     confidence: float | None = None

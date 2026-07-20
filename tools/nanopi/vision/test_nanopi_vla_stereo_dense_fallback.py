@@ -59,6 +59,44 @@ def test_point_stereo_rejects_depth_outside_workspace_range(monkeypatch):
     assert result["reason"] == "depth_outside_workspace_range"
 
 
+def test_eye_to_hand_transform_populates_robot_frame_only_for_matching_stereo_id():
+    module = runpy.run_path(str(MODULE_PATH))
+    calibration = {
+        "schema_version": "rehab_arm_eye_to_hand_calibration_v1",
+        "calibration_id": "eye-to-hand-test",
+        "calibration_state": "accepted",
+        "source_stereo_calibration_id": "stereo-calib-001",
+        "camera_frame_id": "stereo_left_optical_frame",
+        "robot_base_frame_id": "base_link",
+        "matrix_4x4": [
+            [1.0, 0.0, 0.0, 0.10],
+            [0.0, 1.0, 0.0, -0.20],
+            [0.0, 0.0, 1.0, 0.30],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+        "quality": {"state": "accepted", "validation_rmse_m": 0.008},
+    }
+    evidence = module["build_robot_frame_evidence"](
+        calibration,
+        stereo_calibration_id="stereo-calib-001",
+        target_camera_xyz={"x_m": 0.20, "y_m": 0.05, "z_m": 0.40},
+        end_effector_camera_xyz={"x_m": 0.10, "y_m": 0.02, "z_m": 0.35},
+    )
+    assert evidence["transform_state"] == "calibrated"
+    assert evidence["target_3d_robot_frame"] == {"x_m": 0.3, "y_m": -0.15, "z_m": 0.7}
+    assert evidence["end_effector_3d_robot_frame"] == {"x_m": 0.2, "y_m": -0.18, "z_m": 0.65}
+    assert evidence["robot_frame_delta_to_target"]["distance_m"] > 0.0
+
+    mismatch = module["build_robot_frame_evidence"](
+        calibration,
+        stereo_calibration_id="different-stereo",
+        target_camera_xyz={"x_m": 0.20, "y_m": 0.05, "z_m": 0.40},
+        end_effector_camera_xyz=None,
+    )
+    assert mismatch["transform_state"] == "stereo_calibration_mismatch"
+    assert mismatch["target_3d_robot_frame"] is None
+
+
 def test_dense_depth_rejects_large_jump_from_recent_point_stereo():
     module = runpy.run_path(str(MODULE_PATH))
     result = module["assess_dense_temporal_consistency"](0.478, [0.59, 0.60, 0.61], max_relative_delta=0.18)

@@ -7,6 +7,7 @@ from xml.sax.saxutils import escape
 
 LEGACY_5DOF_PROFILE = 'legacy_5dof'
 MEDICAL_ARM_6DOF_PROFILE = 'medical_arm_6dof'
+MEDICAL_ARM_VISUAL_ZERO_3MOTOR_PROFILE = 'medical_arm_visual_zero_3motor'
 
 JOINT_NAMES = [
     'shoulder_lift_joint',
@@ -41,6 +42,15 @@ MEDICAL_ARM_6DOF_LIMITS = {
     'wanbu_zongxiang_joint': (-0.7854, 0.7854, 0.60),
     'wanbu_hengxiang_joint': (-0.3491, 0.5236, 0.60),
 }
+MEDICAL_ARM_VISUAL_ZERO_3MOTOR_LIMITS = {
+    'jian_hengxiang_joint': (-0.7854, 1.5708, 0.35),
+    'jian_zongxiang_joint': (-2.475, -0.675, 0.35),
+    'jian_xuanzhuan_joint': (-1.2, 1.2, 0.45),
+    'zhou_zongxiang_joint': (-1.12, 1.497994, 0.45),
+    'wanbu_zongxiang_joint': (-1.58, -1.56, 0.60),
+    'wanbu_hengxiang_joint': (1.04, 1.06, 0.60),
+}
+MEDICAL_ARM_VISUAL_ZERO = [-0.236, -0.675, 0.0, -1.12, -1.57, 1.05]
 
 
 @dataclass(frozen=True)
@@ -69,6 +79,14 @@ MEDICAL_ARM_6DOF_JOINT_SPECS = [
     JointSpec('wanbu_zongxiang_joint', '0 1 0', -0.7854, 0.7854, 0.12, 0.026),
     JointSpec('wanbu_hengxiang_joint', '0 0 1', -0.3491, 0.5236, 0.10, 0.024),
 ]
+MEDICAL_ARM_VISUAL_ZERO_3MOTOR_JOINT_SPECS = [
+    JointSpec('jian_hengxiang_joint', '0 0 1', -0.7854, 1.5708, 0.18, 0.040),
+    JointSpec('jian_zongxiang_joint', '0 1 0', -2.475, -0.675, 0.24, 0.038),
+    JointSpec('jian_xuanzhuan_joint', '1 0 0', -1.2, 1.2, 0.18, 0.034),
+    JointSpec('zhou_zongxiang_joint', '0 1 0', -1.12, 1.497994, 0.28, 0.032),
+    JointSpec('wanbu_zongxiang_joint', '0 1 0', -1.58, -1.56, 0.12, 0.026),
+    JointSpec('wanbu_hengxiang_joint', '0 0 1', 1.04, 1.06, 0.10, 0.024),
+]
 
 JOINT_SPECS = LEGACY_5DOF_JOINT_SPECS
 
@@ -79,6 +97,7 @@ JOINT_PROFILE_CONFIGS = {
         'limits': LIMITS,
         'specs': LEGACY_5DOF_JOINT_SPECS,
         'model_filename': 'rehab_arm_minimal.xml',
+        'initial_positions': [0.0] * len(JOINT_NAMES),
     },
     MEDICAL_ARM_6DOF_PROFILE: {
         'model_name': 'medical_arm_6dof_shadow',
@@ -86,6 +105,15 @@ JOINT_PROFILE_CONFIGS = {
         'limits': MEDICAL_ARM_6DOF_LIMITS,
         'specs': MEDICAL_ARM_6DOF_JOINT_SPECS,
         'model_filename': 'medical_arm_6dof.xml',
+        'initial_positions': [0.0] * len(MEDICAL_ARM_6DOF_JOINT_NAMES),
+    },
+    MEDICAL_ARM_VISUAL_ZERO_3MOTOR_PROFILE: {
+        'model_name': 'medical_arm_visual_zero_3motor_shadow',
+        'joint_names': MEDICAL_ARM_6DOF_JOINT_NAMES,
+        'limits': MEDICAL_ARM_VISUAL_ZERO_3MOTOR_LIMITS,
+        'specs': MEDICAL_ARM_VISUAL_ZERO_3MOTOR_JOINT_SPECS,
+        'model_filename': 'medical_arm_visual_zero_3motor.xml',
+        'initial_positions': MEDICAL_ARM_VISUAL_ZERO,
     },
 }
 
@@ -106,6 +134,11 @@ def joint_names_for_profile(joint_profile: str | None) -> list[str]:
 def limits_for_profile(joint_profile: str | None) -> dict[str, tuple[float, float, float]]:
     profile = normalize_joint_profile(joint_profile)
     return dict(JOINT_PROFILE_CONFIGS[profile]['limits'])  # type: ignore[arg-type]
+
+
+def initial_positions_for_profile(joint_profile: str | None) -> list[float]:
+    profile = normalize_joint_profile(joint_profile)
+    return list(JOINT_PROFILE_CONFIGS[profile]['initial_positions'])  # type: ignore[arg-type]
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -213,7 +246,10 @@ class RehabArmMujocoBackend:
             ]
             for name in self.joint_names
         ]
-        self.target_positions = [0.0] * len(self.joint_names)
+        self.target_positions = initial_positions_for_profile(self.joint_profile)
+        for address, value in zip(self.joint_qpos_addr, self.target_positions):
+            self.data.qpos[address] = value
+        self.mujoco.mj_forward(self.model, self.data)
 
     def step(self, target_positions: list[float], dt: float) -> list[float]:
         self.target_positions = clamp_positions(target_positions, self.joint_profile)

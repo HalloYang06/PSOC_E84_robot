@@ -93,6 +93,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-conf", type=float, default=float(os.environ.get("REHAB_TARGET_CONF", "0.30")))
     parser.add_argument("--target-imgsz", type=int, default=int(os.environ.get("REHAB_TARGET_IMGSZ", "640")))
     parser.add_argument("--stereo-calibration-json", default=os.environ.get("REHAB_STEREO_CALIBRATION_JSON", "/home/pi/rehab_arm_stereo_calibration/calibrations/chessboard_real_20260703_01_A4_20mm_9x6.json"))
+    parser.add_argument("--eye-to-hand-calibration-json", default=os.environ.get("REHAB_EYE_TO_HAND_CALIBRATION_JSON", "/home/pi/rehab_arm_calibration/base_from_camera.json"))
     parser.add_argument("--hard-negative-dir", default=os.environ.get("REHAB_HARD_NEGATIVE_DIR", "/home/pi/rehab_vla_hard_negatives"))
     parser.add_argument("--end-effector-conf", type=float, default=float(os.environ.get("REHAB_END_EFFECTOR_CONF", "0.20")))
     parser.add_argument("--fps", type=float, default=float(os.environ.get("REHAB_VLA_FPS", "1")))
@@ -784,6 +785,98 @@ def load_stereo_calibration(path_text: str) -> dict[str, Any] | None:
     except Exception:
         return None
     return payload if isinstance(payload, dict) and payload.get("calibration_state") == "calibrated" else None
+
+
+def load_eye_to_hand_calibration(path_text: str) -> dict[str, Any] | None:
+    if not path_text:
+        return None
+    path = Path(path_text).expanduser()
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _metric_xyz(value: Any) -> np.ndarray | None:
+    if not isinstance(value, dict):
+        return None
+    keys = ("x_m", "y_m", "z_m") if all(key in value for key in ("x_m", "y_m", "z_m")) else ("x", "y", "z")
+    try:
+        point = np.asarray([value[key] for key in keys], dtype=np.float64)
+    except (KeyError, TypeError, ValueError):
+        return None
+    return point if point.shape == (3,) and np.all(np.isfinite(point)) else None
+
+
+def _metric_xyz_dict(point: np.ndarray) -> dict[str, float]:
+    return {
+        "x_m": round(float(point[0]), 6),
+        "y_m": round(float(point[1]), 6),
+        "z_m": round(float(point[2]), 6),
+    }
+
+
+def build_robot_frame_evidence(
+    calibration: dict[str, Any] | None,
+    *,
+    stereo_calibration_id: str,
+    target_camera_xyz: Any,
+    end_effector_camera_xyz: Any,
+) -> dict[str, Any]:
+    empty = {
+        "camera_to_robot_transform": None,
+        "transform_state": "waiting_calibration",
+        "target_3d_robot_frame": None,
+        "end_effector_3d_robot_frame": None,
+        "robot_frame_delta_to_target": None,
+    }
+    if not isinstance(calibration, dict):
+        return empty
+    if calibration.get("calibration_state") != "accepted":
+        return {**empty, "transform_state": "calibration_rejected"}
+    source_stereo_id = str(calibration.get("source_stereo_calibration_id") or "")
+    if not source_stereo_id or source_stereo_id != str(stereo_calibration_id or ""):
+        return {**empty, "transform_state": "stereo_calibration_mismatch"}
+    matrix = np.asarray(calibration.get("matrix_4x4"), dtype=np.float64)
+    if matrix.shape != (4, 4) or not np.all(np.isfinite(matrix)):
+        return {**empty, "transform_state": "calibration_matrix_invalid"}
+
+    def transform(value: Any) -> dict[str, float] | None:
+        point = _metric_xyz(value)
+        if point is None:
+            return None
+        return _metric_xyz_dict(matrix[:3, :3] @ point + matrix[:3, 3])
+
+    target_robot = transform(target_camera_xyz)
+    effector_robot = transform(end_effector_camera_xyz)
+    delta = None
+    if target_robot and effector_robot:
+        difference = _metric_xyz(target_robot) - _metric_xyz(effector_robot)
+        delta = {
+            "dx_m": round(float(difference[0]), 6),
+            "dy_m": round(float(difference[1]), 6),
+            "dz_m": round(float(difference[2]), 6),
+            "distance_m": round(float(np.linalg.norm(difference)), 6),
+        }
+    return {
+        "camera_to_robot_transform": {
+            "schema_version": calibration.get("schema_version"),
+            "calibration_id": calibration.get("calibration_id"),
+            "state": "accepted",
+            "camera_frame_id": calibration.get("camera_frame_id"),
+            "robot_base_frame_id": calibration.get("robot_base_frame_id"),
+            "source_stereo_calibration_id": source_stereo_id,
+            "quality": calibration.get("quality"),
+            "control_boundary": "eye_to_hand_transform_evidence_only_not_motion_permission",
+        },
+        "transform_state": "calibrated",
+        "target_3d_robot_frame": target_robot,
+        "end_effector_3d_robot_frame": effector_robot,
+        "robot_frame_delta_to_target": delta,
+    }
 
 
 def assess_stereo_bbox_compatibility(
@@ -1624,6 +1717,13 @@ def build_stereo_context(args: argparse.Namespace, probe_context: dict[str, Any]
             "control_boundary": "end_effector_camera_frame_only_not_motion_permission",
         }
     camera_frame_delta_to_target = camera_frame_delta(target_3d_camera_frame, end_effector_3d_camera_frame)
+    stereo_calibration_id = stereo_calibration.get("calibration_id") if stereo_calibration else ""
+    robot_frame_evidence = build_robot_frame_evidence(
+        load_eye_to_hand_calibration(args.eye_to_hand_calibration_json),
+        stereo_calibration_id=stereo_calibration_id,
+        target_camera_xyz=target_3d_camera_frame,
+        end_effector_camera_xyz=end_effector_3d_camera_frame,
+    )
     detection_completed = time.time()
     return {
         "schema_version": "stereo_rgb_yolo_context_v1",
@@ -1676,7 +1776,7 @@ def build_stereo_context(args: argparse.Namespace, probe_context: dict[str, Any]
         },
         "left_camera_id": "stereo_left",
         "right_camera_id": "stereo_right",
-        "stereo_calibration_id": stereo_calibration.get("calibration_id") if stereo_calibration else "",
+        "stereo_calibration_id": stereo_calibration_id,
         "baseline_m": stereo_calibration.get("baseline_m") if stereo_calibration else 0.06,
         "image_pair_ref": {
             "left_image_url": f"/api/rehab-arm/v1/devices/{args.device_id}/camera/keyframes/stereo_left/latest/file",
@@ -1723,9 +1823,7 @@ def build_stereo_context(args: argparse.Namespace, probe_context: dict[str, Any]
         "end_effector_3d_camera_frame": end_effector_3d_camera_frame,
         "end_effector_depth_evidence": end_effector_depth_evidence,
         "camera_frame_delta_to_target": camera_frame_delta_to_target,
-        "camera_to_robot_transform": None,
-        "transform_state": "waiting",
-        "target_3d_robot_frame": None,
+        **robot_frame_evidence,
         "end_effector_quality_gate": effector_quality_gate,
         "right_end_effector_quality_gate": right_effector_quality_gate,
         "hard_negative_capture": hard_negative_capture,
@@ -1908,8 +2006,10 @@ def build_fast_preview_context(
             "estimated_depth_m": None,
             "target_3d_camera_frame": None,
             "camera_to_robot_transform": None,
-            "transform_state": "waiting",
+            "transform_state": "waiting_calibration",
             "target_3d_robot_frame": None,
+            "end_effector_3d_robot_frame": None,
+            "robot_frame_delta_to_target": None,
             "end_effector_quality_gate": {"state": "waiting_async_detector"},
             "visual_lock_stability": {"state": "waiting_target_or_end_effector", "stable": False},
             "confidence": 0.0,

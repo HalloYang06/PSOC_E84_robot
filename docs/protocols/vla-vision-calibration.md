@@ -58,3 +58,31 @@ converted once by `finalize-raw`.
 
 Raw sessions must be retained so a corrected mechanical model or zero mapping
 can regenerate robot points without repeating camera capture.
+
+## Closed-loop handoff after calibration
+
+The live NanoPi uploader loads `/home/pi/rehab_arm_calibration/base_from_camera.json`.
+It emits robot-frame fields only when the calibration state is `accepted` and
+its `source_stereo_calibration_id` matches the active stereo calibration:
+
+```text
+target_3d_camera_frame -> target_3d_robot_frame
+end_effector_3d_camera_frame -> end_effector_3d_robot_frame
+robot_frame_delta_to_target
+```
+
+The platform preserves these fields and may create a three-motor IK candidate
+only after L semantic mode is `fetch_object` or `vision_servo`, both robot-frame
+points exist, and the visual lock is stable. The endpoints are:
+
+```text
+POST /api/rehab-arm/v1/devices/{device_id}/ik-candidate
+GET  /api/rehab-arm/v1/devices/{device_id}/ik-candidate/latest
+```
+
+Targets are cached on a calibration-bound 1 cm grid so unchanged video frames
+do not repeat the expensive IK solve. The Linux execution agent consumes the
+latest candidate, publishes the visual six-joint pose to the MuJoCo shadow
+topic, and waits for convergence. Hardware publication reuses visual-zero
+protocol commit `69450f71` and remains behind explicit onsite flags and fresh
+M33 permission. Platform HTTP never sends CAN or motor-private frames.

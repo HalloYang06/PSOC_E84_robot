@@ -19,6 +19,7 @@ from rehab_arm_sim_mujoco.mujoco_backend import (
     LIMITS,
     RehabArmMujocoBackend,
     clamp,
+    initial_positions_for_profile,
     joint_names_for_profile,
     limits_for_profile,
 )
@@ -55,9 +56,9 @@ class MujocoSimNode(Node):
         self.trajectory_topic = str(self.get_parameter('trajectory_topic').value)
         self.safety_state_topic = str(self.get_parameter('safety_state_topic').value)
         self.sensor_state_topic = str(self.get_parameter('sensor_state_topic').value)
-        self.positions = [0.0] * len(self.joint_names)
+        self.positions = initial_positions_for_profile(self.joint_profile)
         self.velocities = [0.0] * len(self.joint_names)
-        self.desired_positions = [0.0] * len(self.joint_names)
+        self.desired_positions = list(self.positions)
         self.segments: list[TrajectorySegment] = []
         self.last_time = self.get_clock().now().nanoseconds / 1e9
         self.safety_state = 'ok'
