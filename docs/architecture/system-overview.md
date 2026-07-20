@@ -38,6 +38,7 @@
 - M55 → M33 → NanoPi：`MSG_TYPE_AI_INFERENCE_RESP` 回到 M33，再由 M33 以 `0x323` 发布；该帧强制带 `suggestion_only`，bridge 发布 `/rehab_arm/model_state`。
 - NanoPi → platform API：motor/sensor/safety、session 和文件属于非实时上传与产品数据，不组成电机闭环。实现见 `platform/api/app/modules/rehab_arm/router.py`。
 - NanoPi vision → platform API：标注帧、检测结果、关联质量与相机坐标系深度是视觉证据；上传循环与推理线程解耦，旧帧可被新证据替代，但任何视觉锁定都不能直接成为 `JointTrajectory` 或 M33 permission。实现与来源见 `tools/nanopi/vision/README.md` 和 `docs/migration/nanopi-rk3576-vision-sync-20260720.md`。
+- 三电机手眼标定采集：固定双目分别检测同一个夹爪尖端，双目几何生成相机坐标；每个静止姿态同时记录电机 `4/5/6` 角度。角度必须先经受检三关节 FK 转为 `base_link` 末端点，再由 `tools/nanopi/vision/eye_to_hand_calibration.py` 求 `base_from_camera`。电机 3、腕部关节保持冻结；标定输出仍是 evidence，不产生轨迹、CAN 或运动许可。
 
 ## Mainline vs simulation/bench
 

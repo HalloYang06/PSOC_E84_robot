@@ -1,5 +1,15 @@
 # Troubleshooting And Lessons
 
+## 2026-07-21 - Hand-eye samples require independent gripper stereo depth
+
+Symptom: the old context could produce an end-effector camera point by projecting the left gripper pixel with the target bottle depth. This looks numerically complete but is not a valid hand-eye correspondence.
+
+Fix: infer the gripper independently in both eyes, require a valid rectified stereo match, aggregate distinct stable frames, and reject the sample otherwise. Record motor `4/5/6` angles separately; apply validated three-joint FK before solving `base_from_camera`.
+
+Performance lesson: do not create two concurrent RKNNLite runtimes for the same gripper model on RK3576. The first attempt raised load and made SSH/network response sluggish. Share one runtime and serialize left/right gripper inference; the live heavy pipeline recovered to roughly 74 ms.
+
+Status: capture tooling and runtime are deployed; first real pose is waiting for a fully visible, stationary gripper tip in both cameras and authoritative three-motor angles.
+
 ## 2026-07-21 - Do not force a Wi-Fi switch before the preferred hotspot is visible
 
 Symptom: NanoPi is reachable through the current fallback hotspot, while the new preferred SSID is configured but absent from both the PC and board scan results.

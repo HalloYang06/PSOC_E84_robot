@@ -82,3 +82,43 @@ no changes outside the NanoPi vision package and architecture records. Live
 deployment additionally requires matching file hashes, active camera streams,
 RKNN runtime evidence, fresh platform frames, and no repeated asynchronous
 upload errors.
+
+## Three-motor eye-to-hand data capture
+
+This temporary calibration profile uses only motors `4/5/6` in the exact order
+`jian_zongxiang_joint`, `zhou_zongxiang_joint`, and
+`jian_xuanzhuan_joint`. Keep motor 3 and both wrist joints fixed throughout the
+session. The command captures evidence only and does not move the arm.
+
+On the NanoPi, initialize one session:
+
+```bash
+python3 /home/pi/rehab_arm_calibration/eye_to_hand_calibration.py init \
+  --output /home/pi/rehab_arm_calibration/session_3motor_20260721.json \
+  --session-id eye-to-hand-3motor-20260721 \
+  --stereo-calibration-id natural_feature_provisional_20260712T053638Z
+```
+
+For each stopped pose, read the authoritative motor 4/5/6 angles in degrees and
+capture one raw correspondence:
+
+```bash
+python3 /home/pi/rehab_arm_calibration/eye_to_hand_calibration.py capture-raw \
+  --session /home/pi/rehab_arm_calibration/session_3motor_20260721.json \
+  --context-json /home/pi/rehab_vla_frames/latest_platform_context.json \
+  --pose-id P01 --split train \
+  --joint-angles-deg 10.0,25.0,-5.0
+```
+
+Use at least eight well-spread training poses and three separate validation
+poses. Hold each pose still for about one second. The same gripper tip must be
+clear in both images and at least 40 pixels from an image edge. A pass prints an
+observation containing `camera_xyz_m`, `joint_angles_deg`, and `sample_count`.
+A timeout with `hand-eye capture requires independent stereo end-effector
+depth` is a rejected pose and must not be bypassed by lowering the geometry
+gate or reusing the bottle depth.
+
+`capture-raw` intentionally leaves `robot_xyz_m` unset. First apply the
+validated three-motor forward kinematics and visual-zero mapping to produce the
+gripper point in `base_link`; only then materialize solver observations and run
+`solve`. Do not treat joint angles as Cartesian coordinates.

@@ -244,19 +244,21 @@ def run_probe(args: argparse.Namespace) -> dict[str, Any]:
     return json.loads((out_dir / "latest_context.json").read_text(encoding="utf-8"))
 
 
-def run_ort_infer(args: argparse.Namespace) -> dict[str, Any]:
+def run_ort_infer(args: argparse.Namespace, side: str = "left") -> dict[str, Any]:
+    if side not in {"left", "right"}:
+        raise ValueError("end-effector inference side must be left or right")
     if os.environ.get("REHAB_VLA_RKNN", "0") == "1":
         model_path = os.environ.get(
             "REHAB_END_EFFECTOR_RKNN",
             "/home/pi/rehab_vla/rknn_models/gripper_yolo11n_416_rk3576_int8.rknn",
         )
         return _detect_rknn_single_class(
-            Path(args.out_dir) / "latest_left.jpg",
+            Path(args.out_dir) / f"latest_{side}.jpg",
             model_path,
             int(os.environ.get("REHAB_END_EFFECTOR_IMGSZ", "416")),
             args.end_effector_conf,
             os.environ.get("REHAB_END_EFFECTOR_SINGLE_CLASS_LABEL", "gripper_tip"),
-            "gripper_left",
+            "gripper_shared",
         )
     out_dir = Path(args.out_dir)
     cpp_payload = _read_probe_json(out_dir / "latest_ort_context.json")
@@ -1448,7 +1450,7 @@ def build_stereo_context(args: argparse.Namespace, probe_context: dict[str, Any]
     right_target_future = DETECTION_EXECUTOR.submit(detect_target_yolo, args, "right") if should_refresh_right else None
     effector_every = max(1, int(os.environ.get("REHAB_END_EFFECTOR_HEAVY_EVERY", "3")))
     should_refresh_effector = LATEST_ORT_PAYLOAD is None or frame_index == 1 or frame_index % effector_every == 0
-    effector_future = DETECTION_EXECUTOR.submit(run_ort_infer, args) if should_refresh_effector else None
+    effector_future = DETECTION_EXECUTOR.submit(run_ort_infer, args, "left") if should_refresh_effector else None
 
     raw_target, target_quality_gate, left_target_candidates = left_target_future.result()
     if should_refresh_right:
@@ -1483,10 +1485,14 @@ def build_stereo_context(args: argparse.Namespace, probe_context: dict[str, Any]
         }
     if should_refresh_effector:
         ort_payload = effector_future.result()
+        # RKNNLite runtime access is serialized. Two concurrent runtimes for the
+        # same gripper model overload RK3576 and can stall the live uploader.
+        right_ort_payload = run_ort_infer(args, "right")
         LATEST_ORT_PAYLOAD = ort_payload
         LATEST_ORT_FRAME_INDEX = frame_index
     else:
         ort_payload = dict(LATEST_ORT_PAYLOAD or {})
+        right_ort_payload = {}
         ort_payload.setdefault("quality_gate", {})
         if isinstance(ort_payload.get("quality_gate"), dict):
             ort_payload["quality_gate"] = {
@@ -1498,6 +1504,8 @@ def build_stereo_context(args: argparse.Namespace, probe_context: dict[str, Any]
             }
     raw_detections = ort_payload.get("detections") if isinstance(ort_payload.get("detections"), list) else []
     detections, effector_quality_gate = filter_effector_detections(raw_detections, target)
+    raw_right_detections = right_ort_payload.get("detections") if isinstance(right_ort_payload.get("detections"), list) else []
+    right_effector_detections, right_effector_quality_gate = filter_effector_detections(raw_right_detections, right_target)
     hard_negative_capture = maybe_save_hard_negative(args, target, effector_quality_gate, frame_index, ts)
     end_effector = None
     gripper_tip = None
@@ -1509,6 +1517,10 @@ def build_stereo_context(args: argparse.Namespace, probe_context: dict[str, Any]
         if det.get("label") == "gripper_tip" and gripper_tip is None:
             gripper_tip = det
     servo_origin = gripper_tip or end_effector
+    right_servo_origin = next(
+        (item for item in right_effector_detections if item.get("label") == "gripper_tip"),
+        next((item for item in right_effector_detections if item.get("label") == "end_effector"), None),
+    )
     annotate_left_frame(args, target, [det for det in detections if isinstance(det, dict)])
     if servo_origin:
         EFF_HISTORY.append(servo_origin)
@@ -1593,19 +1605,25 @@ def build_stereo_context(args: argparse.Namespace, probe_context: dict[str, Any]
     metric_depth_available = stereo_depth_evidence.get("state") == "accepted"
     target_3d_camera_frame = stereo_depth_evidence.get("target_3d_camera_frame") if metric_depth_available else None
     target_depth_m = stereo_depth_evidence.get("depth_m") if metric_depth_available else None
-    effector_center = detection_center_px(stable_effector)
-    end_effector_3d_camera_frame = pixel_to_camera_frame(stereo_calibration, effector_center, target_depth_m)
+    effector_depth_evidence = stereo_depth_from_targets(stereo_calibration, stable_effector, right_servo_origin)
+    if effector_depth_evidence.get("state") == "accepted":
+        end_effector_3d_camera_frame = effector_depth_evidence.get("target_3d_camera_frame")
+        end_effector_depth_evidence = {
+            **effector_depth_evidence,
+            "schema_version": "end_effector_camera_frame_v1",
+            "method": "independent_left_right_gripper_match",
+            "control_boundary": "end_effector_camera_frame_only_not_motion_permission",
+        }
+    else:
+        end_effector_3d_camera_frame = None
+        end_effector_depth_evidence = {
+            **effector_depth_evidence,
+            "schema_version": "end_effector_camera_frame_v1",
+            "method": "independent_left_right_gripper_match",
+            "warning": "Both cameras must independently detect the same gripper tip.",
+            "control_boundary": "end_effector_camera_frame_only_not_motion_permission",
+        }
     camera_frame_delta_to_target = camera_frame_delta(target_3d_camera_frame, end_effector_3d_camera_frame)
-    end_effector_depth_evidence = {
-        "schema_version": "end_effector_camera_frame_v1",
-        "state": "same_depth_candidate" if end_effector_3d_camera_frame else "waiting_end_effector_or_target_depth",
-        "method": "left_pixel_ray_with_target_depth_assumption",
-        "depth_source": "target_stereo_depth_m",
-        "depth_m": target_depth_m if end_effector_3d_camera_frame else None,
-        "center_px": [round(effector_center[0], 3), round(effector_center[1], 3)] if effector_center else None,
-        "warning": "This is a demo candidate until the gripper has its own left-right stereo match.",
-        "control_boundary": "end_effector_camera_frame_only_not_motion_permission",
-    }
     detection_completed = time.time()
     return {
         "schema_version": "stereo_rgb_yolo_context_v1",
@@ -1664,7 +1682,10 @@ def build_stereo_context(args: argparse.Namespace, probe_context: dict[str, Any]
             "left_image_url": f"/api/rehab-arm/v1/devices/{args.device_id}/camera/keyframes/stereo_left/latest/file",
             "right_image_url": f"/api/rehab-arm/v1/devices/{args.device_id}/camera/keyframes/stereo_right/latest/file",
         },
-        "detections": {"left": ([target] if target else []) + detections, "right": ([right_target] if right_target else [])},
+        "detections": {
+            "left": ([target] if target else []) + detections,
+            "right": ([right_target] if right_target else []) + right_effector_detections,
+        },
         "target_object": target,
         "raw_target_object": raw_target,
         "raw_right_target_object": raw_right_target,
@@ -1706,6 +1727,7 @@ def build_stereo_context(args: argparse.Namespace, probe_context: dict[str, Any]
         "transform_state": "waiting",
         "target_3d_robot_frame": None,
         "end_effector_quality_gate": effector_quality_gate,
+        "right_end_effector_quality_gate": right_effector_quality_gate,
         "hard_negative_capture": hard_negative_capture,
         "visual_lock_stability": visual_lock,
         "scene_summary": scene,

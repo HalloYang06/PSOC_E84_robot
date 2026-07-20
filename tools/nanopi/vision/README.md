@@ -31,6 +31,35 @@ and gated before any ROS trajectory candidate can be considered.
 | `nanopi_vla_capture_daemon.cpp` | Persistent dual-camera V4L2 capture process |
 | `nanopi_vla_pixel_servo_probe_dnn.cpp` | OpenCV DNN detector probe and annotated evidence writer |
 | `nanopi_vla_target_yolo_infer.py` | CPU ONNX target-inference helper retained as fallback |
+| `eye_to_hand_calibration.py` | Fixed-camera eye-to-hand raw capture, rigid-transform solve, validation, and transform application |
+
+## Three-motor eye-to-hand capture
+
+The current calibration subset uses only motors `4/5/6`, mapped in this exact
+order to `jian_zongxiang_joint`, `zhou_zongxiang_joint`, and
+`jian_xuanzhuan_joint`. Motor 3 and both wrist joints remain frozen.
+
+Initialize a session once, then capture each stopped pose. `capture-raw` records
+the measured three-motor angles and a median of independent left/right gripper
+XYZ samples. It does not require a robot-frame XYZ before forward kinematics is
+available.
+
+```bash
+python3 eye_to_hand_calibration.py init \
+  --output session_3motor.json \
+  --stereo-calibration-id <active-stereo-calibration-id>
+
+python3 eye_to_hand_calibration.py capture-raw \
+  --session session_3motor.json \
+  --context-json /home/pi/rehab_vla_frames/latest_platform_context.json \
+  --pose-id P01 --split train \
+  --joint-angles-deg 10.0,25.0,-5.0
+```
+
+The capture rejects reused target depth, single-eye estimates, unstable points,
+duplicate frames, and stereo-calibration ID mismatches. Convert the recorded
+angles through the validated three-joint forward kinematics before running the
+rigid transform solver; motor angles are never robot-frame XYZ by themselves.
 
 Natural-feature calibration and dense single-eye fallback are provisional
 evidence. A printed calibration target and a verified camera-to-arm transform
@@ -51,7 +80,8 @@ Run the host-side algorithm tests from the repository root:
 
 ```bash
 python -m pytest tools/nanopi/vision/test_nanopi_stereo_natural_feature_calibration.py \
-  tools/nanopi/vision/test_nanopi_vla_stereo_dense_fallback.py -q
+  tools/nanopi/vision/test_nanopi_vla_stereo_dense_fallback.py \
+  tools/nanopi/vision/test_eye_to_hand_calibration.py -q
 ```
 
 RKNN execution itself requires the NanoPi RK3576 runtime and is not exercised
@@ -64,4 +94,3 @@ The tracked Python pipeline is synchronized from
 The three C++/CPU helper sources were deployed working-tree snapshots from the
 same project and had not been committed in that source repository; they are
 recorded here explicitly so the new monorepo becomes their canonical baseline.
-

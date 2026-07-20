@@ -1,5 +1,26 @@
 # Project Progress
 
+## 2026-07-21 - Three-motor eye-to-hand capture bring-up
+
+Completed:
+
+- Added a fixed-camera eye-to-hand calibration utility with RANSAC rigid fitting, independent validation, stereo-calibration binding, atomic sessions, and explicit motor set `4/5/6`.
+- Added `capture-raw` for synchronized three-motor angles and independent stereo gripper XYZ before three-joint forward kinematics is available.
+- Changed the live RK3576 pipeline to infer the gripper in both cameras and to publish end-effector camera XYZ only after a valid left/right stereo match. The two eyes share one serialized RKNN runtime.
+- Deployed the scripts to NanoPi `10.101.106.82`, restarted only `rehab-vla-vision.service`, and initialized `/home/pi/rehab_arm_calibration/session_3motor_20260721.json`.
+
+Validated:
+
+- Host calibration/vision tests: 13 passed; focused eye-to-hand tests after raw-capture addition: 6 passed.
+- NanoPi vision service active; fresh context observed with approximately 74 ms heavy detection pipeline time after warm-up.
+- Empty/partial-gripper preflight correctly recorded `0/5` samples and left the session observations empty.
+
+Open:
+
+- Current live frame does not show one clear gripper tip fully inside both images, so no real pose has been accepted yet.
+- ROS `/joint_states` and `/rehab_arm/motor_state` had no live messages during this check. Until feedback returns, the operator must enter measured 4/5/6 angles explicitly.
+- Implement and validate the exact three-joint forward-kinematics/visual-zero mapping before converting raw angle samples to `base_link XYZ` and solving the transform.
+
 ## 2026-07-21 - NanoPi preferred demo hotspot profile
 
 Completed:
