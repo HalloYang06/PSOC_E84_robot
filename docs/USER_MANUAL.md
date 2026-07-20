@@ -1,5 +1,12 @@
 # User Manual
 
+## Competition-day operation
+
+Use `docs/demo/competition-live-demo-plan-20260721.md` as the authoritative
+five-minute script, preflight checklist, downgrade table, and operator handoff.
+Do not improvise code, camera placement, model thresholds, joint trajectories,
+or kernel changes after the night-before rehearsal freezes the demo baseline.
+
 ## NanoPi RK3576 vision verification
 
 The canonical source package is `tools/nanopi/vision`. It is safe to inspect or
@@ -46,4 +53,3 @@ no changes outside the NanoPi vision package and architecture records. Live
 deployment additionally requires matching file hashes, active camera streams,
 RKNN runtime evidence, fresh platform frames, and no repeated asynchronous
 upload errors.
-

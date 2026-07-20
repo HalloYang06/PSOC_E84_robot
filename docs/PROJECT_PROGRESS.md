@@ -1,5 +1,20 @@
 # Project Progress
 
+## 2026-07-20 - Competition live demo plan
+
+Completed:
+
+- Audited the canonical architecture, current cloud availability, NanoPi vision baseline, MuJoCo/ROS history, EMG model evidence, App boundary, historical director scripts, and offline synchronized videos.
+- Added a five-minute competition script with L1 full-live, L2 hybrid, L3 digital-twin, and L4 offline-evidence modes.
+- Added night-before and 30-minute preflight gates, fault downgrade rules, operator roles, exact rehearsal commands, and judge Q&A.
+
+Current external state:
+
+- Cloud API and control page returned HTTP 200 on 2026-07-20.
+- Known NanoPi LAN addresses and the MuJoCo host `192.168.3.34` were offline during this audit, so L1/L2 remain unproven until the night-before hardware rehearsal.
+
+Plan: `docs/demo/competition-live-demo-plan-20260721.md`.
+
 ## 2026-07-20 - NanoPi RK3576 vision baseline sync
 
 Completed:
@@ -34,4 +49,3 @@ Not yet verified:
 Next smallest task: when the NanoPi is online, compare hashes for the deployed
 vision files, recover the two service units and environment template without
 copying secrets, then rerun the live 8 FPS/NPU/upload evidence check.
-
