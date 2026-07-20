@@ -1,5 +1,19 @@
 # Project Progress
 
+## 2026-07-21 - NanoPi preferred demo hotspot profile
+
+Completed:
+
+- Located the live NanoPi M5 at `10.17.66.82` on `wlan0`; hostname evidence is `NanoPi-M5`.
+- Added the persistent NetworkManager profile `cal_network` with autoconnect enabled and priority `100`.
+- Kept both existing `RedmiK70E` profiles as fallback connections with autoconnect enabled and priority `10`.
+- Confirmed the active connection remained `RedmiK70E 1` because `cal_network` was not broadcasting during configuration. No kernel, driver, CAN, motor, or service configuration was changed.
+
+Next:
+
+- When `cal_network` is broadcasting, NetworkManager should prefer it automatically. Re-discover the DHCP address from the PC on the same hotspot and verify the active profile after switching.
+- Wi-Fi credentials are device-local and are intentionally not recorded in Git.
+
 ## 2026-07-21 - Competition-day launch package
 
 Completed:

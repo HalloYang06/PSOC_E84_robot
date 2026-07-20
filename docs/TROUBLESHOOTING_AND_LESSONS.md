@@ -1,5 +1,13 @@
 # Troubleshooting And Lessons
 
+## 2026-07-21 - Do not force a Wi-Fi switch before the preferred hotspot is visible
+
+Symptom: NanoPi is reachable through the current fallback hotspot, while the new preferred SSID is configured but absent from both the PC and board scan results.
+
+Fix: create the preferred NetworkManager profile first, enable autoconnect, assign it a higher priority, and retain the current profile at a lower priority. Do not force `nmcli connection up` while the target hotspot is absent; doing so can drop the only management path without proving the new path.
+
+Reusable rule: distinguish “profile persisted” from “hotspot currently visible and active.” Verify `connection.autoconnect`, `connection.autoconnect-priority`, and the active profile separately. Never solve this condition by changing the kernel or Wi-Fi driver when the existing interface is already working.
+
 ## 2026-07-20 - RK3576 NPU module must match the running kernel
 
 Symptom: the default `rknpu.ko` may fail to load with a `module_layout` modversion
@@ -30,4 +38,3 @@ of building an unbounded image queue.
 
 Reusable rule: visual throughput optimization must not create a second motion
 authority. Detection and depth remain evidence; ROS and M33 gates remain intact.
-

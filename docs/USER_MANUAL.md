@@ -1,5 +1,27 @@
 # User Manual
 
+## NanoPi preferred hotspot
+
+The board keeps a preferred demo-hotspot profile and a lower-priority fallback profile. Credentials remain on the device and must not be copied into Git.
+
+Read-only verification after joining the same hotspot:
+
+```bash
+nmcli -t -f NAME,DEVICE connection show --active
+nmcli -t -f NAME,AUTOCONNECT,AUTOCONNECT-PRIORITY,TYPE connection show | grep -E '^(cal_network|RedmiK70E)'
+ip -br address show wlan0
+ip route
+```
+
+Expected priority contract:
+
+```text
+cal_network: autoconnect yes, priority 100
+RedmiK70E profiles: autoconnect yes, priority 10
+```
+
+If `cal_network` is not broadcasting, leave the fallback connection active. Do not change the kernel, Wi-Fi driver, CAN, or motor services to address an absent SSID.
+
 ## Competition-day operation
 
 Use `docs/demo/competition-live-demo-plan-20260721.md` as the authoritative
