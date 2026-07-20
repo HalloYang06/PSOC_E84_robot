@@ -70,3 +70,99 @@ def test_candidate_validation_rejects_stale_or_wrong_motor_set():
         assert "4,5,6" in str(exc)
     else:
         raise AssertionError("unexpected motor subsets must be rejected")
+
+
+def test_candidate_fetch_supports_plural_and_singular_platform_versions(monkeypatch):
+    module = load_module()
+    calls = []
+
+    def fake_request(url, **_kwargs):
+        calls.append(url)
+        if url.endswith("/ik-candidates/latest"):
+            raise RuntimeError("old cloud does not expose latest yet")
+        if url.endswith("/ik-candidate/latest"):
+            return {"candidate_id": "ik-compatible", "ik_status": "candidate_ready"}
+        return {}
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+    result = module.fetch_latest_candidate("http://platform", "nanopi-m5", "project")
+    assert result["candidate_id"] == "ik-compatible"
+    assert calls[0].endswith("/ik-candidates/latest")
+    assert calls[1].endswith("/ik-candidate/latest")
+
+
+def test_dashboard_calibrated_target_can_build_local_three_motor_candidate(monkeypatch):
+    module = load_module()
+    now = time.time()
+
+    def fake_request(url, **_kwargs):
+        if "ik-candidate" in url:
+            raise RuntimeError("latest endpoint is not deployed")
+        return {
+            "devices": [
+                {
+                    "device_id": "nanopi-m5",
+                    "vla_closed_loop_status": {"active_mode": "fetch_object"},
+                    "stereo_vision_context": {
+                        "payload": {
+                            "frame_ts_unix": now,
+                            "transform_state": "calibrated",
+                            "camera_to_robot_transform": {"state": "accepted", "calibration_id": "eye-test"},
+                            "target_3d_robot_frame": {"x_m": 0.45, "y_m": 0.0, "z_m": 0.35},
+                            "end_effector_object": {"label": "gripper"},
+                            "visual_lock_stability": {"stable_for_dry_run": True},
+                        }
+                    },
+                }
+            ]
+        }
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+    result = module.fetch_latest_candidate("http://platform", "nanopi-m5", "project")
+    assert result["source"] == "linux_dashboard_calibrated_target_fallback"
+    assert result["ik_status"] == "candidate_ready"
+    assert result["active_motor_ids"] == [4, 5, 6]
+    assert result["source_calibration_id"] == "eye-test"
+
+
+def test_dashboard_legacy_six_axis_candidate_is_replaced_by_local_three_motor_ik(monkeypatch):
+    module = load_module()
+
+    def fake_request(url, **_kwargs):
+        if "ik-candidate" in url:
+            raise RuntimeError("latest endpoint is not deployed")
+        return {
+            "devices": [
+                {
+                    "device_id": "nanopi-m5",
+                    "ik_candidate": {
+                        "payload": {
+                            "candidate_response": {
+                                "candidate_id": "legacy-six-axis",
+                                "kinematic_profile": "medical_arm_6dof",
+                            }
+                        }
+                    },
+                    "vla_closed_loop_status": {"active_mode": "vision_servo"},
+                    "stereo_vision_context": {
+                        "payload": {
+                            "frame_ts_unix": time.time(),
+                            "transform_state": "calibrated",
+                            "camera_to_robot_transform": {
+                                "state": "accepted",
+                                "calibration_id": "eye-current",
+                            },
+                            "target_3d_robot_frame": {"x_m": 0.45, "y_m": 0.0, "z_m": 0.35},
+                            "end_effector_object": {"label": "gripper"},
+                            "visual_lock_stability": {"stable": True},
+                        }
+                    },
+                }
+            ]
+        }
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+    result = module.fetch_latest_candidate("http://platform", "nanopi-m5", "project")
+    assert result["candidate_id"] != "legacy-six-axis"
+    assert result["kinematic_profile"] == "three_motor_visual_zero_v1"
+    assert result["active_motor_ids"] == [4, 5, 6]

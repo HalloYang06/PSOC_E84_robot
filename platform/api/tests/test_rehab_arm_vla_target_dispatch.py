@@ -50,7 +50,7 @@ def test_three_motor_ik_candidate_is_shadow_first_and_hardware_staged(tmp_path, 
     monkeypatch.setenv("REHAB_ARM_SIM_HOST", "10.101.106.90")
     get_settings.cache_clear()
     response = client.post(
-        "/api/rehab-arm/v1/devices/nanopi-m5/ik-candidate",
+        "/api/rehab-arm/v1/devices/nanopi-m5/ik-candidates",
         json={
             "robot_id": "rehab-arm-alpha",
             "device_id": "nanopi-m5",
@@ -128,7 +128,7 @@ def test_calibrated_stereo_context_auto_creates_candidate_only_after_fetch_langu
     )
     assert vision.status_code == 200
     assert vision.json()["data"]["auto_ik_candidate_state"] in {"candidate_ready", "candidate_approximate"}
-    latest = client.get("/api/rehab-arm/v1/devices/nanopi-m5/ik-candidate/latest")
+    latest = client.get("/api/rehab-arm/v1/devices/nanopi-m5/ik-candidates/latest")
     assert latest.status_code == 200
     candidate = latest.json()["data"]
     assert candidate["semantic_mode"] == "fetch_object"

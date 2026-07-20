@@ -72,6 +72,19 @@ python3 eye_to_hand_calibration.py solve \
   --output base_from_camera.json
 ```
 
+After all train/validation poses are captured, the deployed NanoPi wrapper does
+finalize, solve, fail-closed activation, and live-context verification in one
+command:
+
+```bash
+/home/pi/rehab_arm_calibration/activate_hand_eye_and_preflight.sh \
+  /home/pi/rehab_arm_calibration/session_3motor_20260721.json
+```
+
+A rejected candidate is retained as `base_from_camera.candidate.json` but never
+overwrites `base_from_camera.json`. An accepted result is loaded by the running
+8 FPS vision loop without a service restart.
+
 The mapping follows visual-zero protocol commit `69450f71`: motor 4 maps to
 `-0.675-m4`, motor 5 to `-1.12+m5`, and motor 6 to `m6` in the medical-arm
 MuJoCo model. FK returns the gripper site relative to the model's `base` body,

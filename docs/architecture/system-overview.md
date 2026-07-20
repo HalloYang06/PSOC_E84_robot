@@ -18,7 +18,7 @@
 | M33 | CAN 总线、电机协议适配、关节限位/校准、pre-arm 状态汇总、`0x322` 安全状态与最终执行边界 | M55/云端模型训练 |
 | M55 | M33-M55 IPC 消费、本地模型/语音处理、模型结果建议 | 绕过 M33 直接驱动电机 |
 | NanoPi/ROS bridge | `JointTrajectory` 校验、SocketCAN 编解码、heartbeat、ROS telemetry topics | 最终安全裁决；默认也不发送 target |
-| NanoPi/RK3576 vision | 双摄像头采集、RKNN/ONNX 推理、目标关联、双目深度证据、异步平台上传 | 相机到机械臂坐标变换、运动许可、CAN 或原始电机输出 |
+| NanoPi/RK3576 vision | 双摄像头采集、RKNN/ONNX 推理、目标关联、双目深度证据、应用已验收手眼矩阵、异步平台上传 | 绕过标定质量门、运动许可、CAN 或原始电机输出 |
 | MuJoCo | simulation/shadow 可视化与数据验证 | 真实硬件控制权 |
 | App/Web/API | 用户、计划、训练记录、设备数据与高层请求 | 直接 CAN 或电机输出 |
 
@@ -39,7 +39,8 @@
 - NanoPi → platform API：motor/sensor/safety、session 和文件属于非实时上传与产品数据，不组成电机闭环。实现见 `platform/api/app/modules/rehab_arm/router.py`。
 - NanoPi vision → platform API：标注帧、检测结果、关联质量与相机坐标系深度是视觉证据；上传循环与推理线程解耦，旧帧可被新证据替代，但任何视觉锁定都不能直接成为 `JointTrajectory` 或 M33 permission。实现与来源见 `tools/nanopi/vision/README.md` 和 `docs/migration/nanopi-rk3576-vision-sync-20260720.md`。
 - 三电机手眼标定采集：固定双目分别检测同一个夹爪尖端，双目几何生成相机坐标；每个静止姿态同时记录电机 `4/5/6` 输出角。视觉零点映射固定为 `q_jian_zongxiang=-0.675-m4`、`q_zhou_zongxiang=-1.12+m5`、`q_jian_xuanzhuan=m6`，其余三轴冻结在视觉零点；FK 使用当前 `medical_arm_6dof.xml` 链并输出相对 MuJoCo `base` body 的 `base_link` 点。`tools/nanopi/vision/eye_to_hand_calibration.py finalize-raw` 只生成坐标证据，再由 `solve` 求 `base_from_camera`。完整契约见 `docs/protocols/vla-vision-calibration.md`；该路径不产生轨迹、CAN 或运动许可。
-- VLA 三电机目标闭环：NanoPi 仅在 `base_from_camera` 已验收且 stereo calibration ID 一致时把目标/末端从相机系变换到 `base_link`；平台只有在 L 已分类为 `fetch_object`/`vision_servo`、目标和末端均有机器人坐标且视觉锁稳定时，才生成 `three_motor_visual_zero_v1` IK 候选。Linux 先启动独立 `medical_arm_visual_zero_3motor` profile（不修改通用六轴模型），`tools/linux/vla_mujoco_execution_agent.py` 再发布六轴视觉姿态到 `/sim/medical_arm/joint_trajectory` 并等待影子到位；只有显式 `--enable-hardware-tx --confirm-onsite`、精确 IK 与 M33 `motion_allowed=true` 同时满足时，才把同一候选按历史视觉零点映射发布到 `/arm_controller/joint_trajectory`。该执行端复用提交 `69450f71` 的滑块真机协议，不新增 CAN 或电机私有协议路径。
+- VLA 三电机目标闭环：NanoPi 仅在 `base_from_camera` 已验收且 stereo calibration ID 一致时把目标/末端从相机系变换到 `base_link`；平台只有在 L 已分类为 `fetch_object`/`vision_servo`、目标和末端均有机器人坐标且视觉锁稳定时，才生成 `three_motor_visual_zero_v1` IK 候选。若在线云端尚未提供新候选接口，Linux 只从同一 calibrated dashboard evidence 本地计算相同 profile 的三电机候选；旧的通用六轴云端候选不可执行。Linux 先启动独立 `medical_arm_visual_zero_3motor` profile（不修改通用六轴模型），`tools/linux/vla_mujoco_execution_agent.py` 再发布六轴视觉姿态到 `/sim/medical_arm/joint_trajectory` 并等待影子到位；只有显式 `--enable-hardware-tx --confirm-onsite`、精确 IK 与 M33 `motion_allowed=true` 同时满足时，才把同一候选按历史视觉零点映射发布到 `/arm_controller/joint_trajectory`。该执行端复用提交 `69450f71` 的滑块真机协议，不新增 CAN 或电机私有协议路径。
+- 标定启用与主机准备：`activate_hand_eye_and_preflight.sh` 只原子安装通过质量门的矩阵，视觉服务热加载；`medical_arm_visualizer_node.py` 只订阅 shadow joint state 并显示 MuJoCo，不发布控制。Linux 安装/启动脚本默认 shadow-only，平台新旧 API 路径差异由执行代理兼容层吸收。
 
 ## Mainline vs simulation/bench
 

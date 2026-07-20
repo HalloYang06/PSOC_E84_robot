@@ -1,5 +1,29 @@
 # Project Progress
 
+## 2026-07-21 - Post-calibration one-command readiness
+
+Completed:
+
+- Added `activate-session` and a NanoPi wrapper that finalize raw observations, solve, retain the candidate, atomically install only an accepted transform, and wait for live-context confirmation.
+- Added a post-calibration preflight that distinguishes calibration readiness from the ordinary absence of a target/gripper in the current frame.
+- Added a passive MuJoCo ROS visualizer plus Linux install and one-command shadow launch scripts.
+- Added a no-network/no-ROS end-to-end QA from synthetic camera XYZ through robot XYZ, constrained IK, and Linux candidate validation.
+- Added plural/singular cloud IK endpoint compatibility and a dashboard-evidence fallback that computes the constrained three-motor IK locally on Linux. A legacy generic six-axis cloud candidate is never treated as executable.
+
+Validated:
+
+- Vision, activation, preflight, offline, Linux-agent, and MuJoCo regression: 42 passed.
+- Platform VLA target dispatch, closed-loop status, and sync regression: 42 passed.
+- All three new shell scripts passed `bash -n` on NanoPi; the temporary Linux-script copies were removed afterward.
+- Offline report: `candidate_ready`, six visual joints, three hardware joints, first scope `/sim/medical_arm/joint_trajectory`.
+- NanoPi tools deployed and syntax checked; live preflight correctly returned exit `2` because the active calibration file does not yet exist, while `rehab-vla-vision.service` stayed active.
+- Cloud dashboard returned 200; latest IK GET returned 404. Cloud SSH port is reachable, but the documented Ubuntu account rejected the local key, so no cloud files were changed.
+
+Next:
+
+- Collect the real poses and run the single activation command.
+- When Linux becomes available, follow `docs/deploy/vla-closed-loop-rollout.md`; a cloud latest-IK upgrade is optional because the Linux fallback consumes existing calibrated dashboard evidence. Do not replace newer historical platform files.
+
 ## 2026-07-21 - Calibrated VLA target to MuJoCo/hardware staging
 
 Completed:

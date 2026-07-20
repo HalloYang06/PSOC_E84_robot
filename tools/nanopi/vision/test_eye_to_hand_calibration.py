@@ -266,3 +266,48 @@ def test_raw_observations_can_be_finalized_with_three_motor_fk():
         assert "exactly 4,5,6" in str(exc)
     else:
         raise AssertionError("FK must reject observations from a different motor subset")
+
+
+def test_activate_session_installs_only_an_accepted_calibration(tmp_path):
+    module = load_module()
+    session, _rotation, _translation = make_session()
+    session_path = tmp_path / "session.json"
+    finalized_path = tmp_path / "session_with_fk.json"
+    candidate_path = tmp_path / "candidate.json"
+    active_path = tmp_path / "base_from_camera.json"
+    module._write_json_atomic(session_path, session)
+
+    result = module.activate_calibration_session(
+        session_path,
+        finalized_session_path=finalized_path,
+        candidate_path=candidate_path,
+        active_calibration_path=active_path,
+        random_seed=7,
+    )
+
+    assert result["calibration_state"] == "accepted"
+    assert finalized_path.is_file()
+    assert candidate_path.is_file()
+    assert active_path.read_text(encoding="utf-8") == candidate_path.read_text(encoding="utf-8")
+
+
+def test_activate_session_does_not_replace_active_file_when_candidate_is_rejected(tmp_path):
+    module = load_module()
+    session, _rotation, _translation = make_session(validation_offset=np.array([0.05, 0.0, 0.0]))
+    session_path = tmp_path / "session.json"
+    candidate_path = tmp_path / "candidate.json"
+    active_path = tmp_path / "base_from_camera.json"
+    module._write_json_atomic(session_path, session)
+    active_path.write_text('{"calibration_id":"known-good"}\n', encoding="utf-8")
+
+    result = module.activate_calibration_session(
+        session_path,
+        finalized_session_path=tmp_path / "session_with_fk.json",
+        candidate_path=candidate_path,
+        active_calibration_path=active_path,
+        random_seed=7,
+    )
+
+    assert result["calibration_state"] == "rejected"
+    assert candidate_path.is_file()
+    assert active_path.read_text(encoding="utf-8") == '{"calibration_id":"known-good"}\n'

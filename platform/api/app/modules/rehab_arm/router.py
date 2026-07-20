@@ -419,6 +419,7 @@ def api_upload_stereo_vision_context(device_id: str, payload: RehabStereoVisionC
 
 
 @router.post("/devices/{device_id}/ik-candidate")
+@router.post("/devices/{device_id}/ik-candidates")
 def api_create_ik_candidate(device_id: str, payload: RehabIkCandidateRequest):
     if payload.device_id != device_id:
         raise HTTPException(status_code=422, detail="payload.device_id must match path device_id")
@@ -429,6 +430,7 @@ def api_create_ik_candidate(device_id: str, payload: RehabIkCandidateRequest):
 
 
 @router.get("/devices/{device_id}/ik-candidate/latest")
+@router.get("/devices/{device_id}/ik-candidates/latest")
 def api_latest_ik_candidate(device_id: str):
     return ok(latest_ik_candidate(device_id))
 

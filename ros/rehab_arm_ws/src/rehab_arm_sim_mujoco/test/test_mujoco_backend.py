@@ -88,6 +88,12 @@ class MujocoBackendTests(unittest.TestCase):
         launch_source = (PACKAGE_DIR / 'launch' / 'medical_arm_visual_zero_3motor_shadow.launch.py').read_text(encoding='utf-8')
         self.assertIn("'joint_profile': 'medical_arm_visual_zero_3motor'", launch_source)
         self.assertIn("'trajectory_topic': '/sim/medical_arm/joint_trajectory'", launch_source)
+        self.assertIn("executable='medical_arm_visualizer_node.py'", launch_source)
+        visualizer_source = (
+            PACKAGE_DIR / 'rehab_arm_sim_mujoco' / 'medical_arm_visualizer_node.py'
+        ).read_text(encoding='utf-8')
+        self.assertIn("'/sim/medical_arm/joint_states'", visualizer_source)
+        self.assertNotIn("create_publisher", visualizer_source)
 
     def test_default_model_file_is_available_and_matches_joint_contract(self) -> None:
         model_path = default_model_path()

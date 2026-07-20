@@ -122,3 +122,16 @@ gate or reusing the bottle depth.
 validated three-motor forward kinematics and visual-zero mapping to produce the
 gripper point in `base_link`; only then materialize solver observations and run
 `solve`. Do not treat joint angles as Cartesian coordinates.
+
+After collecting the required train and validation poses, activate only an
+accepted result with one command:
+
+```bash
+/home/pi/rehab_arm_calibration/activate_hand_eye_and_preflight.sh \
+  /home/pi/rehab_arm_calibration/session_3motor_20260721.json
+```
+
+Exit `0` means the accepted calibration is loaded by the live vision context.
+Exit `2` leaves the active calibration unchanged; inspect
+`base_from_camera.candidate.json` and its quality reasons. No vision-service
+restart is required after successful activation.

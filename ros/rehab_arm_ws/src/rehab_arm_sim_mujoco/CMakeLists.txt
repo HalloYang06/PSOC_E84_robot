@@ -15,6 +15,7 @@ install(PROGRAMS
   rehab_arm_sim_mujoco/medical_arm_shadow_relay_node.py
   rehab_arm_sim_mujoco/check_sim_env.py
   rehab_arm_sim_mujoco/upload_sim_readiness.py
+  rehab_arm_sim_mujoco/medical_arm_visualizer_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

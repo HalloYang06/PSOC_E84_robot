@@ -1,5 +1,15 @@
 # Troubleshooting And Lessons
 
+## 2026-07-21 - Activation and cloud version must both be fail-closed
+
+Calibration rule: write the solved result to a candidate artifact first. Only `calibration_state=accepted` may atomically replace `base_from_camera.json`; rejected validation must leave any known-good active file unchanged.
+
+Runtime rule: the vision service reloads the calibration during heavy context generation, so successful activation does not require a restart. Verify live calibration and stereo IDs instead of restarting a working 8 FPS service.
+
+Cloud lesson: the live platform source is newer than the unified migration snapshot and already uses plural `/ik-candidates` plus shadow-step features. Whole-file deployment from the unified tree would regress those features. Patch against the live checkout, or use the Linux agent's plural/singular/dashboard compatibility until authorized deployment is possible.
+
+Status: NanoPi and offline contracts are ready; cloud latest GET remains undeployed and the current local SSH key is unauthorized.
+
 ## 2026-07-21 - Reuse the visual-zero slider path for VLA execution
 
 Symptom: the platform had camera XYZ and a generic six-DOF IK scaffold, but NanoPi forced robot-frame fields to `None`, the API schema discarded extra transform fields, and the generic IK could move joints that are not installed.

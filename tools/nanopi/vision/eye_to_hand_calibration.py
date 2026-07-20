@@ -132,6 +132,44 @@ def finalize_raw_observation_with_fk(observation: dict[str, Any]) -> dict[str, A
     return finalized
 
 
+def finalize_raw_session(session: dict[str, Any]) -> dict[str, Any]:
+    finalized_session = copy.deepcopy(session)
+    observations = finalized_session.get("observations")
+    if not isinstance(observations, list):
+        raise ValueError("session.observations must be a list")
+    converted = 0
+    for index, observation in enumerate(observations):
+        if isinstance(observation, dict) and observation.get("robot_xyz_state") == "waiting_three_motor_forward_kinematics":
+            observations[index] = finalize_raw_observation_with_fk(observation)
+            converted += 1
+    finalized_session["kinematics_finalization"] = {
+        "schema_version": "rehab_arm_three_motor_visual_zero_fk_v1",
+        "converted_observation_count": converted,
+        "visual_zero_protocol_commit": VISUAL_ZERO_PROTOCOL_COMMIT,
+        "motion_authority": False,
+        "control_boundary": CONTROL_BOUNDARY,
+    }
+    return finalized_session
+
+
+def activate_calibration_session(
+    session_path: Path,
+    *,
+    finalized_session_path: Path,
+    candidate_path: Path,
+    active_calibration_path: Path,
+    random_seed: int = 42,
+) -> dict[str, Any]:
+    session = _load_json(session_path)
+    finalized_session = finalize_raw_session(session)
+    calibration = solve_eye_to_hand_session(finalized_session, random_seed=random_seed)
+    _write_json_atomic(finalized_session_path, finalized_session)
+    _write_json_atomic(candidate_path, calibration)
+    if calibration.get("calibration_state") == "accepted":
+        _write_json_atomic(active_calibration_path, calibration)
+    return calibration
+
+
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.tmp")
@@ -670,6 +708,20 @@ def build_parser() -> argparse.ArgumentParser:
     finalize_raw.add_argument("--session", required=True)
     finalize_raw.add_argument("--output", required=True)
 
+    activate_session = subparsers.add_parser(
+        "activate-session",
+        help="Finalize, solve, and atomically install an accepted hand-eye calibration.",
+    )
+    activate_session.add_argument("--session", required=True)
+    activate_session.add_argument(
+        "--output",
+        default="/home/pi/rehab_arm_calibration/base_from_camera.json",
+        help="Active calibration path; never overwritten by a rejected candidate.",
+    )
+    activate_session.add_argument("--candidate-output", default="")
+    activate_session.add_argument("--finalized-session-output", default="")
+    activate_session.add_argument("--random-seed", type=int, default=42)
+
     solve = subparsers.add_parser("solve", help="Solve and validate base_from_camera from a session.")
     solve.add_argument("--session", required=True)
     solve.add_argument("--output", required=True)
@@ -732,25 +784,32 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "finalize-raw":
         session = _load_json(Path(args.session).expanduser())
-        finalized_session = copy.deepcopy(session)
-        observations = finalized_session.get("observations")
-        if not isinstance(observations, list):
-            raise SystemExit("session.observations must be a list")
-        converted = 0
-        for index, observation in enumerate(observations):
-            if isinstance(observation, dict) and observation.get("robot_xyz_state") == "waiting_three_motor_forward_kinematics":
-                observations[index] = finalize_raw_observation_with_fk(observation)
-                converted += 1
-        finalized_session["kinematics_finalization"] = {
-            "schema_version": "rehab_arm_three_motor_visual_zero_fk_v1",
-            "converted_observation_count": converted,
-            "visual_zero_protocol_commit": VISUAL_ZERO_PROTOCOL_COMMIT,
-            "motion_authority": False,
-            "control_boundary": CONTROL_BOUNDARY,
-        }
+        finalized_session = finalize_raw_session(session)
         _write_json_atomic(Path(args.output).expanduser(), finalized_session)
         print(json.dumps(finalized_session["kinematics_finalization"], ensure_ascii=False, indent=2))
         return 0
+    if args.command == "activate-session":
+        session_path = Path(args.session).expanduser()
+        active_path = Path(args.output).expanduser()
+        candidate_path = (
+            Path(args.candidate_output).expanduser()
+            if args.candidate_output
+            else active_path.with_name(f"{active_path.stem}.candidate{active_path.suffix}")
+        )
+        finalized_path = (
+            Path(args.finalized_session_output).expanduser()
+            if args.finalized_session_output
+            else session_path.with_name(f"{session_path.stem}_with_fk{session_path.suffix}")
+        )
+        calibration = activate_calibration_session(
+            session_path,
+            finalized_session_path=finalized_path,
+            candidate_path=candidate_path,
+            active_calibration_path=active_path,
+            random_seed=args.random_seed,
+        )
+        print(json.dumps(calibration, ensure_ascii=False, indent=2))
+        return 0 if calibration.get("calibration_state") == "accepted" else 2
     if args.command == "solve":
         session = _load_json(Path(args.session).expanduser())
         calibration = solve_eye_to_hand_session(session, random_seed=args.random_seed)

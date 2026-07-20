@@ -76,9 +76,13 @@ only after L semantic mode is `fetch_object` or `vision_servo`, both robot-frame
 points exist, and the visual lock is stable. The endpoints are:
 
 ```text
-POST /api/rehab-arm/v1/devices/{device_id}/ik-candidate
-GET  /api/rehab-arm/v1/devices/{device_id}/ik-candidate/latest
+POST /api/rehab-arm/v1/devices/{device_id}/ik-candidates
+GET  /api/rehab-arm/v1/devices/{device_id}/ik-candidates/latest
 ```
+
+The singular `ik-candidate` aliases are retained in the unified API. The
+historical cloud platform already has the plural POST route but may not yet
+have a latest GET route; the Linux agent falls back to dashboard evidence.
 
 Targets are cached on a calibration-bound 1 cm grid so unchanged video frames
 do not repeat the expensive IK solve. The Linux execution agent consumes the

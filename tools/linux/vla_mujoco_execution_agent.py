@@ -8,11 +8,28 @@ disabled unless both explicit command-line confirmations are present.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import math
 import time
 import urllib.request
 from typing import Any
+from pathlib import Path
+
+
+def _load_local_ik_builder():
+    try:
+        from three_motor_visual_zero_ik import build_candidate
+
+        return build_candidate
+    except ImportError:
+        path = Path(__file__).with_name("three_motor_visual_zero_ik.py")
+        spec = importlib.util.spec_from_file_location("three_motor_visual_zero_ik", path)
+        module = importlib.util.module_from_spec(spec)
+        if spec.loader is None:
+            raise RuntimeError(f"cannot load local IK module {path}")
+        spec.loader.exec_module(module)
+        return module.build_candidate
 
 
 SIM_TOPIC = "/sim/medical_arm/joint_trajectory"
@@ -92,6 +109,59 @@ def _request_json(url: str, *, payload: dict[str, Any] | None = None, timeout_s:
     return result.get("data", result) if isinstance(result, dict) else {}
 
 
+def fetch_latest_candidate(api_base: str, device_id: str, project_id: str = "") -> dict[str, Any]:
+    base = api_base.rstrip("/")
+    errors: list[str] = []
+    for suffix in ("ik-candidates/latest", "ik-candidate/latest"):
+        try:
+            candidate = _request_json(f"{base}/api/rehab-arm/v1/devices/{device_id}/{suffix}")
+            if candidate.get("candidate_id") or candidate.get("ik_status") not in {None, "waiting"}:
+                return candidate
+        except Exception as exc:
+            errors.append(f"{suffix}:{exc}")
+    dashboard_url = f"{base}/api/rehab-arm/v1/devices/dashboard"
+    if project_id:
+        from urllib.parse import quote
+
+        dashboard_url += f"?project_id={quote(project_id)}"
+    try:
+        dashboard = _request_json(dashboard_url)
+        devices = dashboard.get("devices") if isinstance(dashboard.get("devices"), list) else []
+        device = next((item for item in devices if isinstance(item, dict) and item.get("device_id") == device_id), {})
+        record = device.get("ik_candidate") if isinstance(device.get("ik_candidate"), dict) else {}
+        payload = record.get("payload") if isinstance(record.get("payload"), dict) else {}
+        candidate = payload.get("candidate_response") if isinstance(payload.get("candidate_response"), dict) else {}
+        if candidate.get("kinematic_profile") == "three_motor_visual_zero_v1":
+            return candidate
+        closed_loop = device.get("vla_closed_loop_status") if isinstance(device.get("vla_closed_loop_status"), dict) else {}
+        stereo_record = device.get("stereo_vision_context") if isinstance(device.get("stereo_vision_context"), dict) else {}
+        stereo = stereo_record.get("payload") if isinstance(stereo_record.get("payload"), dict) else {}
+        target = stereo.get("target_3d_robot_frame") if isinstance(stereo.get("target_3d_robot_frame"), dict) else {}
+        transform = stereo.get("camera_to_robot_transform") if isinstance(stereo.get("camera_to_robot_transform"), dict) else {}
+        visual_lock = stereo.get("visual_lock_stability") if isinstance(stereo.get("visual_lock_stability"), dict) else {}
+        mode = str(closed_loop.get("active_mode") or "")
+        target_valid = all(isinstance(target.get(key), (int, float)) and math.isfinite(float(target[key])) for key in ("x_m", "y_m", "z_m"))
+        if (
+            mode in {"fetch_object", "vision_servo"}
+            and stereo.get("transform_state") == "calibrated"
+            and transform.get("state") == "accepted"
+            and str(transform.get("calibration_id") or "")
+            and target_valid
+            and bool(stereo.get("end_effector_object"))
+            and (visual_lock.get("stable_for_dry_run") is True or visual_lock.get("stable") is True)
+        ):
+            return _load_local_ik_builder()(
+                target,
+                source_frame_ts_unix=float(stereo.get("frame_ts_unix") or 0.0),
+                source_calibration_id=str(transform["calibration_id"]),
+                semantic_mode=mode,
+                device_id=device_id,
+            )
+    except Exception as exc:
+        errors.append(f"dashboard:{exc}")
+    raise RuntimeError("latest IK candidate unavailable: " + "; ".join(errors))
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="MuJoCo-first VLA execution agent for the three-motor arm.")
     parser.add_argument("--api-base", required=True)
@@ -156,7 +226,6 @@ def main(argv: list[str] | None = None) -> int:
 
     rclpy.init()
     node = ExecutionNode()
-    latest_url = f"{args.api_base.rstrip('/')}/api/rehab-arm/v1/devices/{args.device_id}/ik-candidate/latest"
     readiness_url = f"{args.api_base.rstrip('/')}/api/rehab-arm/v1/devices/{args.device_id}/simulation-readiness"
     processed: set[str] = set()
     retry_after: dict[str, float] = {}
@@ -164,7 +233,7 @@ def main(argv: list[str] | None = None) -> int:
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.0)
             try:
-                candidate = _request_json(latest_url)
+                candidate = fetch_latest_candidate(args.api_base, args.device_id, args.project_id)
                 staged = validate_candidate(candidate, now=time.time(), max_age_s=args.max_candidate_age_s)
                 candidate_id = staged["candidate_id"]
                 if not candidate_id or candidate_id in processed or time.monotonic() < retry_after.get(candidate_id, 0.0):
