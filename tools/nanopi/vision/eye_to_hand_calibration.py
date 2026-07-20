@@ -12,6 +12,7 @@ trajectories, send CAN frames, or grant motion permission.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import os
@@ -28,6 +29,10 @@ CONTROL_BOUNDARY = "eye_to_hand_transform_evidence_only_not_motion_permission"
 ACTIVE_MOTOR_IDS = [4, 5, 6]
 ACTIVE_JOINT_NAMES = ["jian_zongxiang_joint", "zhou_zongxiang_joint", "jian_xuanzhuan_joint"]
 FROZEN_JOINT_NAMES = ["jian_hengxiang_joint", "wanbu_zongxiang_joint", "wanbu_hengxiang_joint"]
+VISUAL_ZERO = np.asarray([-0.236, -0.675, 0.0, -1.12, -1.57, 1.05], dtype=np.float64)
+VISUAL_ZERO_PROTOCOL_COMMIT = "69450f71"
+KINEMATIC_TRANSLATIONS_M = (0.24, 0.18, 0.28, 0.12, 0.10, 0.10)
+KINEMATIC_AXES = ("z", "y", "x", "y", "y", "z")
 
 
 def _xyz_array(value: Any, *, field: str) -> np.ndarray:
@@ -49,6 +54,82 @@ def _xyz_array(value: Any, *, field: str) -> np.ndarray:
 def _xyz_dict(point: np.ndarray) -> dict[str, float]:
     values = np.asarray(point, dtype=np.float64).reshape(3)
     return {"x_m": round(float(values[0]), 6), "y_m": round(float(values[1]), 6), "z_m": round(float(values[2]), 6)}
+
+
+def _axis_rotation(axis: str, angle_rad: float) -> np.ndarray:
+    cosine = float(np.cos(angle_rad))
+    sine = float(np.sin(angle_rad))
+    if axis == "x":
+        return np.asarray([[1.0, 0.0, 0.0], [0.0, cosine, -sine], [0.0, sine, cosine]])
+    if axis == "y":
+        return np.asarray([[cosine, 0.0, sine], [0.0, 1.0, 0.0], [-sine, 0.0, cosine]])
+    if axis == "z":
+        return np.asarray([[cosine, -sine, 0.0], [sine, cosine, 0.0], [0.0, 0.0, 1.0]])
+    raise ValueError(f"unsupported rotation axis: {axis}")
+
+
+def visual_qpos_from_motor_angles_deg(joint_angles_deg: Any) -> np.ndarray:
+    """Map measured motor 4/5/6 output angles into the visual-zero model."""
+    if isinstance(joint_angles_deg, dict):
+        try:
+            motor_angles_deg = [joint_angles_deg[str(motor_id)] for motor_id in ACTIVE_MOTOR_IDS]
+        except KeyError as exc:
+            raise ValueError("joint angles must contain motor keys 4,5,6") from exc
+    elif isinstance(joint_angles_deg, (list, tuple, np.ndarray)):
+        motor_angles_deg = list(joint_angles_deg)
+    else:
+        raise ValueError("joint angles must contain motor 4,5,6 degrees")
+    motor_angles = np.radians(np.asarray(motor_angles_deg, dtype=np.float64))
+    if motor_angles.shape != (3,) or not np.all(np.isfinite(motor_angles)):
+        raise ValueError("joint angles must contain finite motor 4,5,6 degrees")
+    motor4, motor5, motor6 = motor_angles
+    qpos = VISUAL_ZERO.copy()
+    qpos[1] = VISUAL_ZERO[1] - motor4
+    qpos[3] = VISUAL_ZERO[3] + motor5
+    qpos[2] = VISUAL_ZERO[2] + motor6
+    return qpos
+
+
+def gripper_xyz_from_visual_qpos(visual_qpos: Any) -> np.ndarray:
+    """Return gripper-tip XYZ relative to the MuJoCo base body origin."""
+    qpos = np.asarray(visual_qpos, dtype=np.float64)
+    if qpos.shape != (6,) or not np.all(np.isfinite(qpos)):
+        raise ValueError("visual_qpos must contain six finite joint positions")
+    rotation = np.eye(3, dtype=np.float64)
+    position = np.zeros(3, dtype=np.float64)
+    for axis, joint_angle, link_length in zip(KINEMATIC_AXES, qpos, KINEMATIC_TRANSLATIONS_M):
+        rotation = rotation @ _axis_rotation(axis, float(joint_angle))
+        position = position + rotation @ np.asarray([link_length, 0.0, 0.0])
+    return position
+
+
+def finalize_raw_observation_with_fk(observation: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(observation, dict):
+        raise ValueError("observation must be an object")
+    if observation.get("robot_xyz_state") != "waiting_three_motor_forward_kinematics":
+        raise ValueError("observation is not waiting for three-motor forward kinematics")
+    if observation.get("active_motor_ids", ACTIVE_MOTOR_IDS) != ACTIVE_MOTOR_IDS:
+        raise ValueError("raw observation active_motor_ids must be exactly 4,5,6")
+    qpos = visual_qpos_from_motor_angles_deg(observation.get("joint_angles_deg"))
+    finalized = copy.deepcopy(observation)
+    finalized["robot_xyz_m"] = _xyz_dict(gripper_xyz_from_visual_qpos(qpos))
+    finalized["robot_xyz_state"] = "derived_from_three_motor_visual_zero_fk"
+    finalized["source_observation"] = str(
+        observation.get("source") or "live_stereo_end_effector_context_raw_joint_sample"
+    )
+    finalized["source"] = "live_stereo_end_effector_context_with_three_motor_visual_zero_fk"
+    finalized["kinematics_evidence"] = {
+        "schema_version": "rehab_arm_three_motor_visual_zero_fk_v1",
+        "model_path": "ros/rehab_arm_ws/src/rehab_arm_sim_mujoco/models/medical_arm_6dof.xml",
+        "visual_zero_protocol_commit": VISUAL_ZERO_PROTOCOL_COMMIT,
+        "visual_qpos_rad": [round(float(value), 10) for value in qpos],
+        "base_frame_id": "base_link",
+        "active_motor_ids": list(ACTIVE_MOTOR_IDS),
+        "frozen_joint_names": list(FROZEN_JOINT_NAMES),
+        "motion_authority": False,
+        "control_boundary": CONTROL_BOUNDARY,
+    }
+    return finalized
 
 
 def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
@@ -582,6 +663,13 @@ def build_parser() -> argparse.ArgumentParser:
     capture_raw.add_argument("--max-camera-spread-m", type=float, default=0.010)
     capture_raw.add_argument("--replace", action="store_true")
 
+    finalize_raw = subparsers.add_parser(
+        "finalize-raw",
+        help="Convert raw motor 4/5/6 samples to base_link XYZ with the visual-zero FK contract.",
+    )
+    finalize_raw.add_argument("--session", required=True)
+    finalize_raw.add_argument("--output", required=True)
+
     solve = subparsers.add_parser("solve", help="Solve and validate base_from_camera from a session.")
     solve.add_argument("--session", required=True)
     solve.add_argument("--output", required=True)
@@ -641,6 +729,27 @@ def main(argv: list[str] | None = None) -> int:
         observations.append(observation)
         _write_json_atomic(session_path, session)
         print(json.dumps(observation, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "finalize-raw":
+        session = _load_json(Path(args.session).expanduser())
+        finalized_session = copy.deepcopy(session)
+        observations = finalized_session.get("observations")
+        if not isinstance(observations, list):
+            raise SystemExit("session.observations must be a list")
+        converted = 0
+        for index, observation in enumerate(observations):
+            if isinstance(observation, dict) and observation.get("robot_xyz_state") == "waiting_three_motor_forward_kinematics":
+                observations[index] = finalize_raw_observation_with_fk(observation)
+                converted += 1
+        finalized_session["kinematics_finalization"] = {
+            "schema_version": "rehab_arm_three_motor_visual_zero_fk_v1",
+            "converted_observation_count": converted,
+            "visual_zero_protocol_commit": VISUAL_ZERO_PROTOCOL_COMMIT,
+            "motion_authority": False,
+            "control_boundary": CONTROL_BOUNDARY,
+        }
+        _write_json_atomic(Path(args.output).expanduser(), finalized_session)
+        print(json.dumps(finalized_session["kinematics_finalization"], ensure_ascii=False, indent=2))
         return 0
     if args.command == "solve":
         session = _load_json(Path(args.session).expanduser())

@@ -229,3 +229,40 @@ def test_raw_capture_records_three_motor_angles_without_claiming_robot_xyz():
     assert observation["joint_angles_deg"] == {"4": 12.0, "5": 34.0, "6": -8.0}
     assert "robot_xyz_m" not in observation
     assert observation["robot_xyz_state"] == "waiting_three_motor_forward_kinematics"
+
+
+def test_three_motor_fk_uses_visual_zero_protocol_and_model_chain():
+    module = load_module()
+    visual_qpos = module.visual_qpos_from_motor_angles_deg([0.0, 0.0, 0.0])
+    assert np.allclose(visual_qpos, [-0.236, -0.675, 0.0, -1.12, -1.57, 1.05])
+
+    straight_xyz = module.gripper_xyz_from_visual_qpos([0.0] * 6)
+    assert np.allclose(straight_xyz, [1.02, 0.0, 0.0], atol=1e-9)
+
+
+def test_raw_observations_can_be_finalized_with_three_motor_fk():
+    module = load_module()
+    raw = {
+        "pose_id": "P01",
+        "joint_angles_deg": {"4": 0.0, "5": 0.0, "6": 0.0},
+        "robot_xyz_state": "waiting_three_motor_forward_kinematics",
+    }
+    finalized = module.finalize_raw_observation_with_fk(raw)
+
+    expected = module.gripper_xyz_from_visual_qpos(module.VISUAL_ZERO)
+    assert np.allclose(
+        [finalized["robot_xyz_m"][axis] for axis in ("x_m", "y_m", "z_m")],
+        expected,
+        atol=1e-6,
+    )
+    assert finalized["robot_xyz_state"] == "derived_from_three_motor_visual_zero_fk"
+    assert finalized["source_observation"] == "live_stereo_end_effector_context_raw_joint_sample"
+    assert finalized["kinematics_evidence"]["motion_authority"] is False
+
+    raw["active_motor_ids"] = [3, 4, 5]
+    try:
+        module.finalize_raw_observation_with_fk(raw)
+    except ValueError as exc:
+        assert "exactly 4,5,6" in str(exc)
+    else:
+        raise AssertionError("FK must reject observations from a different motor subset")

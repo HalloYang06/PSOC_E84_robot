@@ -1,5 +1,29 @@
 # Project Progress
 
+## 2026-07-21 - Three-motor visual-zero FK preparation
+
+Completed:
+
+- Recovered the authoritative visual-zero mapping from repository history commit `69450f71` instead of guessing motor signs or offsets.
+- Added analytic FK for the current MuJoCo six-joint chain with only motors `4/5/6` active and the other joints frozen.
+- Added `finalize-raw`, which preserves the raw session and writes FK-derived `base_link` gripper points to a separate session.
+- Deployed the updated calibration utility to `/home/pi/rehab_arm_calibration/eye_to_hand_calibration.py`; the previous copy is retained as `.pre-fk-20260721`.
+- Removed the cancelled platform/App migration worktree, branch, and temporary legacy remote without touching the dirty old platform or teammate BLE worktree.
+
+Validated:
+
+- Focused eye-to-hand tests: 8 passed; complete stereo/calibration algorithm selection: 18 passed.
+- NanoPi `10.101.106.82` is online; `rehab-vla-vision.service` is active and the context file was fresh within 0.1 s during inspection.
+- Live capture was approximately 44.8 ms while the parallel heavy detector evidence was approximately 102.6 ms.
+- NanoPi import/CLI smoke test passed; zero hardware angles map to visual zero and produce model-base XYZ `[0.434872, -0.015363, 0.371270]` m.
+
+Open:
+
+- Runtime MuJoCo site cross-check was unavailable on the Windows host because its Python environment lacks `mujoco`; run the same comparison on the visualization host before accepting physical geometry.
+- The migrated system-architecture test has a pre-existing root-path error and searched under `ros/docs`; 10 tests failed on missing files while 7 other selected guards passed.
+- The live frame contained neither a plausible target nor a gripper in either eye, so the calibration session remains at zero observations.
+- Acquire the first raw pose only when the gripper is fully visible and still in both cameras and motor `4/5/6` angles are authoritative.
+
 ## 2026-07-21 - Three-motor eye-to-hand capture bring-up
 
 Completed:

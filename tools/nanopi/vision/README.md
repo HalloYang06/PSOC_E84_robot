@@ -58,8 +58,24 @@ python3 eye_to_hand_calibration.py capture-raw \
 
 The capture rejects reused target depth, single-eye estimates, unstable points,
 duplicate frames, and stereo-calibration ID mismatches. Convert the recorded
-angles through the validated three-joint forward kinematics before running the
-rigid transform solver; motor angles are never robot-frame XYZ by themselves.
+angles through the visual-zero three-joint forward kinematics before running
+the rigid transform solver; motor angles are never robot-frame XYZ by
+themselves. The conversion writes a new session and preserves the raw file:
+
+```bash
+python3 eye_to_hand_calibration.py finalize-raw \
+  --session session_3motor.json \
+  --output session_3motor_with_fk.json
+
+python3 eye_to_hand_calibration.py solve \
+  --session session_3motor_with_fk.json \
+  --output base_from_camera.json
+```
+
+The mapping follows visual-zero protocol commit `69450f71`: motor 4 maps to
+`-0.675-m4`, motor 5 to `-1.12+m5`, and motor 6 to `m6` in the medical-arm
+MuJoCo model. FK returns the gripper site relative to the model's `base` body,
+not the floor/world offset. The result remains coordinate evidence only.
 
 Natural-feature calibration and dense single-eye fallback are provisional
 evidence. A printed calibration target and a verified camera-to-arm transform

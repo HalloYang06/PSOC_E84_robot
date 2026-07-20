@@ -1,5 +1,17 @@
 # Troubleshooting And Lessons
 
+## 2026-07-21 - Recover visual-zero evidence before deriving hand-eye robot points
+
+Symptom: the active tree had a raw three-motor capture path, but the temporary calibration YAML still marked motor `4/5/6` zero and direction as TODO. Treating raw angles directly as model qpos would produce plausible but wrong `base_link` points.
+
+Fix: recover repository history commit `69450f71`, which records the demonstrated hardware-slider/visual-zero mapping. Keep raw observations immutable, convert degrees to the mapped visual qpos in `finalize-raw`, and derive the gripper site relative to the MuJoCo `base` body rather than including the model's floor/world height.
+
+Reusable rule: a rendered zero pose, a motor output zero, and a robot base frame are three different concepts. Preserve the raw joint sample and attach the exact model/mapping provenance to every derived robot point.
+
+Status: analytic tests pass; runtime comparison against MuJoCo and physical-link validation remain required before accepting the transform.
+
+Test note: `test_system_architecture_contract.py` currently derives `REPO_ROOT` as the monorepo `ros` directory after migration, so it reports missing `ros/docs/*` files. Do not interpret those path failures as FK or safety-contract regressions; repair that test root separately.
+
 ## 2026-07-21 - Hand-eye samples require independent gripper stereo depth
 
 Symptom: the old context could produce an end-effector camera point by projecting the left gripper pixel with the target bottle depth. This looks numerically complete but is not a valid hand-eye correspondence.

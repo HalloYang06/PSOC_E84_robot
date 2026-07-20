@@ -1,6 +1,6 @@
 # System overview
 
-本页描述当前仓库中的产品主线，而不是对历史分支的汇总。协议细节分别见 `docs/protocols/can-protocol.md`、`docs/protocols/m33-m55-ipc.md`、`docs/protocols/app-api.md` 与 `docs/protocols/safety-boundary.md`。
+本页描述当前仓库中的产品主线，而不是对历史分支的汇总。协议细节分别见 `docs/protocols/can-protocol.md`、`docs/protocols/m33-m55-ipc.md`、`docs/protocols/app-api.md`、`docs/protocols/vla-vision-calibration.md` 与 `docs/protocols/safety-boundary.md`。
 
 ## Product layers
 
@@ -38,7 +38,7 @@
 - M55 → M33 → NanoPi：`MSG_TYPE_AI_INFERENCE_RESP` 回到 M33，再由 M33 以 `0x323` 发布；该帧强制带 `suggestion_only`，bridge 发布 `/rehab_arm/model_state`。
 - NanoPi → platform API：motor/sensor/safety、session 和文件属于非实时上传与产品数据，不组成电机闭环。实现见 `platform/api/app/modules/rehab_arm/router.py`。
 - NanoPi vision → platform API：标注帧、检测结果、关联质量与相机坐标系深度是视觉证据；上传循环与推理线程解耦，旧帧可被新证据替代，但任何视觉锁定都不能直接成为 `JointTrajectory` 或 M33 permission。实现与来源见 `tools/nanopi/vision/README.md` 和 `docs/migration/nanopi-rk3576-vision-sync-20260720.md`。
-- 三电机手眼标定采集：固定双目分别检测同一个夹爪尖端，双目几何生成相机坐标；每个静止姿态同时记录电机 `4/5/6` 角度。角度必须先经受检三关节 FK 转为 `base_link` 末端点，再由 `tools/nanopi/vision/eye_to_hand_calibration.py` 求 `base_from_camera`。电机 3、腕部关节保持冻结；标定输出仍是 evidence，不产生轨迹、CAN 或运动许可。
+- 三电机手眼标定采集：固定双目分别检测同一个夹爪尖端，双目几何生成相机坐标；每个静止姿态同时记录电机 `4/5/6` 输出角。视觉零点映射固定为 `q_jian_zongxiang=-0.675-m4`、`q_zhou_zongxiang=-1.12+m5`、`q_jian_xuanzhuan=m6`，其余三轴冻结在视觉零点；FK 使用当前 `medical_arm_6dof.xml` 链并输出相对 MuJoCo `base` body 的 `base_link` 点。`tools/nanopi/vision/eye_to_hand_calibration.py finalize-raw` 只生成坐标证据，再由 `solve` 求 `base_from_camera`。完整契约见 `docs/protocols/vla-vision-calibration.md`；该路径不产生轨迹、CAN 或运动许可。
 
 ## Mainline vs simulation/bench
 
