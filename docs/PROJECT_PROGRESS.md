@@ -1,5 +1,15 @@
 # Project Progress
 
+## 2026-07-21 - Competition-day launch package
+
+Completed:
+
+- Corrected the device availability assessment: the operator PC was on `192.168.111.0/24`, so failures to reach `192.168.3.x` were routing evidence, not proof that NanoPi or MuJoCo was powered off.
+- Added a one-page run card and a non-motion launcher for cloud status, offline evidence playback, plan opening, and backup packaging.
+- Kept all real-motion ownership in the existing supervised director/ROS/M33 path; the new launcher cannot publish ROS, CAN, or motor commands.
+
+Next: connect to the device router, rerun status/preflight, then rehearse and freeze L2 or downgrade to L3/L4.
+
 ## 2026-07-20 - Competition live demo plan
 
 Completed:

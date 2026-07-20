@@ -237,7 +237,7 @@ ping 192.168.3.34
 
 通过标准：连续 20 次无明显丢包。不要依赖历史 IP，先从路由器或 `arp -a` 确认 NanoPi 实际地址。
 
-当前证据：2026-07-20 已知 NanoPi 地址和 `192.168.3.34` 均不在线，今晚必须重新确认。
+当前证据：2026-07-21 本机位于 `192.168.111.0/24`，不在设备使用的 `192.168.3.0/24`，因此已知 NanoPi 地址和 `192.168.3.34` 不可达不能证明设备未上电。接入设备路由器后必须重新确认。
 
 ### 3. NanoPi 视觉
 
@@ -326,6 +326,13 @@ D:\ai合作产品\docs\rehab-arm-demo-joint-waypoints-fetch-cup-level-track-moto
 8. 将演示档位写在纸上：`L1/L2/L3/L4`，由安全观察员在上场前决定。
 9. 清除桌面通知，接通电源，关闭休眠、屏保和系统更新。
 10. 保持离线视频已打开并暂停在第一帧，切换失败时 5 秒内可播放。
+
+现场快速状态检查和保底材料打包可使用：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\demo\competition-day-safe-launcher.ps1 -Action status
+powershell -ExecutionPolicy Bypass -File tools\demo\competition-day-safe-launcher.ps1 -Action prepare-backup
+```
 
 ## 一键脚本使用策略
 

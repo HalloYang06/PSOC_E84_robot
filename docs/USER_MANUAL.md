@@ -7,6 +7,13 @@ five-minute script, preflight checklist, downgrade table, and operator handoff.
 Do not improvise code, camera placement, model thresholds, joint trajectories,
 or kernel changes after the night-before rehearsal freezes the demo baseline.
 
+Quick status and backup packaging:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\demo\competition-day-safe-launcher.ps1 -Action status
+powershell -ExecutionPolicy Bypass -File tools\demo\competition-day-safe-launcher.ps1 -Action prepare-backup
+```
+
 ## NanoPi RK3576 vision verification
 
 The canonical source package is `tools/nanopi/vision`. It is safe to inspect or

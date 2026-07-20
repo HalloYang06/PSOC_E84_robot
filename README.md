@@ -149,6 +149,7 @@ python -m pytest ai/vla/tests -q
 - [安全边界](docs/protocols/safety-boundary.md)
 - [迁移来源说明](docs/migration/source-map.md)与[机器可读 source map](docs/migration/source-map.json)
 - [2026-07-21 国赛现场演示方案](docs/demo/competition-live-demo-plan-20260721.md)
+- [2026-07-21 国赛现场一页操作卡](docs/demo/competition-day-run-card-20260721.md)
 - [迁移设计](docs/superpowers/specs/2026-07-13-monorepo-migration-design.md)与[实施计划](docs/superpowers/plans/2026-07-13-monorepo-migration.md)
 - 组件入口：[C8T6](firmware/c8t6/README.md)、[ROS 2](ros/rehab_arm_ws/README.md)、[Android](apps/mobile/README.md)、[VLA](ai/vla/README.md)、[Runner](platform/runner/README.md)、[Shared](platform/shared/README.md)、[Deploy](platform/deploy/README.md)
 
