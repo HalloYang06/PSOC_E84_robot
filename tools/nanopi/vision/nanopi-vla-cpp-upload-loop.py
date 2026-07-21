@@ -99,6 +99,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fps", type=float, default=float(os.environ.get("REHAB_VLA_FPS", "1")))
     parser.add_argument("--heavy-every", type=int, default=int(os.environ.get("REHAB_VLA_HEAVY_EVERY", "1")))
     parser.add_argument("--right-upload-every", type=int, default=int(os.environ.get("REHAB_VLA_RIGHT_UPLOAD_EVERY", "1")))
+    parser.add_argument(
+        "--upload-stall-timeout",
+        type=float,
+        default=float(os.environ.get("REHAB_UPLOAD_STALL_TIMEOUT_S", "12.0")),
+    )
     parser.add_argument("--visual-memory-ttl", type=float, default=float(os.environ.get("REHAB_VISUAL_MEMORY_TTL", "0.8")))
     parser.add_argument("--visual-memory-max-misses", type=int, default=int(os.environ.get("REHAB_VISUAL_MEMORY_MAX_MISSES", "4")))
     parser.add_argument("--visual-ema-alpha", type=float, default=float(os.environ.get("REHAB_VISUAL_EMA_ALPHA", "0.45")))
@@ -114,6 +119,22 @@ def post_json(url: str, payload: dict[str, Any]) -> None:
     request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(request, timeout=8) as response:
         response.read()
+
+
+def upload_future_stalled(
+    future: Future[Any] | None,
+    started_monotonic: float | None,
+    *,
+    now_monotonic: float,
+    timeout_s: float,
+) -> bool:
+    return bool(
+        future is not None
+        and not future.done()
+        and started_monotonic is not None
+        and timeout_s > 0.0
+        and now_monotonic - started_monotonic > timeout_s
+    )
 
 
 def upload_keyframe(api_base: str, device_id: str, fields: dict[str, Any], image_bytes: bytes, file_name: str) -> None:
@@ -2168,9 +2189,22 @@ def main() -> int:
     latest_context: dict[str, Any] | None = None
     heavy_future: Future[dict[str, Any]] | None = None
     upload_future: Future[dict[str, Any]] | None = None
+    upload_started_monotonic: float | None = None
     heavy_submitted_frame = 0
     for frame_index in range(1, args.max_frames + 1 if args.max_frames else 1_000_000_000):
         loop_start = time.time()
+        if upload_future_stalled(
+            upload_future,
+            upload_started_monotonic,
+            now_monotonic=time.monotonic(),
+            timeout_s=max(0.0, float(args.upload_stall_timeout)),
+        ):
+            print(
+                f"[cpp-upload] upload watchdog exceeded {args.upload_stall_timeout:.1f}s; "
+                "exiting so the service manager can clear the blocked HTTP worker",
+                flush=True,
+            )
+            return 3
         try:
             probe_context = run_probe(args)
             ts = time.time()
@@ -2181,6 +2215,7 @@ def main() -> int:
                 except Exception as exc:
                     print(f"[cpp-upload] async upload failed: {exc}")
                 upload_future = None
+                upload_started_monotonic = None
             completed_heavy = False
             if heavy_future is not None and heavy_future.done():
                 try:
@@ -2230,6 +2265,7 @@ def main() -> int:
                         upload_right,
                         right_upload_every,
                     )
+                    upload_started_monotonic = time.monotonic()
                     context.setdefault("capture_loop", {})["upload_pending"] = True
                     context["capture_loop"]["upload_submitted_frame"] = frame_index
                     context["capture_loop"]["right_uploaded"] = upload_right

@@ -14,6 +14,11 @@ Validated:
 - Frontend contract and VLA regressions: 5 passed. Both unified and historical platform Next production builds passed with only pre-existing warnings.
 - Cloud `start-cloud-prod.sh` verified Web `:3001` and API `:8011` after restart. Authenticated browser QA remains unverified because the historical account returned `INVALID_CREDENTIALS`; no credential guessing was attempted.
 
+Follow-up prepared:
+
+- Added `upload_future_stalled()` watchdog to the NanoPi uploader; a blocked HTTP worker now exits after the configured 12-second limit so systemd can recover it instead of holding `upload_pending=True` forever. Local watchdog, vision, and calibration tests: 20 passed.
+- NanoPi deployment of this watchdog is unverified because the hotspot entered multi-second SSH latency during scp; do not assume the board has the new file until its hash and PID are checked.
+
 ## 2026-07-21 - Post-calibration one-command readiness
 
 Completed:

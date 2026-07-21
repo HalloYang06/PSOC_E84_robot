@@ -12,6 +12,16 @@ Deployment lesson: a long interactive SSH build was disconnected before publishi
 
 Status: deployed; cloud services healthy. Final authenticated visual/network QA is pending a valid account credential.
 
+## 2026-07-21 - NanoPi upload worker can remain pending indefinitely
+
+Symptom: the capture loop continued advancing from frame `12113` to `19754`, but there were no `upload_done` records for more than 90 seconds. The context repeatedly reported `upload_pending=True` and `upload_skipped=True`, while the cloud latest image stayed unchanged until a later upload completed.
+
+Root cause: the single `ThreadPoolExecutor(max_workers=1)` upload future combines two keyframe POSTs and one stereo-context POST. A long network/server read can occupy the worker indefinitely; the capture loop intentionally keeps observing but cannot submit another upload.
+
+Fix prepared: `tools/nanopi/vision/nanopi-vla-cpp-upload-loop.py` records the upload start monotonic time and exits with status `3` after `REHAB_UPLOAD_STALL_TIMEOUT_S` (default 12 seconds). The service manager can then restart a clean worker; this preserves latest-only behavior and avoids unbounded frame queues.
+
+Status: local tests pass; NanoPi file copy/restart is pending because the current hotspot SSH path reached 262-2365 ms ping and timed out during scp.
+
 ## 2026-07-21 - Activation and cloud version must both be fail-closed
 
 Calibration rule: write the solved result to a candidate artifact first. Only `calibration_state=accepted` may atomically replace `base_from_camera.json`; rejected validation must leave any known-good active file unchanged.
