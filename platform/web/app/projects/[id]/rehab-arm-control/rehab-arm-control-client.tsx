@@ -6,6 +6,8 @@ import { createPortal } from "react-dom";
 import flowStyles from "./rehab-arm-joint-flow.module.css";
 import styles from "./rehab-arm-control.module.css";
 
+const CAMERA_PREVIEW_REFRESH_MS = 350;
+
 export type AnyRecord = Record<string, any>;
 
 export type DashboardDevice = {
@@ -4755,6 +4757,46 @@ export function RehabArmControlClient({ apiBaseUrl, dashboard, projectId, projec
     diagnostics: "/rehab-stitch/diagnostics.html",
     logs: "/rehab-stitch/logs.html",
   };
+  useEffect(() => {
+    if (activeModule !== "vision") return;
+
+    const deviceId = selected?.device_id;
+    if (!deviceId) return;
+    const encodedDeviceId = encodeURIComponent(deviceId);
+    const leftPreviewSrc = keyframeSrc(
+      `/api/rehab-arm/v1/devices/${encodedDeviceId}/camera/keyframes/stereo_left/latest/file`,
+      apiBaseUrl,
+    );
+    const rightPreviewSrc = keyframeSrc(
+      `/api/rehab-arm/v1/devices/${encodedDeviceId}/camera/keyframes/stereo_right/latest/file`,
+      apiBaseUrl,
+    );
+
+    const refreshPreviewImages = () => {
+      if (document.visibilityState === "hidden") return;
+      const doc = stitchFrameRef.current?.contentDocument;
+      if (!doc) return;
+      const refreshImage = (role: string, src: string) => {
+        if (!src) return;
+        const image = doc.querySelector<HTMLImageElement>(`img[data-role="${role}"]`);
+        if (image) image.src = withImageVersion(src, Date.now());
+      };
+      refreshImage("left-camera-image", leftPreviewSrc);
+      refreshImage("right-camera-image", rightPreviewSrc);
+    };
+
+    refreshPreviewImages();
+    const timer = window.setInterval(refreshPreviewImages, CAMERA_PREVIEW_REFRESH_MS);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "hidden") refreshPreviewImages();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeModule, apiBaseUrl, selected?.device_id]);
+
   const downloadDiagnosticsSnapshot = useCallback(() => {
     const snapshot = {
       exported_at: new Date().toISOString(),

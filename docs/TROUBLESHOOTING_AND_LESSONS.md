@@ -1,5 +1,17 @@
 # Troubleshooting And Lessons
 
+## 2026-07-21 - Camera preview latency was dominated by upload and dashboard coupling
+
+Symptom: NanoPi local vision advanced at 8 FPS, but the cloud control room looked closer to a slideshow and sometimes lagged by several seconds.
+
+Evidence: local capture took roughly 32-45 ms, RKNN target inference roughly 14 ms per eye, and the complete heavy detector roughly 92 ms. Accepted upload bundles took roughly 288-468 ms and correctly skipped newer submissions while one upload was pending. The browser refreshed its full approximately 171 KB dashboard every 2 seconds, so image URLs changed at no more than 0.5 FPS even though latest keyframe files were only about 21-39 KB.
+
+Fix: keep the expensive dashboard poll at 2 seconds, but while the Stitch `vision` module is visible refresh only the left/right latest-file image URLs every 350 ms. Update the iframe image nodes directly instead of changing React state and rerendering the entire control room. Stop the timer when the tab is hidden or the user leaves the vision module.
+
+Deployment lesson: a long interactive SSH build was disconnected before publishing. Run the cloud build with an independent log/status artifact, confirm the complete route manifest, and only then call `RESTART=1 scripts/start-cloud-prod.sh`. Do not infer success from an uploaded source file or a still-healthy old service.
+
+Status: deployed; cloud services healthy. Final authenticated visual/network QA is pending a valid account credential.
+
 ## 2026-07-21 - Activation and cloud version must both be fail-closed
 
 Calibration rule: write the solved result to a candidate artifact first. Only `calibration_state=accepted` may atomically replace `base_from_camera.json`; rejected validation must leave any known-good active file unchanged.

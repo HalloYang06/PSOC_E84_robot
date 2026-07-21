@@ -1,5 +1,19 @@
 # Project Progress
 
+## 2026-07-21 - Decoupled live camera preview from dashboard polling
+
+Completed:
+
+- Kept the full rehab-arm dashboard poll at 2 seconds and added a vision-page-only 350 ms refresh for the two latest keyframe file endpoints.
+- The preview timer updates only the two Stitch iframe image elements; it does not rerender the full control room, create a frame backlog, or run while another module/tab is active.
+- Applied the same scoped compatibility change to the historical cloud runtime source, backed up the prior cloud file, rebuilt, and restarted Web/API with build label `rehab-camera-refresh-20260721`.
+
+Validated:
+
+- NanoPi capture remained 8 FPS with approximately 32-45 ms frame processing and approximately 92 ms dual-camera heavy detection; upload was the measured bottleneck at approximately 288-468 ms per accepted frame bundle.
+- Frontend contract and VLA regressions: 5 passed. Both unified and historical platform Next production builds passed with only pre-existing warnings.
+- Cloud `start-cloud-prod.sh` verified Web `:3001` and API `:8011` after restart. Authenticated browser QA remains unverified because the historical account returned `INVALID_CREDENTIALS`; no credential guessing was attempted.
+
 ## 2026-07-21 - Post-calibration one-command readiness
 
 Completed:

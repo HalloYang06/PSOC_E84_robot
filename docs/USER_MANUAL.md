@@ -83,6 +83,15 @@ deployment additionally requires matching file hashes, active camera streams,
 RKNN runtime evidence, fresh platform frames, and no repeated asynchronous
 upload errors.
 
+## Live platform camera preview
+
+Open the rehab-arm control room and select the `vision` module. While that
+module and browser tab are visible, the left/right latest keyframes refresh
+about every 350 ms independently of the slower full-dashboard telemetry poll.
+Changing to another module or hiding the browser tab stops the image timer.
+This is a latest-frame preview: slow uploads are replaced by newer evidence and
+old frames are not queued for playback.
+
 ## Three-motor eye-to-hand data capture
 
 This temporary calibration profile uses only motors `4/5/6` in the exact order
