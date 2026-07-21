@@ -1,5 +1,13 @@
 # Troubleshooting And Lessons
 
+## 2026-07-21 - Legacy users with null password hashes cannot use new authentication
+
+Symptom: a known active owner account returned `INVALID_CREDENTIALS` after the cloud API restarted, although its user and project membership rows were intact.
+
+Root cause: the cloud runtime had newer scrypt authentication than the local historical checkout. The user was created before password hashes were required, so `users.password_hash` was null and `_password_matches()` correctly returned false. This was not a database-path switch and not a lost project membership.
+
+Fix: identify the account by both stable user ID and email, create a SQLite online backup, populate only the missing hash using the runtime `_hash_password()` implementation, then verify session login, workspace membership, and the real Web form. Never re-register the email because that would create a different identity without the existing project ownership.
+
 ## 2026-07-21 - Camera preview latency was dominated by upload and dashboard coupling
 
 Symptom: NanoPi local vision advanced at 8 FPS, but the cloud control room looked closer to a slideshow and sometimes lagged by several seconds.

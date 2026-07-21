@@ -1,5 +1,12 @@
 # Project Progress
 
+## 2026-07-21 - Restored legacy owner account login
+
+- Confirmed project `e201f41c-25a6-46e1-baf8-be6dcb83284c` belongs to active owner `3245056131@qq.com` with stable user ID `2e3e24a1-acf4-4c8e-b480-8b38289df495`.
+- The account predated password hashing and had a null `password_hash`; the newer scrypt authentication correctly rejected it as `INVALID_CREDENTIALS`.
+- Created an online SQLite backup, set only this account's scrypt hash for the user-confirmed password, and preserved both owner memberships.
+- API session/workspace checks returned 200. Browser QA submitted the real login form and reached the rehab-arm control route with no invalid-credential message.
+
 ## 2026-07-21 - Decoupled live camera preview from dashboard polling
 
 Completed:
