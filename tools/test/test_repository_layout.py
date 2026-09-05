@@ -166,8 +166,9 @@ def test_root_readme_explains_complete_product():
         "Android",
         "VLA",
         "JointTrajectory -> NanoPi -> M33",
-        "当前已验证",
-        "尚未完成",
+        "项目文档",
+        "主要功能",
+        "系统架构",
         "安全边界",
         "目录结构",
         "构建入口",
@@ -189,8 +190,11 @@ def test_root_readme_relative_links_exist():
     assert missing == []
 
 
-def test_root_readme_scopes_api_verification_to_rehab_subset():
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
+def test_readme_links_to_scoped_api_verification_record():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    record = "docs/validation/migration-validation.md"
+    assert f"]({record})" in readme
+    text = (ROOT / record).read_text(encoding="utf-8")
     required = [
         "platform/api/tests/test_rehab_arm_app_backend.py",
         "platform/api/tests/test_rehab_arm_app_live_emg.py",
@@ -201,5 +205,5 @@ def test_root_readme_scopes_api_verification_to_rehab_subset():
     ]
 
     assert [item for item in required if item not in text] == []
-    assert "python -m pytest platform/api/tests -q" not in text
-    assert "python -m pytest platform/api/tests -v" not in text
+    assert "python -m pytest platform/api/tests -q" not in readme
+    assert "python -m pytest platform/api/tests -v" not in readme
